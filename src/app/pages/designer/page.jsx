@@ -1,19 +1,28 @@
 "use client";
-import dynamic from "next/dynamic";
+
 import React from "react";
+import { DesignerProvider } from "@/components/designer/DesignerProvider";
+import Sidebar from "@/components/designer/Sidebar";
+import Toolbar from "@/components/designer/Toolbar";
 import DrawingSurface from "@/components/three/DrawingSurface";
-// Dynamically import the 3D drawing surface to disable SSR
-// const DrawingSurface = dynamic(
-//   () => import("@/components/three/DrawingSurface"),
-//   {
-//     ssr: false,
-//   }
-// );
 
 export default function DesignerPage() {
   return (
-    <div className="w-full h-screen bg-gray-100">
-      <DrawingSurface />
-    </div>
+    <DesignerProvider>
+      <div className="w-full h-screen flex flex-col bg-gray-900 overflow-hidden">
+        {/* Top toolbar */}
+        <Toolbar />
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left sidebar - furniture menu */}
+          <Sidebar />
+
+          {/* 3D Canvas area */}
+          <div className="flex-1 relative">
+            <DrawingSurface />
+          </div>
+        </div>
+      </div>
+    </DesignerProvider>
   );
 }

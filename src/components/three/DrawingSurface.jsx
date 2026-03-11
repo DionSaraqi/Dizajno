@@ -1,270 +1,232 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
-import {
-  Grid,
-  OrbitControls,
-  PerspectiveCamera,
-  OrthographicCamera,
-  Html,
-} from "@react-three/drei";
+import { Html } from "@react-three/drei";
 import * as THREE from "three";
+import { useDesignerState, useDesignerDispatch } from "@/components/designer/DesignerProvider";
+import GridPlane from "./GridPlane";
+import CameraController from "./CameraController";
+import WallMesh from "./WallMesh";
+import FloorMesh from "./FloorMesh";
+import FurnitureItem3D from "./FurnitureItem3D";
+import { snapPoint } from "@/utils/snapToGrid";
+import { findFloors } from "@/utils/wallGraph";
+import { getFurnitureDef } from "@/utils/furnitureCatalog";
+import { checkFurnitureCollision } from "@/utils/collision";
 
-const Wall = ({ start, end, thickness = 0.1, height = 1 }) => {
-  const startVec = new THREE.Vector3(...start);
-  const endVec = new THREE.Vector3(...end);
-  const direction = new THREE.Vector3().subVectors(endVec, startVec);
-  const length = direction.length();
+function SceneContent() {
+  const state = useDesignerState();
+  const dispatch = useDesignerDispatch();
 
-  if (length === 0) return null;
+  const [previewEnd, setPreviewEnd] = useState(null);
+  const drawingRef = useRef(false);
+  const drawStartRef = useRef(null);
 
-  const center = new THREE.Vector3()
-    .addVectors(startVec, endVec)
-    .multiplyScalar(0.5);
-
-  // Calculate angle in XZ plane
-  // We want to rotate a box initially aligned with X axis
-  const angle = Math.atan2(direction.z, direction.x);
-
-  return (
-    <group>
-      <mesh
-        position={[center.x, height / 2, center.z]}
-        rotation={[0, -angle, 0]}
-      >
-        <boxGeometry args={[length, height, thickness]} />
-        <meshStandardMaterial color="#4a4a4a" />
-      </mesh>
-      {/* Joints to fix gaps */}
-      <mesh position={[startVec.x, height / 2, startVec.z]}>
-        <cylinderGeometry args={[thickness / 2, thickness / 2, height, 16]} />
-        <meshStandardMaterial color="#4a4a4a" />
-      </mesh>
-      <mesh position={[endVec.x, height / 2, endVec.z]}>
-        <cylinderGeometry args={[thickness / 2, thickness / 2, height, 16]} />
-        <meshStandardMaterial color="#4a4a4a" />
-      </mesh>
-    </group>
+  const getSnappedPoint = useCallback(
+    (e) => {
+      const point = e.point;
+      if (!point) return null;
+      if (state.snap) {
+        return snapPoint(point.x, point.z, state.gridSize);
+      }
+      return [point.x, point.z];
+    },
+    [state.snap, state.gridSize]
   );
-};
 
-const DrawingPlane = ({ snap, gridSize, is3D, drawingMode }) => {
-  const [walls, setWalls] = useState([]);
-  const [drawing, setDrawing] = useState(false);
-  const [currentStart, setCurrentStart] = useState(null);
-  const [currentEnd, setCurrentEnd] = useState(null);
+  const finishWall = useCallback(
+    (endPoint) => {
+      const start = drawStartRef.current;
+      if (!start || !endPoint) return;
+      const dist = Math.sqrt(
+        (endPoint[0] - start[0]) ** 2 + (endPoint[1] - start[1]) ** 2
+      );
+      if (dist > 0.05) {
+        const wall = {
+          id: `wall-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          start,
+          end: endPoint,
+          thickness: state.wallThickness,
+          height: state.wallHeight,
+        };
+        dispatch({ type: "ADD_WALL", wall });
 
-  const getPoint = (e) => {
-    const point = e.point.clone();
-    point.y = 0;
-    if (snap) {
-      point.x = Math.round(point.x / gridSize) * gridSize;
-      point.z = Math.round(point.z / gridSize) * gridSize;
-    }
-    return point;
-  };
+        const newWalls = [...state.walls, wall];
+        const floors = findFloors(newWalls);
+        if (floors.length > 0) {
+          dispatch({ type: "SET_FLOORS", floors });
+        }
+      }
+    },
+    [state.walls, state.wallThickness, state.wallHeight, dispatch]
+  );
 
-  const handlePointerDown = (e) => {
-    // Only handle right click (button 2) and if drawing mode is active
-    if (e.button !== 2 || !drawingMode) return;
+  const handlePointerDown = useCallback(
+    (e) => {
+      // Left-click-hold to draw walls
+      if (e.button === 0 && state.mode === "draw") {
+        e.stopPropagation();
+        const point = getSnappedPoint(e);
+        if (!point) return;
 
-    e.stopPropagation();
-    const point = getPoint(e);
-
-    if (!drawing) {
-      setDrawing(true);
-      setCurrentStart(point.toArray());
-      setCurrentEnd(point.toArray());
-    } else {
-      // Finish wall
-      const start = new THREE.Vector3(...currentStart);
-      const end = new THREE.Vector3(...point.toArray());
-
-      if (start.distanceTo(end) > 0.01) {
-        setWalls([...walls, { start: currentStart, end: point.toArray() }]);
+        drawingRef.current = true;
+        drawStartRef.current = point;
+        dispatch({ type: "SET_DRAWING_FROM", point });
+        setPreviewEnd(point);
+        return;
       }
 
-      setDrawing(false);
-      setCurrentStart(null);
-      setCurrentEnd(null);
-    }
-  };
-  const handlePointerMove = (e) => {
-    if (drawing && currentStart) {
-      const point = getPoint(e);
-      setCurrentEnd(point.toArray());
-    }
-  };
+      // Left-click for furniture placement
+      if (e.button === 0 && state.mode === "furniture" && state.activeFurnitureType) {
+        e.stopPropagation();
+        const point = getSnappedPoint(e);
+        if (!point) return;
 
-  // Calculate length for current wall being drawn
-  const currentLength =
-    drawing && currentStart && currentEnd
-      ? new THREE.Vector3(...currentStart).distanceTo(
-          new THREE.Vector3(...currentEnd)
-        )
-      : 0;
+        const def = getFurnitureDef(state.activeFurnitureType);
+        if (!def) return;
 
-  const currentCenter =
-    drawing && currentStart && currentEnd
-      ? new THREE.Vector3()
-          .addVectors(
-            new THREE.Vector3(...currentStart),
-            new THREE.Vector3(...currentEnd)
-          )
-          .multiplyScalar(0.5)
-      : null;
+        const newItem = {
+          id: `furn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          type: def.type,
+          position: point,
+          rotation: 0,
+          width: def.width,
+          depth: def.depth,
+          height: def.height,
+          color: def.color,
+        };
+
+        if (!checkFurnitureCollision(newItem, state.furniture, state.walls)) {
+          dispatch({ type: "PLACE_FURNITURE", item: newItem });
+        }
+        return;
+      }
+
+      // Left-click deselect in select mode
+      if (e.button === 0 && state.mode === "select") {
+        dispatch({ type: "SELECT", id: null });
+      }
+    },
+    [state, dispatch, getSnappedPoint]
+  );
+
+  const handlePointerMove = useCallback(
+    (e) => {
+      if (drawingRef.current && state.mode === "draw") {
+        const point = getSnappedPoint(e);
+        if (point) setPreviewEnd(point);
+      }
+    },
+    [state.mode, getSnappedPoint]
+  );
+
+  const handlePointerUp = useCallback(
+    (e) => {
+      if (e.button === 0 && drawingRef.current && state.mode === "draw") {
+        const point = getSnappedPoint(e);
+        if (point) {
+          finishWall(point);
+        }
+        drawingRef.current = false;
+        drawStartRef.current = null;
+        dispatch({ type: "SET_DRAWING_FROM", point: null });
+        setPreviewEnd(null);
+      }
+    },
+    [state.mode, getSnappedPoint, finishWall, dispatch]
+  );
+
+  // Calculate preview wall measurement
+  let previewLength = 0;
+  let previewCenter = null;
+  if (drawingRef.current && state.drawingFrom && previewEnd) {
+    const dx = previewEnd[0] - state.drawingFrom[0];
+    const dz = previewEnd[1] - state.drawingFrom[1];
+    previewLength = Math.sqrt(dx * dx + dz * dz);
+    previewCenter = [
+      (state.drawingFrom[0] + previewEnd[0]) / 2,
+      (state.drawingFrom[1] + previewEnd[1]) / 2,
+    ];
+  }
 
   return (
     <>
-      <Grid
-        position={[0, 0.01, 0]}
-        args={[100, 100]}
-        cellSize={gridSize}
-        cellThickness={1}
-        cellColor="#6f6f6f"
-        sectionSize={gridSize * 5}
-        sectionThickness={1.5}
-        sectionColor="#000000"
-        fadeDistance={50}
-        infiniteGrid
-      />
+      <color attach="background" args={["#1a1a2e"]} />
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[10, 15, 10]} intensity={0.8} castShadow />
+      <directionalLight position={[-5, 10, -5]} intensity={0.3} />
 
-      {/* Invisible plane for raycasting */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0, 0]}
+      <CameraController is3D={state.is3D} drawingMode={state.mode === "draw"} />
+
+      <GridPlane
+        gridSize={state.gridSize}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
-      >
-        <planeGeometry args={[100, 100]} />
-        <meshBasicMaterial visible={false} />
-      </mesh>
+        onPointerUp={handlePointerUp}
+      />
 
-      {walls.map((wall, i) => (
-        <Wall key={i} start={wall.start} end={wall.end} />
+      {/* Rendered walls */}
+      {state.walls.map((wall) => (
+        <WallMesh
+          key={wall.id}
+          start={wall.start}
+          end={wall.end}
+          thickness={wall.thickness}
+          height={state.is3D ? wall.height : 0.15}
+        />
       ))}
 
-      {drawing && currentStart && currentEnd && (
+      {/* Preview wall being drawn */}
+      {drawingRef.current && state.drawingFrom && previewEnd && (
         <>
-          <Wall start={currentStart} end={currentEnd} />
-          <Html position={[currentCenter.x, 1.5, currentCenter.z]} center>
-            <div className="bg-black text-white px-2 py-1 rounded text-xs whitespace-nowrap">
-              {currentLength.toFixed(2)}m
-            </div>
-          </Html>
+          <WallMesh
+            start={state.drawingFrom}
+            end={previewEnd}
+            thickness={state.wallThickness}
+            height={state.is3D ? state.wallHeight : 0.15}
+            selected
+          />
+          {previewLength > 0.05 && previewCenter && (
+            <Html position={[previewCenter[0], 1.5, previewCenter[1]]} center>
+              <div className="bg-blue-600 text-white px-2 py-0.5 rounded text-xs whitespace-nowrap font-mono shadow-lg">
+                {previewLength.toFixed(2)}m
+              </div>
+            </Html>
+          )}
         </>
+      )}
+
+      {/* Floors */}
+      {state.floors.map((floor) => (
+        <FloorMesh key={floor.id} vertices={floor.vertices} />
+      ))}
+
+      {/* Furniture */}
+      {state.furniture.map((item) => (
+        <FurnitureItem3D key={item.id} item={item} />
+      ))}
+
+      {/* Start point indicator */}
+      {drawingRef.current && state.drawingFrom && (
+        <mesh position={[state.drawingFrom[0], 0.05, state.drawingFrom[1]]}>
+          <sphereGeometry args={[0.08, 16, 16]} />
+          <meshBasicMaterial color="#3B82F6" />
+        </mesh>
       )}
     </>
   );
-};
+}
 
 export default function DrawingSurface() {
-  const [snap, setSnap] = useState(true);
-  const [gridSize, setGridSize] = useState(1);
-  const [is3D, setIs3D] = useState(false);
-  const [drawingMode, setDrawingMode] = useState(true);
-
   return (
     <div
       className="relative w-full h-full"
       onContextMenu={(e) => e.preventDefault()}
+      tabIndex={0}
     >
-      {/* Custom UI Overlay */}
-      <div className="absolute top-4 right-4 z-10 bg-white p-4 rounded-lg shadow-lg flex flex-col gap-4 min-w-[200px]">
-        <h3 className="font-bold text-gray-800">Drawing Settings</h3>
-
-        <div className="flex items-center justify-between">
-          <label className="text-sm text-gray-600">Mode</label>
-          <button
-            onClick={() => setIs3D(!is3D)}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-              is3D
-                ? "bg-blue-500 text-white"
-                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-            }`}
-          >
-            {is3D ? "3D View" : "2D View"}
-          </button>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <label className="text-sm text-gray-600">Drawing</label>
-          <button
-            onClick={() => setDrawingMode(!drawingMode)}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-              drawingMode ? "bg-green-500 text-white" : "bg-red-500 text-white"
-            }`}
-          >
-            {drawingMode ? "ON" : "OFF"}
-          </button>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <label className="text-sm text-gray-600">Snap to Grid</label>
-          <input
-            type="checkbox"
-            checked={snap}
-            onChange={(e) => setSnap(e.target.checked)}
-            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="text-sm text-gray-600">
-            Grid Size: {gridSize}m
-          </label>
-          <input
-            type="range"
-            min="0.5"
-            max="5"
-            step="0.5"
-            value={gridSize}
-            onChange={(e) => setGridSize(parseFloat(e.target.value))}
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-          />
-        </div>
-      </div>
-
       <Canvas shadows>
-        <color attach="background" args={["#e0e0e0"]} />
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
-
-        {is3D ? (
-          <PerspectiveCamera makeDefault position={[10, 10, 10]} fov={50} />
-        ) : (
-          <OrthographicCamera
-            makeDefault
-            position={[0, 20, 0]}
-            zoom={40}
-            near={0.1}
-            far={1000}
-          />
-        )}
-
-        <DrawingPlane
-          snap={snap}
-          gridSize={gridSize}
-          is3D={is3D}
-          drawingMode={drawingMode}
-        />
-
-        <OrbitControls
-          makeDefault
-          enableRotate={is3D}
-          minPolarAngle={0}
-          maxPolarAngle={Math.PI / 2.1} // Prevent going below ground
-          minZoom={10} // Limit zoom out for Orthographic
-          maxZoom={100} // Limit zoom in for Orthographic
-          minDistance={2} // Limit zoom in for Perspective
-          maxDistance={50} // Limit zoom out for Perspective
-          mouseButtons={{
-            LEFT: is3D ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN,
-            MIDDLE: THREE.MOUSE.PAN,
-            RIGHT: undefined, // Right click is used for drawing
-          }}
-        />
+        <SceneContent />
       </Canvas>
     </div>
   );
