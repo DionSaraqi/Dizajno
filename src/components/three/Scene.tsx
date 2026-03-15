@@ -104,7 +104,7 @@ export default function Scene() {
         // Navigate as soon as screen is completely black (fadeProgress >= 1)
         if (fadeProgress.current >= 1 && !navigated.current) {
           navigated.current = true;
-          router.push("pages/designer");
+          router.push("/designer");
         }
       }
     }

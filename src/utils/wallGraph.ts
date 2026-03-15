@@ -1,4 +1,4 @@
-import type { WallData, FloorData } from "@/components/designer/DesignerProvider";
+import type { WallData, FloorData } from "@/types/designer";
 
 type Key = string;
 
@@ -16,14 +16,14 @@ function parseKey(k: Key): [number, number] {
  *
  * Algorithm:
  * 1. Build adjacency list with neighbors sorted by angle around each vertex.
- * 2. For every directed half-edge (u→v), trace the face to its left by always
+ * 2. For every directed half-edge (u->v), trace the face to its left by always
  *    picking the "next clockwise" edge at each vertex.
  * 3. Compute signed area to distinguish inner faces (rooms) from the outer face.
  */
 export function findFloors(walls: WallData[]): FloorData[] {
   if (walls.length < 3) return [];
 
-  // Build adjacency: vertex → sorted list of neighbor keys
+  // Build adjacency: vertex -> sorted list of neighbor keys
   const adj = new Map<Key, Key[]>();
 
   const edgeSet = new Set<string>(); // dedup walls with same endpoints
@@ -54,7 +54,7 @@ export function findFloors(walls: WallData[]): FloorData[] {
     });
   }
 
-  // For directed edge (from → to), find the next vertex in the face traversal.
+  // For directed edge (from -> to), find the next vertex in the face traversal.
   // At vertex `to`, find `from` in the sorted neighbor list, then pick the
   // PREVIOUS neighbor (one step clockwise). This follows the face to the left.
   function nextVertex(from: Key, to: Key): Key {
@@ -102,7 +102,7 @@ export function findFloors(walls: WallData[]): FloorData[] {
       area /= 2;
 
       // Positive area = CCW winding = inner face (room)
-      // Negative area = CW winding = outer (unbounded) face → skip
+      // Negative area = CW winding = outer (unbounded) face -> skip
       if (area > 0.01) {
         floors.push({
           id: `floor-${floors.length}-${Date.now()}`,

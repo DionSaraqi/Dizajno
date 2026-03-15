@@ -28,6 +28,6 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "next.config.js"
-, "src/app/pages/designer/page.jsx"  ],
+  ],
   "exclude": ["node_modules"]
 }

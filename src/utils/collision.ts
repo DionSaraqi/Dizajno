@@ -1,4 +1,4 @@
-import type { FurnitureData, WallData } from "@/components/designer/DesignerProvider";
+import type { FurnitureData, WallData } from "@/types/designer";
 
 interface AABB {
   minX: number;

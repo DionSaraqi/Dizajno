@@ -1,10 +1,14 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { useThree } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
-import type { FurnitureData } from "@/components/designer/DesignerProvider";
-import { useDesignerState, useDesignerDispatch } from "@/components/designer/DesignerProvider";
+import { Edges } from "@react-three/drei";
+import {
+  useDesignerStore,
+  useSelectedIds,
+  useSnap,
+  useGridSize,
+} from "@/store/useDesignerStore";
+import type { FurnitureData } from "@/types/designer";
 import { checkFurnitureCollision } from "@/utils/collision";
 import { snapToGrid } from "@/utils/snapToGrid";
 import BedModel from "./furniture/BedModel";
@@ -22,37 +26,62 @@ interface FurnitureItem3DProps {
 
 function getModel(type: string) {
   switch (type) {
-    case "bed": return BedModel;
-    case "table": return TableModel;
-    case "chair": return ChairModel;
-    case "sofa": return SofaModel;
-    case "wardrobe": return WardrobeModel;
-    case "desk": return DeskModel;
-    case "bookshelf": return BookshelfModel;
-    case "nightstand": return NightstandModel;
-    default: return null;
+    case "bed":
+      return BedModel;
+    case "table":
+      return TableModel;
+    case "chair":
+      return ChairModel;
+    case "sofa":
+      return SofaModel;
+    case "wardrobe":
+      return WardrobeModel;
+    case "desk":
+      return DeskModel;
+    case "bookshelf":
+      return BookshelfModel;
+    case "nightstand":
+      return NightstandModel;
+    default:
+      return null;
   }
 }
 
 export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
-  const state = useDesignerState();
-  const dispatch = useDesignerDispatch();
+  const selectedIds = useSelectedIds();
+  const snap = useSnap();
+  const gridSize = useGridSize();
+
+  const select = useDesignerStore((s) => s.select);
+  const toggleSelect = useDesignerStore((s) => s.toggleSelect);
+  const moveFurniture = useDesignerStore((s) => s.moveFurniture);
+  const furniture = useDesignerStore((s) => s.furniture);
+  const walls = useDesignerStore((s) => s.walls);
+
   const [dragging, setDragging] = useState(false);
   const [dragPos, setDragPos] = useState<[number, number]>(item.position);
   const groupRef = useRef<any>(null);
 
-  const isSelected = state.selectedId === item.id;
+  const isSelected = selectedIds.includes(item.id);
   const pos = dragging ? dragPos : item.position;
 
   const tempItem: FurnitureData = { ...item, position: pos };
-  const hasCollision = dragging && checkFurnitureCollision(tempItem, state.furniture, state.walls);
+  const hasCollision =
+    dragging && checkFurnitureCollision(tempItem, furniture, walls);
 
   const ModelComponent = getModel(item.type);
 
   const handlePointerDown = (e: any) => {
-    if (state.mode !== "select") return;
+    // Furniture is ALWAYS interactive (no mode gate)
     e.stopPropagation();
-    dispatch({ type: "SELECT", id: item.id });
+
+    // Multi-select with Shift
+    if (e.nativeEvent?.shiftKey || e.shiftKey) {
+      toggleSelect(item.id);
+    } else {
+      select(item.id);
+    }
+
     setDragging(true);
     (e.target as any)?.setPointerCapture?.(e.pointerId);
   };
@@ -62,8 +91,8 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     e.stopPropagation();
     const point = e.point;
     if (point) {
-      const x = state.snap ? snapToGrid(point.x, state.gridSize) : point.x;
-      const z = state.snap ? snapToGrid(point.z, state.gridSize) : point.z;
+      const x = snap ? snapToGrid(point.x, gridSize) : point.x;
+      const z = snap ? snapToGrid(point.z, gridSize) : point.z;
       setDragPos([x, z]);
     }
   };
@@ -75,7 +104,7 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     (e.target as any)?.releasePointerCapture?.(e.pointerId);
 
     if (!hasCollision) {
-      dispatch({ type: "MOVE_FURNITURE", id: item.id, position: dragPos });
+      moveFurniture(item.id, dragPos);
     }
     setDragPos(item.position);
   };
@@ -98,11 +127,14 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
         />
       )}
 
-      {/* Selection outline */}
+      {/* Selection highlight using Edges */}
       {isSelected && (
         <mesh position={[0, item.height / 2, 0]}>
-          <boxGeometry args={[item.width + 0.05, item.height + 0.05, item.depth + 0.05]} />
-          <meshBasicMaterial color="#3B82F6" wireframe />
+          <boxGeometry
+            args={[item.width + 0.02, item.height + 0.02, item.depth + 0.02]}
+          />
+          <meshBasicMaterial visible={false} />
+          <Edges threshold={15} color="#6366f1" />
         </mesh>
       )}
     </group>

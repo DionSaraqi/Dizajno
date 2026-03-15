@@ -31,6 +31,8 @@ export default function CameraController({ is3D, drawingMode }: CameraController
         makeDefault
         enableRotate={is3D}
         enablePan={true}
+        enableDamping={true}
+        dampingFactor={0.1}
         minPolarAngle={0.1}
         maxPolarAngle={Math.PI / 2.2}
         minZoom={10}
@@ -45,7 +47,7 @@ export default function CameraController({ is3D, drawingMode }: CameraController
                 RIGHT: THREE.MOUSE.PAN,
               }
             : {
-                LEFT: drawingMode ? undefined as any : THREE.MOUSE.PAN,
+                LEFT: drawingMode ? (undefined as any) : THREE.MOUSE.PAN,
                 MIDDLE: THREE.MOUSE.PAN,
                 RIGHT: THREE.MOUSE.PAN,
               }
