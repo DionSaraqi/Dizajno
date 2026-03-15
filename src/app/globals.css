@@ -2,4 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Optional: Add any custom styles below */
+@layer base {
+  body {
+    @apply bg-dizajno-bg text-dizajno-text;
+  }
+}
+
+/* Blueprint grid background for landing page */
+.blueprint-grid {
+  background-color: #111827;
+  background-image:
+    /* Fine grid */
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    /* Major grid (every 5th line) */
+    linear-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
+}
+
+/* Chalk dust — small corner smudges only */
+.blueprint-grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(200, 208, 220, 0.07) 0%, transparent 18%),
+    radial-gradient(ellipse at 100% 0%, rgba(195, 203, 215, 0.05) 0%, transparent 15%),
+    radial-gradient(ellipse at 0% 100%, rgba(195, 203, 215, 0.06) 0%, transparent 16%),
+    radial-gradient(ellipse at 100% 100%, rgba(200, 208, 220, 0.05) 0%, transparent 14%);
+}
+
+/* Slider thumb styling */
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e4e4ec;
+  border: 2px solid #6366f1;
+  cursor: pointer;
+}
+
+.slider-input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e4e4ec;
+  border: 2px solid #6366f1;
+  cursor: pointer;
+}
