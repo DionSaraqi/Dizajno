@@ -9,29 +9,27 @@ const SketchMaterialImpl = shaderMaterial(
     baseColor: new Color("#3a3a3a"),
     opacity: 1.0,
   },
-  // Vertex shader
+  // Vertex shader — pass world-space normal so shading is rotation-independent
   /* glsl */ `
-    varying vec3 vNormal;
-    varying vec3 vPosition;
+    varying vec3 vWorldNormal;
 
     void main() {
-      vNormal = normalize(normalMatrix * normal);
-      vPosition = (modelViewMatrix * vec4(position, 1.0)).xyz;
+      // Transform normal to world space (not view space)
+      vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
   `,
-  // Fragment shader — 3-band toon shading
+  // Fragment shader — 3-band toon shading in world space
   /* glsl */ `
     uniform vec3 baseColor;
     uniform float opacity;
 
-    varying vec3 vNormal;
-    varying vec3 vPosition;
+    varying vec3 vWorldNormal;
 
     void main() {
-      // Light direction (top-right, slightly forward)
+      // Fixed world-space light direction (top-right, slightly forward)
       vec3 lightDir = normalize(vec3(0.5, 0.8, 0.3));
-      float NdotL = dot(vNormal, lightDir);
+      float NdotL = dot(vWorldNormal, lightDir);
 
       // 3-band toon shading
       float shade;

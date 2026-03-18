@@ -41,12 +41,18 @@ export default function Room() {
 
       {/* ── Walls ── */}
 
-      {/* Left wall */}
-      <mesh rotation={[0, Math.PI / 2, 0]} position={[-3, 0, 0]}>
-        <planeGeometry args={[6, wallHeight]} />
-        <SketchMaterial baseColor={WALL_SIDE_SHADOW} opacity={OPACITY} transparent />
-        <Edges threshold={EDGE_THRESHOLD} color={EDGE_COLOR} />
-      </mesh>
+      {/* Left wall (outside + inside faces) */}
+      <group>
+        <mesh rotation={[0, -Math.PI / 2, 0]} position={[-3, 0, 0]}>
+          <planeGeometry args={[6, wallHeight]} />
+          <SketchMaterial baseColor={WALL_SIDE_SHADOW} opacity={OPACITY} transparent />
+          <Edges threshold={EDGE_THRESHOLD} color={EDGE_COLOR} />
+        </mesh>
+        <mesh rotation={[0, Math.PI / 2, 0]} position={[-3, 0, 0]}>
+          <planeGeometry args={[6, wallHeight]} />
+          <SketchMaterial baseColor={WALL_SIDE_LIT} opacity={OPACITY} transparent />
+        </mesh>
+      </group>
 
       {/* Right wall (outside + inside faces) */}
       <group>

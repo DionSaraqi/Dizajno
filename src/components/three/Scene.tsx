@@ -1,15 +1,19 @@
 "use client";
 
 import { useFrame, useThree } from "@react-three/fiber";
-import { DoubleSide, Group, Vector3 } from "three";
-import { useRef, useState, useEffect } from "react";
+import { Group, Vector3 } from "three";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Door from "./Door";
 import Room from "./Room";
 import Lights from "./Lights";
 
+// Approximate center of the house model (used as pivot for rotation)
+const HOUSE_CENTER: [number, number, number] = [0, 0, 5];
+
 export default function Scene() {
   const doorRef = useRef<Group>(null!);
+  const houseGroupRef = useRef<Group>(null!);
   const { camera } = useThree();
 
   useEffect(() => {
@@ -17,8 +21,9 @@ export default function Scene() {
   }, [camera]);
 
   const [animationPhase, setAnimationPhase] = useState<
-    "idle" | "moving-to-front" | "opening-door"
+    "idle" | "returning" | "moving-to-front" | "opening-door"
   >("idle");
+  const isAnimating = animationPhase !== "idle";
   const [progress, setProgress] = useState(0);
   const initialCameraPos = useRef(new Vector3(6, 6, 15));
   const frontViewPos = useRef(new Vector3(0, 0, 15));
@@ -26,6 +31,13 @@ export default function Scene() {
   const initialLookAt = useRef(new Vector3(0.5, -0.13, 8));
   const targetLookAt = useRef(new Vector3(0, 0, 5));
   const currentLookAt = useRef(new Vector3());
+
+  // House rotation via pointer drag (Y-axis only)
+  const isDragging = useRef(false);
+  const lastPointerX = useRef(0);
+  const houseRotation = useRef(0);
+  const returnFromRotation = useRef(0);
+
   // fade overlay state
   const [isFading, setIsFading] = useState(false);
   const fadeProgress = useRef(0);
@@ -36,7 +48,70 @@ export default function Scene() {
   // ensure overlay DOM element exists
   useFadeOverlay(overlayEl);
 
+  // Pointer handlers for house rotation
+  const handlePointerDown = useCallback((e: any) => {
+    if (isAnimating) return;
+    isDragging.current = true;
+    lastPointerX.current = e.clientX ?? e.pageX ?? 0;
+  }, [isAnimating]);
+
+  const handlePointerMove = useCallback((e: any) => {
+    if (!isDragging.current || isAnimating) return;
+    const x = e.clientX ?? e.pageX ?? 0;
+    const delta = (x - lastPointerX.current) * 0.005;
+    houseRotation.current += delta;
+    lastPointerX.current = x;
+    if (houseGroupRef.current) {
+      houseGroupRef.current.rotation.y = houseRotation.current;
+    }
+  }, [isAnimating]);
+
+  const handlePointerUp = useCallback(() => {
+    isDragging.current = false;
+  }, []);
+
+  // Attach/detach window listeners for drag (so dragging works even outside canvas)
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => handlePointerMove(e);
+    const onUp = () => handlePointerUp();
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [handlePointerMove, handlePointerUp]);
+
   useFrame(() => {
+    // Smoothly return house rotation to 0 before starting the door animation
+    if (animationPhase === "returning") {
+      const easeInOut = (t: number) => t < 0.5
+        ? 4 * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      const t = Math.min(progress, 1);
+      const eased = easeInOut(t);
+
+      // Lerp house rotation back to 0
+      const currentRot = returnFromRotation.current * (1 - eased);
+      houseRotation.current = currentRot;
+      if (houseGroupRef.current) {
+        houseGroupRef.current.rotation.y = currentRot;
+      }
+
+      setProgress((p) => p + 0.018);
+
+      if (t >= 1) {
+        houseRotation.current = 0;
+        if (houseGroupRef.current) {
+          houseGroupRef.current.rotation.y = 0;
+        }
+        initialCameraPos.current.copy(camera.position);
+        setAnimationPhase("moving-to-front");
+        setProgress(0);
+      }
+      return;
+    }
+
     if (animationPhase === "moving-to-front") {
       const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
       const t = Math.min(progress * 2, 1);
@@ -82,26 +157,21 @@ export default function Scene() {
         camera.position.z = 15 - eased * 10;
         camera.lookAt(0, 0, 5);
 
-        // Calculate fade progress - complete by the time camera reaches door position
-        // Camera starts at z=15, door is around z=8, so fade completes around z=8
         const cameraZ = camera.position.z;
-        const fadeCompleteZ = 8; // Adjust this value to control when fade completes
+        const fadeCompleteZ = 8;
         const fadeStartZ = 15;
 
-        // Calculate fade progress based on camera Z position
         const fadeAmount = Math.min(
           1,
           Math.max(0, (fadeStartZ - cameraZ) / (fadeStartZ - fadeCompleteZ))
         );
         fadeProgress.current = fadeAmount;
 
-        // Update overlay with current fade progress
         if (overlayEl.current) {
           overlayEl.current.style.opacity = String(fadeProgress.current);
           overlayEl.current.style.pointerEvents = "auto";
         }
 
-        // Navigate as soon as screen is completely black (fadeProgress >= 1)
         if (fadeProgress.current >= 1 && !navigated.current) {
           navigated.current = true;
           router.push("/designer");
@@ -112,10 +182,12 @@ export default function Scene() {
 
   const handleDoorClick = () => {
     if (animationPhase === "idle") {
-      initialCameraPos.current.copy(camera.position);
+      // Capture current rotation to animate back from
+      returnFromRotation.current = houseRotation.current;
+      isDragging.current = false;
       initialLookAt.current.set(0.5, -0.13, 8);
       targetLookAt.current.set(0, 0, 5);
-      setAnimationPhase("moving-to-front");
+      setAnimationPhase("returning");
       setProgress(0);
     }
   };
@@ -124,15 +196,22 @@ export default function Scene() {
     <>
       <Lights />
 
-      <Door ref={doorRef} onClick={handleDoorClick} />
-
-      <Room />
+      {/* Rotatable house group — pivots around HOUSE_CENTER on Y axis only */}
+      <group
+        ref={houseGroupRef}
+        position={HOUSE_CENTER}
+        onPointerDown={handlePointerDown}
+      >
+        <group position={[-HOUSE_CENTER[0], -HOUSE_CENTER[1], -HOUSE_CENTER[2]]}>
+          <Door ref={doorRef} onClick={handleDoorClick} />
+          <Room />
+        </group>
+      </group>
     </>
   );
 }
 
 // Create/destroy overlay in DOM outside the Canvas since r3f children render to WebGL
-// using a side-effect so we can control visual fade independent of the 3D canvas.
 function useFadeOverlay(
   overlayElRef: React.MutableRefObject<HTMLDivElement | null>
 ) {
@@ -146,7 +225,7 @@ function useFadeOverlay(
     el.style.background = "#000";
     el.style.pointerEvents = "none";
     el.style.opacity = "0";
-    el.style.transition = "opacity 0.05s linear"; // Faster transition for immediate response
+    el.style.transition = "opacity 0.05s linear";
     el.style.zIndex = "9999";
     document.body.appendChild(el);
     overlayElRef.current = el;

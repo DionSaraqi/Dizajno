@@ -10,6 +10,8 @@
 
 /* Blueprint grid background for landing page */
 .blueprint-grid {
+  --mouse-x: 50%;
+  --mouse-y: 50%;
   background-color: #111827;
   background-image:
     /* Fine grid */
@@ -19,6 +21,33 @@
     linear-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px),
     linear-gradient(90deg, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
   background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
+}
+
+/* Cursor glow — brightens grid lines around the mouse */
+.blueprint-grid::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    /* Fine grid (white near cursor) */
+    linear-gradient(rgba(255, 255, 255, 0.2) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.2) 1px, transparent 1px),
+    /* Major grid (white near cursor) */
+    linear-gradient(rgba(255, 255, 255, 0.35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.35) 1px, transparent 1px);
+  background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
+  mask-image: radial-gradient(
+    circle 250px at var(--mouse-x) var(--mouse-y),
+    black 0%,
+    transparent 100%
+  );
+  -webkit-mask-image: radial-gradient(
+    circle 250px at var(--mouse-x) var(--mouse-y),
+    black 0%,
+    transparent 100%
+  );
 }
 
 /* Chalk dust — small corner smudges only */
