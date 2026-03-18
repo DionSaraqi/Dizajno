@@ -1,14 +1,211 @@
 import type { WallData, FloorData } from "@/types/designer";
 
 type Key = string;
+type Point = [number, number];
 
-function key(p: [number, number]): Key {
+const CORNER_MERGE_THRESHOLD = 0.2; // merge corners within 0.2 units
+
+function key(p: Point): Key {
   return `${p[0].toFixed(2)},${p[1].toFixed(2)}`;
 }
 
-function parseKey(k: Key): [number, number] {
+function parseKey(k: Key): Point {
   const [x, z] = k.split(",").map(Number);
   return [x, z];
+}
+
+function dist(a: Point, b: Point): number {
+  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2);
+}
+
+function makeWallId(): string {
+  return `wall-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// ── Line Segment Intersection ────────────────────────────────────────────────
+
+/**
+ * Returns the intersection point of segments (p1->p2) and (p3->p4), or null.
+ * Uses parametric form: P = p1 + t*(p2-p1), Q = p3 + u*(p4-p3).
+ * Only returns a point if 0 < t < 1 and 0 < u < 1 (proper interior crossing).
+ */
+function segmentIntersection(
+  p1: Point, p2: Point, p3: Point, p4: Point
+): Point | null {
+  const d1x = p2[0] - p1[0];
+  const d1z = p2[1] - p1[1];
+  const d2x = p4[0] - p3[0];
+  const d2z = p4[1] - p3[1];
+
+  const denom = d1x * d2z - d1z * d2x;
+  if (Math.abs(denom) < 1e-10) return null; // parallel or collinear
+
+  const t = ((p3[0] - p1[0]) * d2z - (p3[1] - p1[1]) * d2x) / denom;
+  const u = ((p3[0] - p1[0]) * d1z - (p3[1] - p1[1]) * d1x) / denom;
+
+  // Strict interior (exclude endpoints — those are handled by corner merging)
+  const EPS = 0.01;
+  if (t <= EPS || t >= 1 - EPS || u <= EPS || u >= 1 - EPS) return null;
+
+  return [p1[0] + t * d1x, p1[1] + t * d1z];
+}
+
+/**
+ * Returns the closest point on segment (a->b) to point p, or null if
+ * the projection falls outside the segment interior.
+ */
+function pointOnSegment(
+  p: Point, a: Point, b: Point, threshold: number
+): Point | null {
+  const dx = b[0] - a[0];
+  const dz = b[1] - a[1];
+  const len2 = dx * dx + dz * dz;
+  if (len2 < 1e-10) return null;
+
+  const t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / len2;
+  const EPS = 0.01;
+  if (t <= EPS || t >= 1 - EPS) return null; // too close to endpoints
+
+  const proj: Point = [a[0] + t * dx, a[1] + t * dz];
+  if (dist(p, proj) > threshold) return null;
+
+  return proj;
+}
+
+// ── Corner Merging ───────────────────────────────────────────────────────────
+
+/**
+ * Snap a point to an existing wall corner if within CORNER_MERGE_THRESHOLD.
+ * Returns the snapped point (or the original if no nearby corner).
+ */
+export function snapToCorner(
+  point: Point,
+  walls: WallData[]
+): Point {
+  let closest: Point | null = null;
+  let closestDist = CORNER_MERGE_THRESHOLD;
+
+  for (const w of walls) {
+    for (const corner of [w.start, w.end]) {
+      const d = dist(point, corner);
+      if (d < closestDist) {
+        closestDist = d;
+        closest = corner;
+      }
+    }
+  }
+
+  return closest ?? point;
+}
+
+// ── Wall Splitting ───────────────────────────────────────────────────────────
+
+/**
+ * Process a new wall against all existing walls:
+ * 1. Merge endpoints to nearby corners
+ * 2. Split at any crossing intersections
+ * 3. Split existing walls where the new wall's endpoints land on them (T-junctions)
+ * 4. Split the new wall where existing endpoints land on it (reverse T-junctions)
+ *
+ * Returns the updated full wall list (existing walls may be split).
+ */
+export function addWallWithIntersections(
+  newWall: WallData,
+  existingWalls: WallData[]
+): WallData[] {
+  const thickness = newWall.thickness;
+  const height = newWall.height;
+
+  // Step 1: Snap new wall endpoints to existing corners
+  let start: Point = snapToCorner(newWall.start, existingWalls);
+  let end: Point = snapToCorner(newWall.end, existingWalls);
+
+  // Bail if wall collapsed to a point after snapping
+  if (dist(start, end) < 0.05) return existingWalls;
+
+  // Step 2: Collect all split points on the new wall
+  const splitPoints: Point[] = [];
+  const wallsToRemove = new Set<string>();
+  const wallsToAdd: WallData[] = [];
+
+  for (const existing of existingWalls) {
+    // 2a: Check for crossing intersections
+    const cross = segmentIntersection(start, end, existing.start, existing.end);
+    if (cross) {
+      splitPoints.push(cross);
+      // Also split the existing wall at the intersection
+      wallsToRemove.add(existing.id);
+      wallsToAdd.push(
+        { ...existing, id: makeWallId(), end: cross },
+        { ...existing, id: makeWallId(), start: cross }
+      );
+    }
+
+    // 2b: T-junction — new wall endpoint lands on existing wall's interior
+    for (const ep of [start, end]) {
+      const proj = pointOnSegment(ep, existing.start, existing.end, CORNER_MERGE_THRESHOLD);
+      if (proj && !wallsToRemove.has(existing.id)) {
+        wallsToRemove.add(existing.id);
+        wallsToAdd.push(
+          { ...existing, id: makeWallId(), end: ep },
+          { ...existing, id: makeWallId(), start: ep }
+        );
+      }
+    }
+
+    // 2c: Reverse T-junction — existing wall endpoint lands on the new wall's interior
+    for (const ep of [existing.start, existing.end]) {
+      const proj = pointOnSegment(ep, start, end, CORNER_MERGE_THRESHOLD);
+      if (proj) {
+        splitPoints.push(ep);
+      }
+    }
+  }
+
+  // Step 3: Build the surviving existing walls
+  const survivingWalls = existingWalls.filter((w) => !wallsToRemove.has(w.id));
+  const result = [...survivingWalls, ...wallsToAdd];
+
+  // Step 4: Split the new wall at all collected split points
+  // Sort split points by distance from start
+  const uniquePoints = deduplicatePoints(splitPoints, 0.05);
+  uniquePoints.sort((a, b) => dist(start, a) - dist(start, b));
+
+  let prev = start;
+  for (const pt of uniquePoints) {
+    if (dist(prev, pt) > 0.05) {
+      result.push({
+        id: makeWallId(),
+        start: prev,
+        end: pt,
+        thickness,
+        height,
+      });
+    }
+    prev = pt;
+  }
+  // Final segment
+  if (dist(prev, end) > 0.05) {
+    result.push({
+      id: makeWallId(),
+      start: prev,
+      end: end,
+      thickness,
+      height,
+    });
+  }
+
+  return result;
+}
+
+function deduplicatePoints(points: Point[], threshold: number): Point[] {
+  const result: Point[] = [];
+  for (const p of points) {
+    if (!result.some((r) => dist(r, p) < threshold)) {
+      result.push(p);
+    }
+  }
+  return result;
 }
 
 /**

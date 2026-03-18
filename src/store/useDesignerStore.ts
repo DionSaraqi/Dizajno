@@ -14,6 +14,7 @@ interface DesignerActions {
   // Wall actions
   addWall: (wall: WallData) => void;
   removeWall: (id: string) => void;
+  setWalls: (walls: WallData[]) => void;
   setDrawingFrom: (point: [number, number] | null) => void;
   setFloors: (floors: FloorData[]) => void;
 
@@ -82,6 +83,7 @@ export const useDesignerStore = create<DesignerStore>()(
       // Wall actions
       addWall: (wall) => set((s) => ({ walls: [...s.walls, wall] })),
       removeWall: (id) => set((s) => ({ walls: s.walls.filter((w) => w.id !== id) })),
+      setWalls: (walls) => set({ walls }),
       setDrawingFrom: (point) => set({ drawingFrom: point }),
       setFloors: (floors) => set({ floors }),
 

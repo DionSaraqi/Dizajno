@@ -26,7 +26,7 @@ import FurnitureItem3D from "./FurnitureItem3D";
 import Measurements from "./Measurements";
 import SnapIndicator from "./SnapIndicator";
 import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
-import { findFloors } from "@/utils/wallGraph";
+import { findFloors, addWallWithIntersections, snapToCorner } from "@/utils/wallGraph";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { checkFurnitureCollision } from "@/utils/collision";
 import type { FurnitureData } from "@/types/designer";
@@ -178,6 +178,7 @@ function SceneContent() {
   const wallHeight = useWallHeight();
 
   const addWall = useDesignerStore((s) => s.addWall);
+  const setWalls = useDesignerStore((s) => s.setWalls);
   const setDrawingFrom = useDesignerStore((s) => s.setDrawingFrom);
   const setFloors = useDesignerStore((s) => s.setFloors);
   const placeFurniture = useDesignerStore((s) => s.placeFurniture);
@@ -197,39 +198,43 @@ function SceneContent() {
     (e: any): [number, number] | null => {
       const point = e.point;
       if (!point) return null;
+      let p: [number, number] = [point.x, point.z];
       if (snap) {
-        return snapPoint(point.x, point.z, gridSize);
+        p = snapPoint(p[0], p[1], gridSize);
       }
-      return [point.x, point.z];
+      // Also snap to existing wall corners (for easy connections)
+      return snapToCorner(p, walls);
     },
-    [snap, gridSize]
+    [snap, gridSize, walls]
   );
 
   const finishWall = useCallback(
     (endPoint: [number, number]) => {
       const start = drawStartRef.current;
       if (!start || !endPoint) return;
-      const dist = Math.sqrt(
+      const d = Math.sqrt(
         (endPoint[0] - start[0]) ** 2 + (endPoint[1] - start[1]) ** 2
       );
-      if (dist > 0.05) {
-        const wall = {
+      if (d > 0.05) {
+        const newWall = {
           id: `wall-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           start,
           end: endPoint,
           thickness: wallThickness,
           height: wallHeight,
         };
-        addWall(wall);
 
-        const newWalls = [...walls, wall];
-        const detectedFloors = findFloors(newWalls);
+        // Process intersections: splits walls at crossings and T-junctions
+        const updatedWalls = addWallWithIntersections(newWall, walls);
+        setWalls(updatedWalls);
+
+        const detectedFloors = findFloors(updatedWalls);
         if (detectedFloors.length > 0) {
           setFloors(detectedFloors);
         }
       }
     },
-    [walls, wallThickness, wallHeight, addWall, setFloors]
+    [walls, wallThickness, wallHeight, setWalls, setFloors]
   );
 
   const handlePointerDown = useCallback(
