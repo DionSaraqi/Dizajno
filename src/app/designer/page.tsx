@@ -6,7 +6,6 @@ import { DesignerProvider } from "@/components/designer/DesignerProvider";
 import Sidebar from "@/components/designer/Sidebar";
 import Toolbar from "@/components/designer/Toolbar";
 import StatusBar from "@/components/designer/StatusBar";
-import PropertiesPanel from "@/components/designer/PropertiesPanel";
 import CanvasDropZone from "@/components/designer/CanvasDropZone";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
@@ -39,7 +38,6 @@ export default function DesignerPage() {
           <CanvasDropZone>
             <DrawingSurface />
           </CanvasDropZone>
-          <PropertiesPanel />
         </div>
         <StatusBar />
       </div>

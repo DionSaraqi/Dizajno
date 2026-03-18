@@ -41,6 +41,9 @@ interface DesignerActions {
   setWallThickness: (thickness: number) => void;
   setWallHeight: (height: number) => void;
 
+  // Interaction lock (disables camera while dragging/placing furniture)
+  setDragging: (dragging: boolean) => void;
+
   // Drop zone
   setPendingDrop: (drop: { type: string; ndcX: number; ndcY: number } | null) => void;
 
@@ -65,6 +68,7 @@ const initialState: DesignerState = {
   gridSize: 1,
   wallThickness: 0.15,
   wallHeight: 2.5,
+  isDragging: false,
   pendingDrop: null,
 };
 
@@ -109,6 +113,7 @@ export const useDesignerStore = create<DesignerStore>()(
           ...item,
           id: `furn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           position: [item.position[0] + 0.5, item.position[1] + 0.5],
+          locked: true,
         };
         set((s) => ({
           furniture: [...s.furniture, newItem],
@@ -151,6 +156,9 @@ export const useDesignerStore = create<DesignerStore>()(
       setWallThickness: (thickness) => set({ wallThickness: thickness }),
       setWallHeight: (height) => set({ wallHeight: height }),
 
+      // Interaction lock
+      setDragging: (dragging) => set({ isDragging: dragging }),
+
       // Drop zone
       setPendingDrop: (drop) => set({ pendingDrop: drop }),
 
@@ -185,4 +193,5 @@ export const useActiveFurnitureType = () =>
 export const useWallThickness = () =>
   useDesignerStore((s) => s.wallThickness);
 export const useWallHeight = () => useDesignerStore((s) => s.wallHeight);
+export const useIsDragging = () => useDesignerStore((s) => s.isDragging);
 export const usePendingDrop = () => useDesignerStore((s) => s.pendingDrop);

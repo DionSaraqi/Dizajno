@@ -11,14 +11,26 @@ import {
   DoorOpen,
   BookOpen,
   Search,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
+  Copy,
 } from "lucide-react";
-import { useDesignerStore, useActiveFurnitureType, useMode } from "@/store/useDesignerStore";
+import {
+  useDesignerStore,
+  useActiveFurnitureType,
+  useMode,
+  useSelectedIds,
+  useFurniture,
+} from "@/store/useDesignerStore";
 import {
   furnitureCategories,
   getFurnitureByCategory,
   furnitureCatalog,
+  getFurnitureDef,
 } from "@/utils/furnitureCatalog";
 import type { FurnitureCatalogItem } from "@/types/designer";
+import Button from "@/components/ui/Button";
 
 // Map icon string names from the catalog to lucide-react components
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,6 +50,154 @@ function FurnitureIcon({ name, size = 20, className }: { name: string; size?: nu
   if (Icon) return <Icon size={size} className={className} />;
   return <span className={className}>{name}</span>;
 }
+
+const ROTATION_PRESETS = [
+  { label: "0", value: 0 },
+  { label: "90", value: Math.PI / 2 },
+  { label: "180", value: Math.PI },
+  { label: "270", value: (3 * Math.PI) / 2 },
+] as const;
+
+function radToDeg(rad: number): number {
+  return Math.round(((rad * 180) / Math.PI) % 360);
+}
+
+// ── PropertiesSection ────────────────────────────────────────────────────────
+
+function PropertiesSection() {
+  const [open, setOpen] = useState(true);
+  const selectedIds = useSelectedIds();
+  const furniture = useFurniture();
+  const removeFurniture = useDesignerStore((s) => s.removeFurniture);
+  const duplicateFurniture = useDesignerStore((s) => s.duplicateFurniture);
+  const rotateFurniture = useDesignerStore((s) => s.rotateFurniture);
+
+  const selectedItem =
+    selectedIds.length === 1
+      ? furniture.find((f) => f.id === selectedIds[0])
+      : null;
+
+  // Only render the section when something is selected
+  if (!selectedItem) return null;
+
+  const def = getFurnitureDef(selectedItem.type);
+
+  function handleSetRotation(radians: number) {
+    if (!selectedItem) return;
+    const currentSteps =
+      Math.round(selectedItem.rotation / (Math.PI / 2)) % 4;
+    const targetSteps = Math.round(radians / (Math.PI / 2)) % 4;
+    const stepsNeeded = (targetSteps - currentSteps + 4) % 4;
+    for (let i = 0; i < stepsNeeded; i++) {
+      rotateFurniture(selectedItem.id);
+    }
+  }
+
+  return (
+    <div className="border-t border-dizajno-border">
+      {/* Section header / toggle */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-dizajno-elevated transition-colors"
+      >
+        <div className="min-w-0">
+          <span className="text-xs font-semibold text-dizajno-text truncate block">
+            {def?.label ?? selectedItem.type}
+          </span>
+          <span className="text-[10px] text-dizajno-muted">Properties</span>
+        </div>
+        {open ? (
+          <ChevronUp size={14} className="text-dizajno-muted flex-shrink-0 ml-2" />
+        ) : (
+          <ChevronDown size={14} className="text-dizajno-muted flex-shrink-0 ml-2" />
+        )}
+      </button>
+
+      {/* Collapsible body */}
+      {open && (
+        <div className="pb-2">
+          {/* Dimensions */}
+          <div className="px-4 py-2 border-t border-dizajno-border">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+              Dimensions
+            </h4>
+            <div className="grid grid-cols-3 gap-1.5">
+              <div>
+                <span className="text-[10px] text-dizajno-muted block">W</span>
+                <span className="text-xs text-dizajno-text font-mono">
+                  {selectedItem.width.toFixed(1)}m
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-dizajno-muted block">D</span>
+                <span className="text-xs text-dizajno-text font-mono">
+                  {selectedItem.depth.toFixed(1)}m
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-dizajno-muted block">H</span>
+                <span className="text-xs text-dizajno-text font-mono">
+                  {selectedItem.height.toFixed(1)}m
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Rotation */}
+          <div className="px-4 py-2 border-t border-dizajno-border">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+              Rotation ({radToDeg(selectedItem.rotation)}&deg;)
+            </h4>
+            <div className="grid grid-cols-4 gap-1">
+              {ROTATION_PRESETS.map((preset) => {
+                const isActive =
+                  Math.round(selectedItem.rotation / (Math.PI / 2)) % 4 ===
+                  Math.round(preset.value / (Math.PI / 2)) % 4;
+                return (
+                  <button
+                    key={preset.label}
+                    onClick={() => handleSetRotation(preset.value)}
+                    className={[
+                      "py-1 text-xs rounded-md transition-colors font-mono",
+                      "focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50",
+                      isActive
+                        ? "bg-dizajno-accent text-white"
+                        : "bg-dizajno-elevated text-dizajno-muted hover:text-dizajno-text hover:bg-dizajno-border",
+                    ].join(" ")}
+                  >
+                    {preset.label}&deg;
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="px-4 pt-2 flex gap-1.5">
+            <button
+              onClick={() => duplicateFurniture(selectedItem.id)}
+              title="Duplicate"
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs rounded-md bg-dizajno-elevated hover:bg-dizajno-border text-dizajno-text transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50"
+            >
+              <Copy size={12} />
+              Copy
+            </button>
+            <button
+              onClick={() => removeFurniture(selectedItem.id)}
+              title="Delete"
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs rounded-md bg-dizajno-danger hover:bg-red-500 text-white transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50"
+            >
+              <Trash2 size={12} />
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Sidebar ──────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
   const activeFurnitureType = useActiveFurnitureType();
@@ -158,6 +318,9 @@ export default function Sidebar() {
         )}
       </div>
 
+      {/* Properties section — shown only when a furniture item is selected */}
+      <PropertiesSection />
+
       {/* Mode info */}
       <div className="px-3 py-2 border-t border-dizajno-border text-[11px] text-dizajno-muted">
         {mode === "draw" && "Click & drag to draw walls"}
@@ -194,10 +357,12 @@ function FurnitureButton({
           : "text-dizajno-text hover:bg-dizajno-elevated"
       }`}
     >
-      <FurnitureIcon
-        name={item.icon}
-        size={18}
-        className={isActive ? "text-white" : "text-dizajno-muted"}
+      {/* SVG preview thumbnail */}
+      <div
+        className={`w-10 h-10 flex-shrink-0 rounded ${
+          isActive ? "text-white bg-white/10" : "text-dizajno-muted bg-dizajno-bg"
+        }`}
+        dangerouslySetInnerHTML={{ __html: item.svgPreview }}
       />
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate">{item.label}</div>
@@ -206,7 +371,7 @@ function FurnitureButton({
             isActive ? "text-white/70" : "text-dizajno-muted"
           }`}
         >
-          {item.width}m x {item.depth}m x {item.height}m
+          {item.width}m &times; {item.depth}m
         </div>
       </div>
     </button>

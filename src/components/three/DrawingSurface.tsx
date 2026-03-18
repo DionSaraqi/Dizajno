@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
+import { Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
 import {
   useDesignerStore,
@@ -23,7 +23,9 @@ import CameraController from "./CameraController";
 import WallMesh from "./WallMesh";
 import FloorMesh from "./FloorMesh";
 import FurnitureItem3D from "./FurnitureItem3D";
-import { snapPoint } from "@/utils/snapToGrid";
+import Measurements from "./Measurements";
+import SnapIndicator from "./SnapIndicator";
+import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
 import { findFloors } from "@/utils/wallGraph";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { checkFurnitureCollision } from "@/utils/collision";
@@ -36,6 +38,8 @@ function DropHandler() {
   const { camera, raycaster } = useThree();
   const snap = useSnap();
   const gridSize = useGridSize();
+  const walls = useWalls();
+  const furniture = useFurniture();
 
   useEffect(() => {
     if (!pendingDrop) return;
@@ -53,20 +57,23 @@ function DropHandler() {
       return;
     }
 
-    let x = intersection.x;
-    let z = intersection.z;
-
-    if (snap) {
-      const snapped = snapPoint(x, z, gridSize);
-      x = snapped[0];
-      z = snapped[1];
-    }
-
     const def = getFurnitureDef(pendingDrop.type);
     if (!def) {
       useDesignerStore.getState().setPendingDrop(null);
       return;
     }
+
+    const itemDesc = { rotation: 0, width: def.width, depth: def.depth };
+    const result = smartSnap(
+      intersection.x,
+      intersection.z,
+      itemDesc,
+      walls,
+      furniture,
+      snap,
+      gridSize
+    );
+    const [x, z] = result.position;
 
     const state = useDesignerStore.getState();
 
@@ -87,9 +94,73 @@ function DropHandler() {
     }
 
     state.setPendingDrop(null);
-  }, [pendingDrop, camera, raycaster, snap, gridSize]);
+  }, [pendingDrop, camera, raycaster, snap, gridSize, walls, furniture]);
 
   return null;
+}
+
+// ── Ghost Furniture Preview ──────────────────────────────────────────────────
+
+interface GhostPreviewProps {
+  position: [number, number];
+  rotation: number;
+  width: number;
+  depth: number;
+  height: number;
+  hasCollision: boolean;
+  snapEdge: SnapEdge | null;
+  walls: ReturnType<typeof useWalls>;
+  furniture: FurnitureData[];
+  showMeasurements: boolean;
+}
+
+function GhostPreview({
+  position,
+  rotation,
+  width,
+  depth,
+  height,
+  hasCollision,
+  snapEdge,
+  walls,
+  furniture,
+  showMeasurements,
+}: GhostPreviewProps) {
+  const ghostItem: FurnitureData = {
+    id: "__ghost__",
+    type: "__ghost__",
+    position,
+    rotation,
+    width,
+    depth,
+    height,
+    color: "#6366f1",
+  };
+
+  return (
+    <>
+      <group position={[position[0], 0, position[1]]} rotation={[0, rotation, 0]}>
+        {/* Ghost box */}
+        <mesh position={[0, height / 2, 0]}>
+          <boxGeometry args={[width, height, depth]} />
+          <meshBasicMaterial
+            color={hasCollision ? "#EF4444" : "#6366f1"}
+            transparent
+            opacity={0.25}
+          />
+          <Edges threshold={15} color={hasCollision ? "#EF4444" : "#818cf8"} />
+        </mesh>
+      </group>
+
+      {/* Snap edge indicator (world space) */}
+      <SnapIndicator snapEdge={snapEdge} />
+
+      {/* Measurements (world space) */}
+      {showMeasurements && (
+        <Measurements item={ghostItem} walls={walls} allFurniture={furniture} />
+      )}
+    </>
+  );
 }
 
 // ── Scene Content ───────────────────────────────────────────────────────────
@@ -117,6 +188,10 @@ function SceneContent() {
   const [previewEnd, setPreviewEnd] = useState<[number, number] | null>(null);
   const drawingRef = useRef(false);
   const drawStartRef = useRef<[number, number] | null>(null);
+
+  // Ghost furniture state (furniture mode hover)
+  const [ghostPos, setGhostPos] = useState<[number, number] | null>(null);
+  const [ghostSnapEdge, setGhostSnapEdge] = useState<SnapEdge | null>(null);
 
   const getSnappedPoint = useCallback(
     (e: any): [number, number] | null => {
@@ -172,21 +247,33 @@ function SceneContent() {
         return;
       }
 
-      // Left-click for click-to-place furniture (sidebar fallback)
+      // Left-click for click-to-place furniture
       if (e.button === 0 && mode === "furniture" && activeFurnitureType) {
         e.stopPropagation();
-        const point = getSnappedPoint(e);
-        if (!point) return;
+        const rawPoint = e.point;
+        if (!rawPoint) return;
 
         const def = getFurnitureDef(activeFurnitureType);
         if (!def) return;
+
+        const itemDesc = { rotation: 0, width: def.width, depth: def.depth };
+        const result = smartSnap(
+          rawPoint.x,
+          rawPoint.z,
+          itemDesc,
+          walls,
+          furniture,
+          snap,
+          gridSize
+        );
+        const [x, z] = result.position;
 
         const state = useDesignerStore.getState();
 
         const newItem: FurnitureData = {
           id: `furn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           type: def.type,
-          position: point,
+          position: [x, z],
           rotation: 0,
           width: def.width,
           depth: def.depth,
@@ -198,6 +285,8 @@ function SceneContent() {
           placeFurniture(newItem);
           select(newItem.id);
         }
+        setGhostPos(null);
+        setGhostSnapEdge(null);
         return;
       }
 
@@ -214,6 +303,10 @@ function SceneContent() {
       placeFurniture,
       select,
       clearSelection,
+      walls,
+      furniture,
+      snap,
+      gridSize,
     ]
   );
 
@@ -222,9 +315,32 @@ function SceneContent() {
       if (drawingRef.current && mode === "draw") {
         const point = getSnappedPoint(e);
         if (point) setPreviewEnd(point);
+        return;
+      }
+
+      // Update ghost preview position for furniture mode
+      if (mode === "furniture" && activeFurnitureType) {
+        const rawPoint = e.point;
+        if (!rawPoint) return;
+
+        const def = getFurnitureDef(activeFurnitureType);
+        if (!def) return;
+
+        const itemDesc = { rotation: 0, width: def.width, depth: def.depth };
+        const result = smartSnap(
+          rawPoint.x,
+          rawPoint.z,
+          itemDesc,
+          walls,
+          furniture,
+          snap,
+          gridSize
+        );
+        setGhostPos(result.position);
+        setGhostSnapEdge(result.snapEdge);
       }
     },
-    [mode, getSnappedPoint]
+    [mode, activeFurnitureType, getSnappedPoint, walls, furniture, snap, gridSize]
   );
 
   const handlePointerUp = useCallback(
@@ -243,6 +359,14 @@ function SceneContent() {
     [mode, getSnappedPoint, finishWall, setDrawingFrom]
   );
 
+  // Hide ghost when not in furniture mode
+  useEffect(() => {
+    if (mode !== "furniture" || !activeFurnitureType) {
+      setGhostPos(null);
+      setGhostSnapEdge(null);
+    }
+  }, [mode, activeFurnitureType]);
+
   // Calculate preview wall measurement
   let previewLength = 0;
   let previewCenter: [number, number] | null = null;
@@ -256,6 +380,25 @@ function SceneContent() {
     ];
   }
 
+  // Ghost furniture definition
+  const ghostDef = activeFurnitureType ? getFurnitureDef(activeFurnitureType) : null;
+  const ghostItem: FurnitureData | null =
+    ghostPos && ghostDef
+      ? {
+          id: "__ghost__",
+          type: ghostDef.type,
+          position: ghostPos,
+          rotation: 0,
+          width: ghostDef.width,
+          depth: ghostDef.depth,
+          height: ghostDef.height,
+          color: ghostDef.color,
+        }
+      : null;
+  const ghostHasCollision =
+    ghostItem !== null &&
+    checkFurnitureCollision(ghostItem, furniture, walls);
+
   return (
     <>
       <color attach="background" args={["#0f0f13"]} />
@@ -263,7 +406,7 @@ function SceneContent() {
       <directionalLight position={[10, 15, 10]} intensity={0.8} castShadow />
       <directionalLight position={[-5, 10, -5]} intensity={0.3} />
 
-      <CameraController is3D={is3D} drawingMode={mode === "draw"} />
+      <CameraController is3D={is3D} mode={mode} />
       <DropHandler />
 
       <GridPlane
@@ -313,6 +456,22 @@ function SceneContent() {
       {furniture.map((item) => (
         <FurnitureItem3D key={item.id} item={item} />
       ))}
+
+      {/* Ghost preview when placing from sidebar */}
+      {ghostItem && ghostPos && ghostDef && (
+        <GhostPreview
+          position={ghostPos}
+          rotation={0}
+          width={ghostDef.width}
+          depth={ghostDef.depth}
+          height={ghostDef.height}
+          hasCollision={ghostHasCollision}
+          snapEdge={ghostSnapEdge}
+          walls={walls}
+          furniture={furniture}
+          showMeasurements={!is3D}
+        />
+      )}
 
       {/* Start point indicator */}
       {drawingRef.current && drawingFrom && (

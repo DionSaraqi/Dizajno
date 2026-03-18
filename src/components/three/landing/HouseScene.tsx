@@ -29,7 +29,7 @@ export default function HouseScene({
       progressRef.current += delta;
 
       // Door rotation: swing open over ~0.5s
-      const doorProgress = Math.min(progressRef.current / 0.5, 1);
+      const doorProgress = Math.min(progressRef.current / 0.2, 1);
       const eased = 1 - Math.pow(1 - doorProgress, 3); // easeOutCubic
       if (doorRef.current) {
         doorRef.current.rotation.y = -eased * (Math.PI / 2 - 0.02);
@@ -52,17 +52,17 @@ export default function HouseScene({
 
       // Ramp light to maximum
       if (insideLightRef.current) {
-        insideLightRef.current.intensity = 8 + progressRef.current * 20;
+        insideLightRef.current.intensity = 8 + progressRef.current * 50;
       }
 
       // Trigger flash overlay after 200ms
-      if (progressRef.current > 0.2 && !flashTriggered.current) {
+      if (progressRef.current > 0.08 && !flashTriggered.current) {
         flashTriggered.current = true;
         onFlashStart();
       }
 
       // Navigate after flash completes (~600ms total from transition start)
-      if (progressRef.current > 0.6) {
+      if (progressRef.current > 0.25) {
         onTransitionComplete();
       }
     }

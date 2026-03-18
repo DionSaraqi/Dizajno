@@ -54,7 +54,7 @@ export default function Scene() {
       );
       camera.lookAt(currentLookAt.current);
 
-      setProgress((p) => p + 0.003);
+      setProgress((p) => p + 0.009);
 
       if (t >= 1) {
         setAnimationPhase("opening-door");
@@ -71,13 +71,13 @@ export default function Scene() {
       // Open the door
       if (doorRef.current.rotation.y > doorTarget) {
         doorRef.current.rotation.y = Math.max(
-          doorRef.current.rotation.y - 0.006,
+          doorRef.current.rotation.y - 0.018,
           doorTarget
         );
       }
 
       if (progress < 1) {
-        setProgress((p) => Math.min(p + 0.001, 1)); // Slower zoom speed
+        setProgress((p) => Math.min(p + 0.003, 1));
         const eased = easeOut(progress);
         camera.position.z = 15 - eased * 10;
         camera.lookAt(0, 0, 5);

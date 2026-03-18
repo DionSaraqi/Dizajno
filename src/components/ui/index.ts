@@ -21,3 +21,6 @@ export type { SearchInputProps } from "./SearchInput";
 
 export { default as ContextMenu } from "./ContextMenu";
 export type { ContextMenuProps, ContextMenuItem } from "./ContextMenu";
+
+export { default as Tooltip } from "./Tooltip";
+export type { TooltipProps } from "./Tooltip";
