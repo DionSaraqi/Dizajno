@@ -235,10 +235,12 @@ export function snapToFurniture(
 // ── Combined Smart Snap ───────────────────────────────────────────────────────
 
 /**
- * Full snap pipeline:
- *  1. Wall snap (highest priority)
- *  2. Furniture-to-furniture snap
- *  3. Grid snap (fallback)
+ * Full snap pipeline with corner support:
+ *  1. Try wall snap on X axis (vertical walls)
+ *  2. Try wall snap on Z axis (horizontal walls)
+ *  3. Combine both for corner snapping (flush to two walls at once)
+ *  4. Try furniture-to-furniture snap on remaining free axis
+ *  5. Grid snap as fallback for any unsnapped axis
  *
  * Returns final position and optional snap-edge for the visual indicator.
  */
@@ -251,21 +253,90 @@ export function smartSnap(
   snapEnabled: boolean,
   gridSize: number
 ): SnapResult {
-  // 1. Wall snap
-  const wallResult = snapToWalls(x, z, item, walls);
-  if (wallResult.snapEdge) return wallResult;
+  const isRotated = Math.abs(Math.sin(item.rotation)) > 0.5;
+  const hw = (isRotated ? item.depth : item.width) / 2;
+  const hd = (isRotated ? item.width : item.depth) / 2;
 
-  // 2. Furniture snap
-  const furnResult = snapToFurniture(x, z, item, allFurniture);
-  if (furnResult.snapEdge) return furnResult;
+  let snappedX = x;
+  let snappedZ = z;
+  let xSnapped = false;
+  let zSnapped = false;
+  let bestEdge: SnapEdge | null = null;
 
-  // 3. Grid snap (fallback)
-  if (snapEnabled) {
-    return {
-      position: snapPoint(x, z, gridSize),
-      snapEdge: null,
-    };
+  // Check all walls for potential snaps on each axis independently
+  for (const wall of walls) {
+    const waabb = getWallAABBSnap(wall);
+    const dx = Math.abs(wall.end[0] - wall.start[0]);
+    const dz = Math.abs(wall.end[1] - wall.start[1]);
+    const isHorizontal = dx >= dz;
+
+    if (isHorizontal) {
+      // Horizontal wall → snap on Z axis
+      if (!zSnapped) {
+        const distTop = Math.abs(z + hd - waabb.minZ);
+        if (distTop < SNAP_THRESHOLD) {
+          snappedZ = waabb.minZ - hd;
+          zSnapped = true;
+          bestEdge = { p1: [waabb.minX, waabb.minZ], p2: [waabb.maxX, waabb.minZ] };
+        }
+        const distBottom = Math.abs(z - hd - waabb.maxZ);
+        if (distBottom < SNAP_THRESHOLD && (!zSnapped || distBottom < Math.abs(z + hd - waabb.minZ))) {
+          snappedZ = waabb.maxZ + hd;
+          zSnapped = true;
+          bestEdge = { p1: [waabb.minX, waabb.maxZ], p2: [waabb.maxX, waabb.maxZ] };
+        }
+      }
+    } else {
+      // Vertical wall → snap on X axis
+      if (!xSnapped) {
+        const distLeft = Math.abs(x + hw - waabb.minX);
+        if (distLeft < SNAP_THRESHOLD) {
+          snappedX = waabb.minX - hw;
+          xSnapped = true;
+          bestEdge = { p1: [waabb.minX, waabb.minZ], p2: [waabb.minX, waabb.maxZ] };
+        }
+        const distRight = Math.abs(x - hw - waabb.maxX);
+        if (distRight < SNAP_THRESHOLD && (!xSnapped || distRight < Math.abs(x + hw - waabb.minX))) {
+          snappedX = waabb.maxX + hw;
+          xSnapped = true;
+          bestEdge = { p1: [waabb.maxX, waabb.minZ], p2: [waabb.maxX, waabb.maxZ] };
+        }
+      }
+    }
   }
 
-  return { position: [x, z], snapEdge: null };
+  // Try furniture snap on unsnapped axes
+  if (!xSnapped || !zSnapped) {
+    const furnResult = snapToFurniture(
+      xSnapped ? snappedX : x,
+      zSnapped ? snappedZ : z,
+      item,
+      allFurniture
+    );
+    if (furnResult.snapEdge) {
+      const [fx, fz] = furnResult.position;
+      if (!xSnapped && Math.abs(fx - x) > 0.001) {
+        snappedX = fx;
+        xSnapped = true;
+        if (!bestEdge) bestEdge = furnResult.snapEdge;
+      }
+      if (!zSnapped && Math.abs(fz - z) > 0.001) {
+        snappedZ = fz;
+        zSnapped = true;
+        if (!bestEdge) bestEdge = furnResult.snapEdge;
+      }
+    }
+  }
+
+  // Grid snap for any axis that wasn't snapped
+  if (snapEnabled) {
+    if (!xSnapped) snappedX = snapToGrid(x, gridSize);
+    if (!zSnapped) snappedZ = snapToGrid(z, gridSize);
+  }
+
+  return {
+    position: [xSnapped ? snappedX : (snapEnabled ? snapToGrid(x, gridSize) : x),
+               zSnapped ? snappedZ : (snapEnabled ? snapToGrid(z, gridSize) : z)],
+    snapEdge: (xSnapped || zSnapped) ? bestEdge : null,
+  };
 }

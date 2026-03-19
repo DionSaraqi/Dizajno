@@ -20,7 +20,9 @@ export function getFurnitureAABB(item: FurnitureData): AABB {
 }
 
 function aabbOverlap(a: AABB, b: AABB): boolean {
-  return a.minX < b.maxX && a.maxX > b.minX && a.minZ < b.maxZ && a.maxZ > b.minZ;
+  // Use a small inset so touching/flush edges don't count as overlap
+  const E = COLLISION_INSET;
+  return a.minX < b.maxX - E && a.maxX > b.minX + E && a.minZ < b.maxZ - E && a.maxZ > b.minZ + E;
 }
 
 /**
@@ -28,43 +30,37 @@ function aabbOverlap(a: AABB, b: AABB): boolean {
  * Uses proper line-segment-to-AABB distance check instead of inflated AABB,
  * so diagonal walls don't block placement near corners.
  */
+// Small inset so "flush/touching" doesn't count as overlapping.
+// The snap system places furniture exactly touching walls — without this
+// tolerance the collision check would reject snapped positions.
+const COLLISION_INSET = 0.02;
+
 function wallOverlapsAABB(wall: WallData, box: AABB): boolean {
   const ht = wall.thickness / 2;
 
-  // Find closest point on the wall segment to the AABB center
-  const cx = (box.minX + box.maxX) / 2;
-  const cz = (box.minZ + box.maxZ) / 2;
-
-  // Wall segment: A -> B
   const ax = wall.start[0], az = wall.start[1];
   const bx = wall.end[0], bz = wall.end[1];
   const dx = bx - ax, dz = bz - az;
   const len2 = dx * dx + dz * dz;
 
   if (len2 < 1e-10) {
-    // Degenerate wall (point) — treat as circle
-    return circleOverlapsAABB(ax, az, ht, box);
+    return circleOverlapsAABB(ax, az, ht - COLLISION_INSET, box);
   }
 
-  // For proper collision, check if the minimum distance from the wall segment
-  // to the AABB is less than the wall half-thickness.
-  // We sample several points along the wall and check if any are inside the
-  // expanded AABB (box expanded by wall half-thickness).
-  // This is simpler and handles all angles correctly.
-
+  // Expand the furniture box by wall half-thickness minus a small inset
+  // so touching/flush placement is allowed but actual overlap is caught
+  const margin = ht - COLLISION_INSET;
   const expanded: AABB = {
-    minX: box.minX - ht,
-    maxX: box.maxX + ht,
-    minZ: box.minZ - ht,
-    maxZ: box.maxZ + ht,
+    minX: box.minX - margin,
+    maxX: box.maxX + margin,
+    minZ: box.minZ - margin,
+    maxZ: box.maxZ + margin,
   };
 
-  // Check if either wall endpoint is inside the expanded AABB
   if (pointInAABB(ax, az, expanded) || pointInAABB(bx, bz, expanded)) {
     return true;
   }
 
-  // Check if the wall segment intersects any edge of the expanded AABB
   if (segmentIntersectsAABB(ax, az, bx, bz, expanded)) {
     return true;
   }

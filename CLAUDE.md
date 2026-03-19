@@ -64,26 +64,54 @@ All designer state lives in `src/store/useDesignerStore.ts` (Zustand). Undo/redo
 When walls form a closed polygon, `wallGraph.ts` uses a planar face traversal algorithm to automatically detect enclosed rooms and generate floor geometry.
 
 ### Collision System
-`collision.ts` prevents furniture from overlapping walls or other furniture using AABB intersection checks.
+`collision.ts` prevents furniture from overlapping walls or other furniture.
+- Uses **Liang-Barsky line-segment-to-AABB** intersection for walls (handles diagonal walls correctly)
+- Has a `COLLISION_INSET` tolerance (0.02) so flush/touching placement is allowed but actual overlap is blocked
+- Furniture-to-furniture uses AABB overlap with the same inset tolerance
+
+### Snap System
+`snapToGrid.ts` provides a multi-level snap pipeline via `smartSnap()`:
+1. **Wall snap** — Checks each axis independently: vertical walls snap X, horizontal walls snap Z
+2. **Corner snap** — When near two walls on different axes, snaps both X and Z simultaneously (flush to corner)
+3. **Furniture snap** — Snaps edges to adjacent furniture on any unsnapped axis
+4. **Grid snap** — Fallback for any axis not snapped by walls/furniture
+- Snap threshold is 0.3 units
+- Wall snap uses the wall's AABB expanded by half-thickness
+- The snap and collision tolerances are coordinated: snap places items flush, collision allows it
+
+### Wall Intersection Handling
+`wallGraph.ts` provides `addWallWithIntersections()`:
+- **Corner merging**: Wall endpoints within 0.2 units of existing corners snap to them
+- **Crossing splits**: When walls cross, both are split at the intersection
+- **T-junctions**: When an endpoint lands on another wall's interior, that wall is split
 
 ### 3D Rendering
 - All 3D components use React Three Fiber (R3F)
-- `DrawingSurface.jsx` is loaded with `dynamic()` (no SSR) since R3F requires browser APIs
+- `DrawingSurface.tsx` is loaded with `dynamic()` (no SSR) since R3F requires browser APIs
 - `FloorMesh` creates `THREE.Shape` geometry and rotates from XY to XZ plane — note: Z coordinates must be negated when creating shapes due to `rotateX(-PI/2)` mapping
+- Furniture drag uses `useFrame` + ground-plane raycast (not `e.point` on mesh) for smooth movement
+- Camera is locked (`isDragging` state) during furniture drag/placement
+- Ghost preview shows actual furniture model during placement (semi-transparent, red if collision)
+- `DragGhost` component shows preview during HTML drag-and-drop from sidebar
 
 ### Landing Page
-Animated 3D house scene. Clicking the door triggers a camera animation → door opening → fade to black → navigate to `/designer`.
+- Animated 3D house scene with rotatable house (Y-axis only, camera fixed)
+- Clicking the door → house rotates back to home → camera moves to front → door opens → fade → navigate to `/designer`
+- Grid background has a cursor-following white glow effect (CSS `mask-image`)
+- `SketchMaterial` shader uses world-space normals so wall colors don't change with rotation
 
 ## Conventions
 
 - Use `@/*` path alias for imports (maps to `src/*`)
 - Coordinates are `[x, z]` tuples in the XZ plane (Y is up)
 - IDs use `type-timestamp` format (e.g., `wall-1718234567890`)
-- Furniture models are simple Three.js box geometries with color
+- Furniture models are simple Three.js box geometries with color and `opacity` prop
 - All 3D canvas components must be client-side only (`"use client"` or dynamic import with `ssr: false`)
-- Wall endpoints snap to grid when snap is enabled
+- Wall endpoints snap to grid and to existing corners when snap is enabled
+- Package manager is **pnpm** (not npm)
 
 ## Known Patterns
 
 - The designer has two parallel state systems: the older `DesignerProvider` (React Context + useReducer in `components/designer/`) and the newer Zustand store (`store/useDesignerStore.ts`). The Zustand store is the canonical one going forward.
-- Furniture catalog is defined in `utils/furnitureCatalog.ts` — add new furniture types there.
+- Furniture catalog is defined in `utils/furnitureCatalog.ts` — add new furniture types there. Each item has an `svgPreview` for the sidebar thumbnail and optional `modelUrl` for future GLTF loading.
+- Properties panel is a collapsible section inside the left sidebar (not a separate right panel).
