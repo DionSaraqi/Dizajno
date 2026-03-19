@@ -18,6 +18,7 @@ import {
   useWallHeight,
   usePendingDrop,
   useDragPreview,
+  useSelectedIds,
 } from "@/store/useDesignerStore";
 import GridPlane from "./GridPlane";
 import CameraController from "./CameraController";
@@ -303,11 +304,11 @@ function SceneContent() {
   const wallHeight = useWallHeight();
 
   const addWall = useDesignerStore((s) => s.addWall);
-  const setWalls = useDesignerStore((s) => s.setWalls);
+  const setWallsAndFloors = useDesignerStore((s) => s.setWallsAndFloors);
   const setDrawingFrom = useDesignerStore((s) => s.setDrawingFrom);
-  const setFloors = useDesignerStore((s) => s.setFloors);
   const placeFurniture = useDesignerStore((s) => s.placeFurniture);
   const select = useDesignerStore((s) => s.select);
+  const selectedIds = useSelectedIds();
   const activeFurnitureType = useDesignerStore((s) => s.activeFurnitureType);
   const clearSelection = useDesignerStore((s) => s.clearSelection);
 
@@ -351,15 +352,13 @@ function SceneContent() {
 
         // Process intersections: splits walls at crossings and T-junctions
         const updatedWalls = addWallWithIntersections(newWall, walls);
-        setWalls(updatedWalls);
-
         const detectedFloors = findFloors(updatedWalls);
-        if (detectedFloors.length > 0) {
-          setFloors(detectedFloors);
-        }
+
+        // Atomic update — single undo step
+        setWallsAndFloors(updatedWalls, detectedFloors.length > 0 ? detectedFloors : floors);
       }
     },
-    [walls, wallThickness, wallHeight, setWalls, setFloors]
+    [walls, floors, wallThickness, wallHeight, setWallsAndFloors]
   );
 
   const handlePointerDown = useCallback(
@@ -555,6 +554,12 @@ function SceneContent() {
           end={wall.end}
           thickness={wall.thickness}
           height={is3D ? wall.height : 0.15}
+          selected={selectedIds.includes(wall.id)}
+          onClick={() => {
+            if (mode === "select" || mode === "draw") {
+              select(wall.id);
+            }
+          }}
         />
       ))}
 

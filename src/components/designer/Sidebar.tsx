@@ -68,30 +68,41 @@ function PropertiesSection() {
   const [open, setOpen] = useState(true);
   const selectedIds = useSelectedIds();
   const furniture = useFurniture();
+  const walls = useDesignerStore((s) => s.walls);
   const removeFurniture = useDesignerStore((s) => s.removeFurniture);
+  const removeWall = useDesignerStore((s) => s.removeWall);
   const duplicateFurniture = useDesignerStore((s) => s.duplicateFurniture);
   const rotateFurniture = useDesignerStore((s) => s.rotateFurniture);
+  const updateWall = useDesignerStore((s) => s.updateWall);
 
-  const selectedItem =
-    selectedIds.length === 1
-      ? furniture.find((f) => f.id === selectedIds[0])
-      : null;
+  if (selectedIds.length !== 1) return null;
+  const selectedId = selectedIds[0];
 
-  // Only render the section when something is selected
-  if (!selectedItem) return null;
+  const selectedFurniture = furniture.find((f) => f.id === selectedId);
+  const selectedWall = walls.find((w) => w.id === selectedId);
 
-  const def = getFurnitureDef(selectedItem.type);
+  if (!selectedFurniture && !selectedWall) return null;
+
+  const def = selectedFurniture ? getFurnitureDef(selectedFurniture.type) : null;
 
   function handleSetRotation(radians: number) {
-    if (!selectedItem) return;
+    if (!selectedFurniture) return;
     const currentSteps =
-      Math.round(selectedItem.rotation / (Math.PI / 2)) % 4;
+      Math.round(selectedFurniture.rotation / (Math.PI / 2)) % 4;
     const targetSteps = Math.round(radians / (Math.PI / 2)) % 4;
     const stepsNeeded = (targetSteps - currentSteps + 4) % 4;
     for (let i = 0; i < stepsNeeded; i++) {
-      rotateFurniture(selectedItem.id);
+      rotateFurniture(selectedFurniture.id);
     }
   }
+
+  // Calculate wall length for display
+  const wallLength = selectedWall
+    ? Math.sqrt(
+        (selectedWall.end[0] - selectedWall.start[0]) ** 2 +
+        (selectedWall.end[1] - selectedWall.start[1]) ** 2
+      )
+    : 0;
 
   return (
     <div className="border-t border-dizajno-border">
@@ -102,7 +113,7 @@ function PropertiesSection() {
       >
         <div className="min-w-0">
           <span className="text-xs font-semibold text-dizajno-text truncate block">
-            {def?.label ?? selectedItem.type}
+            {selectedWall ? "Wall" : (def?.label ?? selectedFurniture!.type)}
           </span>
           <span className="text-[10px] text-dizajno-muted">Properties</span>
         </div>
@@ -116,81 +127,161 @@ function PropertiesSection() {
       {/* Collapsible body */}
       {open && (
         <div className="pb-2">
-          {/* Dimensions */}
-          <div className="px-4 py-2 border-t border-dizajno-border">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
-              Dimensions
-            </h4>
-            <div className="grid grid-cols-3 gap-1.5">
-              <div>
-                <span className="text-[10px] text-dizajno-muted block">W</span>
-                <span className="text-xs text-dizajno-text font-mono">
-                  {selectedItem.width.toFixed(1)}m
-                </span>
+          {/* ── Wall properties ── */}
+          {selectedWall && (
+            <>
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Dimensions
+                </h4>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div>
+                    <span className="text-[10px] text-dizajno-muted block">Length</span>
+                    <span className="text-xs text-dizajno-text font-mono">
+                      {wallLength.toFixed(2)}m
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-dizajno-muted block">Thick</span>
+                    <span className="text-xs text-dizajno-text font-mono">
+                      {selectedWall.thickness.toFixed(2)}m
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-dizajno-muted block">Height</span>
+                    <span className="text-xs text-dizajno-text font-mono">
+                      {selectedWall.height.toFixed(1)}m
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <span className="text-[10px] text-dizajno-muted block">D</span>
-                <span className="text-xs text-dizajno-text font-mono">
-                  {selectedItem.depth.toFixed(1)}m
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] text-dizajno-muted block">H</span>
-                <span className="text-xs text-dizajno-text font-mono">
-                  {selectedItem.height.toFixed(1)}m
-                </span>
-              </div>
-            </div>
-          </div>
 
-          {/* Rotation */}
-          <div className="px-4 py-2 border-t border-dizajno-border">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
-              Rotation ({radToDeg(selectedItem.rotation)}&deg;)
-            </h4>
-            <div className="grid grid-cols-4 gap-1">
-              {ROTATION_PRESETS.map((preset) => {
-                const isActive =
-                  Math.round(selectedItem.rotation / (Math.PI / 2)) % 4 ===
-                  Math.round(preset.value / (Math.PI / 2)) % 4;
-                return (
-                  <button
-                    key={preset.label}
-                    onClick={() => handleSetRotation(preset.value)}
-                    className={[
-                      "py-1 text-xs rounded-md transition-colors font-mono",
-                      "focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50",
-                      isActive
-                        ? "bg-dizajno-accent text-white"
-                        : "bg-dizajno-elevated text-dizajno-muted hover:text-dizajno-text hover:bg-dizajno-border",
-                    ].join(" ")}
-                  >
-                    {preset.label}&deg;
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+              {/* Thickness slider */}
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Thickness
+                </h4>
+                <input
+                  type="range"
+                  min="0.05"
+                  max="0.5"
+                  step="0.05"
+                  value={selectedWall.thickness}
+                  onChange={(e) => updateWall(selectedWall.id, { thickness: parseFloat(e.target.value) })}
+                  className="w-full slider-input"
+                />
+              </div>
 
-          {/* Actions */}
-          <div className="px-4 pt-2 flex gap-1.5">
-            <button
-              onClick={() => duplicateFurniture(selectedItem.id)}
-              title="Duplicate"
-              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs rounded-md bg-dizajno-elevated hover:bg-dizajno-border text-dizajno-text transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50"
-            >
-              <Copy size={12} />
-              Copy
-            </button>
-            <button
-              onClick={() => removeFurniture(selectedItem.id)}
-              title="Delete"
-              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs rounded-md bg-dizajno-danger hover:bg-red-500 text-white transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50"
-            >
-              <Trash2 size={12} />
-              Delete
-            </button>
-          </div>
+              {/* Height slider */}
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Height
+                </h4>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="0.1"
+                  value={selectedWall.height}
+                  onChange={(e) => updateWall(selectedWall.id, { height: parseFloat(e.target.value) })}
+                  className="w-full slider-input"
+                />
+              </div>
+
+              {/* Delete wall */}
+              <div className="px-4 pt-2">
+                <button
+                  onClick={() => removeWall(selectedWall.id)}
+                  title="Delete Wall"
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs rounded-md bg-dizajno-danger hover:bg-red-500 text-white transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50"
+                >
+                  <Trash2 size={12} />
+                  Delete Wall
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ── Furniture properties ── */}
+          {selectedFurniture && (
+            <>
+              {/* Dimensions */}
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Dimensions
+                </h4>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div>
+                    <span className="text-[10px] text-dizajno-muted block">W</span>
+                    <span className="text-xs text-dizajno-text font-mono">
+                      {selectedFurniture.width.toFixed(1)}m
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-dizajno-muted block">D</span>
+                    <span className="text-xs text-dizajno-text font-mono">
+                      {selectedFurniture.depth.toFixed(1)}m
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-dizajno-muted block">H</span>
+                    <span className="text-xs text-dizajno-text font-mono">
+                      {selectedFurniture.height.toFixed(1)}m
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rotation */}
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Rotation ({radToDeg(selectedFurniture.rotation)}&deg;)
+                </h4>
+                <div className="grid grid-cols-4 gap-1">
+                  {ROTATION_PRESETS.map((preset) => {
+                    const isActive =
+                      Math.round(selectedFurniture.rotation / (Math.PI / 2)) % 4 ===
+                      Math.round(preset.value / (Math.PI / 2)) % 4;
+                    return (
+                      <button
+                        key={preset.label}
+                        onClick={() => handleSetRotation(preset.value)}
+                        className={[
+                          "py-1 text-xs rounded-md transition-colors font-mono",
+                          "focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50",
+                          isActive
+                            ? "bg-dizajno-accent text-white"
+                            : "bg-dizajno-elevated text-dizajno-muted hover:text-dizajno-text hover:bg-dizajno-border",
+                        ].join(" ")}
+                      >
+                        {preset.label}&deg;
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="px-4 pt-2 flex gap-1.5">
+                <button
+                  onClick={() => duplicateFurniture(selectedFurniture.id)}
+                  title="Duplicate"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs rounded-md bg-dizajno-elevated hover:bg-dizajno-border text-dizajno-text transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50"
+                >
+                  <Copy size={12} />
+                  Copy
+                </button>
+                <button
+                  onClick={() => removeFurniture(selectedFurniture.id)}
+                  title="Delete"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs rounded-md bg-dizajno-danger hover:bg-red-500 text-white transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50"
+                >
+                  <Trash2 size={12} />
+                  Delete
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

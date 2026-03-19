@@ -9,9 +9,10 @@ interface WallMeshProps {
   thickness: number;
   height: number;
   selected?: boolean;
+  onClick?: (e: any) => void;
 }
 
-export default function WallMesh({ start, end, thickness, height, selected }: WallMeshProps) {
+export default function WallMesh({ start, end, thickness, height, selected, onClick }: WallMeshProps) {
   const startVec = new THREE.Vector3(start[0], 0, start[1]);
   const endVec = new THREE.Vector3(end[0], 0, end[1]);
   const direction = new THREE.Vector3().subVectors(endVec, startVec);
@@ -22,12 +23,20 @@ export default function WallMesh({ start, end, thickness, height, selected }: Wa
   const center = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
   const angle = Math.atan2(direction.z, direction.x);
 
+  const handleClick = (e: any) => {
+    if (onClick) {
+      e.stopPropagation();
+      onClick(e);
+    }
+  };
+
   return (
     <group>
       {/* Wall body */}
       <mesh
         position={[center.x, height / 2, center.z]}
         rotation={[0, -angle, 0]}
+        onClick={handleClick}
       >
         <boxGeometry args={[length, height, thickness]} />
         <meshStandardMaterial
@@ -37,12 +46,12 @@ export default function WallMesh({ start, end, thickness, height, selected }: Wa
         />
       </mesh>
       {/* Joint at start */}
-      <mesh position={[startVec.x, height / 2, startVec.z]}>
+      <mesh position={[startVec.x, height / 2, startVec.z]} onClick={handleClick}>
         <cylinderGeometry args={[thickness / 2, thickness / 2, height, 12]} />
         <meshStandardMaterial color={selected ? "#60A5FA" : "#6B7280"} />
       </mesh>
       {/* Joint at end */}
-      <mesh position={[endVec.x, height / 2, endVec.z]}>
+      <mesh position={[endVec.x, height / 2, endVec.z]} onClick={handleClick}>
         <cylinderGeometry args={[thickness / 2, thickness / 2, height, 12]} />
         <meshStandardMaterial color={selected ? "#60A5FA" : "#6B7280"} />
       </mesh>

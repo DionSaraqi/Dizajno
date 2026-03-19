@@ -15,6 +15,8 @@ interface DesignerActions {
   addWall: (wall: WallData) => void;
   removeWall: (id: string) => void;
   setWalls: (walls: WallData[]) => void;
+  setWallsAndFloors: (walls: WallData[], floors: FloorData[]) => void;
+  updateWall: (id: string, changes: Partial<Pick<WallData, "thickness" | "height">>) => void;
   setDrawingFrom: (point: [number, number] | null) => void;
   setFloors: (floors: FloorData[]) => void;
 
@@ -84,8 +86,15 @@ export const useDesignerStore = create<DesignerStore>()(
 
       // Wall actions
       addWall: (wall) => set((s) => ({ walls: [...s.walls, wall] })),
-      removeWall: (id) => set((s) => ({ walls: s.walls.filter((w) => w.id !== id) })),
+      removeWall: (id) => set((s) => ({
+        walls: s.walls.filter((w) => w.id !== id),
+        selectedIds: s.selectedIds.filter((sid) => sid !== id),
+      })),
       setWalls: (walls) => set({ walls }),
+      setWallsAndFloors: (walls, floors) => set({ walls, floors }),
+      updateWall: (id, changes) => set((s) => ({
+        walls: s.walls.map((w) => w.id === id ? { ...w, ...changes } : w),
+      })),
       setDrawingFrom: (point) => set({ drawingFrom: point }),
       setFloors: (floors) => set({ floors }),
 
@@ -178,6 +187,11 @@ export const useDesignerStore = create<DesignerStore>()(
         furniture: state.furniture,
       }),
       limit: 50,
+      // Prevent duplicate undo entries when state hasn't actually changed
+      equality: (past, current) =>
+        past.walls === current.walls &&
+        past.floors === current.floors &&
+        past.furniture === current.furniture,
     }
   )
 );
