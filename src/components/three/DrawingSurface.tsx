@@ -33,6 +33,7 @@ import WardrobeModel from "./furniture/WardrobeModel";
 import DeskModel from "./furniture/DeskModel";
 import BookshelfModel from "./furniture/BookshelfModel";
 import NightstandModel from "./furniture/NightstandModel";
+import GLTFModel from "./furniture/GLTFModel";
 import Measurements from "./Measurements";
 import SnapIndicator from "./SnapIndicator";
 import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
@@ -244,12 +245,30 @@ function GhostPreview({
   };
 
   const ModelComponent = getGhostModel(furnitureType);
+  const catalogDef = getFurnitureDef(furnitureType);
+  const hasGLTF = !!catalogDef?.modelUrl;
 
   return (
     <>
       <group position={[position[0], 0, position[1]]} rotation={[0, rotation, 0]}>
         {/* Render actual furniture model with transparency */}
-        {ModelComponent ? (
+        {hasGLTF ? (
+          <group>
+            <GLTFModel
+              url={catalogDef!.modelUrl!}
+              width={width}
+              depth={depth}
+              height={height}
+              color={hasCollision ? "#EF4444" : color}
+              opacity={0.45}
+            />
+            <mesh position={[0, height / 2, 0]}>
+              <boxGeometry args={[width + 0.01, height + 0.01, depth + 0.01]} />
+              <meshBasicMaterial visible={false} />
+              <Edges threshold={15} color={hasCollision ? "#EF4444" : "#818cf8"} />
+            </mesh>
+          </group>
+        ) : ModelComponent ? (
           <group>
             <ModelComponent
               width={width}
@@ -258,7 +277,6 @@ function GhostPreview({
               color={hasCollision ? "#EF4444" : color}
               opacity={0.45}
             />
-            {/* Outline box */}
             <mesh position={[0, height / 2, 0]}>
               <boxGeometry args={[width + 0.01, height + 0.01, depth + 0.01]} />
               <meshBasicMaterial visible={false} />

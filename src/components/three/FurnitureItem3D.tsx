@@ -14,8 +14,10 @@ import {
 import type { FurnitureData } from "@/types/designer";
 import { checkFurnitureCollision } from "@/utils/collision";
 import { smartSnap, type SnapEdge } from "@/utils/snapToGrid";
+import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import Measurements from "./Measurements";
 import SnapIndicator from "./SnapIndicator";
+import GLTFModel from "./furniture/GLTFModel";
 import BedModel from "./furniture/BedModel";
 import TableModel from "./furniture/TableModel";
 import ChairModel from "./furniture/ChairModel";
@@ -71,6 +73,8 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     dragging && checkFurnitureCollision(tempItem, furniture, walls);
 
   const ModelComponent = getModel(item.type);
+  const catalogDef = getFurnitureDef(item.type);
+  const hasGLTF = !!catalogDef?.modelUrl;
 
   // Item descriptor for snap calculations
   const itemDesc = { id: item.id, rotation: item.rotation, width: item.width, depth: item.depth };
@@ -137,14 +141,23 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
       >
-        {ModelComponent && (
+        {hasGLTF ? (
+          <GLTFModel
+            url={catalogDef!.modelUrl!}
+            width={item.width}
+            depth={item.depth}
+            height={item.height}
+            color={hasCollision ? "#EF4444" : item.color}
+            opacity={1}
+          />
+        ) : ModelComponent ? (
           <ModelComponent
             width={item.width}
             depth={item.depth}
             height={item.height}
             color={hasCollision ? "#EF4444" : item.color}
           />
-        )}
+        ) : null}
 
         {/* Selection highlight */}
         {isSelected && (

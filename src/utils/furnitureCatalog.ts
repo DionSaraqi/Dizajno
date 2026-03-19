@@ -203,6 +203,21 @@ export const furnitureCatalog: FurnitureCatalogItem[] = [
     category: "Seating",
     svgPreview: svgPreviews.sofa,
   },
+  {
+    type: "sectional-sofa",
+    label: "Sectional Sofa",
+    width: 3.5,
+    depth: 2.5,
+    height: 0.85,
+    color: "#4A5C50",
+    icon: "sofa",
+    category: "Seating",
+    svgPreview: `<svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+      <path d="M4 20 L4 70 L60 70 L60 40 L96 40 L96 20 Z" fill="#4A5C50" stroke="currentColor" stroke-width="2" rx="3"/>
+      <path d="M10 25 L10 65 L55 65 L55 45 L90 45 L90 25 Z" fill="#5A6C60" stroke="currentColor" stroke-width="1"/>
+    </svg>`,
+    modelUrl: "/models/sectional-sofa.glb",
+  },
 
   // ── Tables ──────────────────────────────────────────────────────────────
   {
