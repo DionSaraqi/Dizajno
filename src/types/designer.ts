@@ -43,6 +43,17 @@ export type FurnitureCategory = "Seating" | "Tables" | "Bedroom" | "Storage";
  *   GET /api/furniture/:type            → FurnitureCatalogItem
  *   GET /api/furniture/:type/model.glb  → 3D model binary
  */
+/**
+ * Sub-box for composite collision shapes (e.g., L-shaped furniture).
+ * Offsets are relative to the item's center position.
+ */
+export interface CollisionBox {
+  offsetX: number;
+  offsetZ: number;
+  width: number;
+  depth: number;
+}
+
 export interface FurnitureCatalogItem {
   /** Unique identifier / furniture type slug (e.g. "sofa", "bed") */
   type: string;
@@ -71,6 +82,11 @@ export interface FurnitureCatalogItem {
    * Future: will be served from the furniture API.
    */
   modelUrl?: string;
+  /**
+   * Optional composite collision boxes for non-rectangular shapes (e.g., L-shaped sofa).
+   * Each box is relative to the item center. If omitted, a single AABB from width/depth is used.
+   */
+  collisionBoxes?: CollisionBox[];
 }
 
 export type DesignerMode = "draw" | "select" | "furniture";

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useRef, useEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -16,62 +16,83 @@ interface GLTFModelProps {
 /**
  * Generic GLTF/GLB model loader that auto-scales the model to fit
  * the specified width/depth/height bounding box.
+ * Each instance gets its own deep-cloned materials so color/opacity
+ * changes don't bleed between placed items and ghost previews.
  */
 export default function GLTFModel({ url, width, depth, height, color, opacity = 1 }: GLTFModelProps) {
   const { scene } = useGLTF(url);
-  const transparent = opacity < 1;
+  const groupRef = useRef<THREE.Group>(null);
 
-  // Clone the scene so each instance is independent
-  const cloned = useMemo(() => {
+  // Clone scene and deep-clone all materials (only recompute when geometry changes)
+  const { cloned, materials } = useMemo(() => {
     const clone = scene.clone(true);
+    const mats: THREE.Material[] = [];
 
-    // Compute bounding box of the original model
-    const box = new THREE.Box3().setFromObject(clone);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-
-    // Scale to fit the target dimensions
-    const scaleX = size.x > 0 ? width / size.x : 1;
-    const scaleY = size.y > 0 ? height / size.y : 1;
-    const scaleZ = size.z > 0 ? depth / size.z : 1;
-    // Use uniform scale (smallest axis) to preserve proportions
-    const uniformScale = Math.min(scaleX, scaleY, scaleZ);
-    clone.scale.setScalar(uniformScale);
-
-    // Recompute bounds after scaling
-    const scaledBox = new THREE.Box3().setFromObject(clone);
-    const scaledSize = new THREE.Vector3();
-    scaledBox.getSize(scaledSize);
-    const center = new THREE.Vector3();
-    scaledBox.getCenter(center);
-
-    // Center horizontally and on Z, sit on the ground (y=0)
-    clone.position.set(-center.x, -scaledBox.min.y, -center.z);
-
-    // Apply color/opacity overrides to all mesh materials
+    // Deep-clone every material so mutations are per-instance
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
-        if (mesh.material) {
-          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          mats.forEach((mat) => {
-            if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
-              if (transparent) {
-                mat.transparent = true;
-                mat.opacity = opacity;
-              }
-              mat.needsUpdate = true;
-            }
+        if (Array.isArray(mesh.material)) {
+          mesh.material = mesh.material.map((m) => {
+            const clonedMat = m.clone();
+            mats.push(clonedMat);
+            return clonedMat;
           });
+        } else if (mesh.material) {
+          mesh.material = mesh.material.clone();
+          mats.push(mesh.material);
         }
       }
     });
 
-    return clone;
-  }, [scene, width, depth, height, color, opacity, transparent]);
+    // Compute bounding box and scale
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = new THREE.Vector3();
+    box.getSize(size);
 
-  return <primitive object={cloned} />;
+    const scaleX = size.x > 0 ? width / size.x : 1;
+    const scaleY = size.y > 0 ? height / size.y : 1;
+    const scaleZ = size.z > 0 ? depth / size.z : 1;
+    const uniformScale = Math.min(scaleX, scaleY, scaleZ);
+    clone.scale.setScalar(uniformScale);
+
+    // Center and ground
+    const scaledBox = new THREE.Box3().setFromObject(clone);
+    const center = new THREE.Vector3();
+    scaledBox.getCenter(center);
+    clone.position.set(-center.x, -scaledBox.min.y, -center.z);
+
+    return { cloned: clone, materials: mats };
+  }, [scene, width, depth, height]);
+
+  // Apply color/opacity reactively (doesn't recreate the clone)
+  useEffect(() => {
+    const transparent = opacity < 1;
+    const overrideColor = color ? new THREE.Color(color) : null;
+
+    for (const mat of materials) {
+      if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
+        mat.transparent = transparent;
+        mat.opacity = opacity;
+        mat.depthWrite = !transparent;
+        if (overrideColor && color === "#EF4444") {
+          // Collision red — tint via emissive so model shape is still visible
+          mat.emissive.set(overrideColor);
+          mat.emissiveIntensity = 0.6;
+        } else {
+          mat.emissive.set(0x000000);
+          mat.emissiveIntensity = 0;
+        }
+        mat.needsUpdate = true;
+      }
+    }
+  }, [color, opacity, materials]);
+
+  return (
+    <group ref={groupRef}>
+      <primitive object={cloned} />
+    </group>
+  );
 }
 
-// Preload helper — call with the URL to start loading early
 GLTFModel.preload = (url: string) => useGLTF.preload(url);

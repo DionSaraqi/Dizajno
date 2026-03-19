@@ -1,4 +1,5 @@
-import type { FurnitureData, WallData } from "@/types/designer";
+import type { FurnitureData, WallData, CollisionBox } from "@/types/designer";
+import { getFurnitureDef } from "@/utils/furnitureCatalog";
 
 interface AABB {
   minX: number;
@@ -19,6 +20,46 @@ export function getFurnitureAABB(item: FurnitureData): AABB {
   };
 }
 
+/**
+ * Get all collision AABBs for a furniture item.
+ * If the catalog defines collisionBoxes (for L-shapes etc), returns multiple
+ * sub-AABBs rotated and positioned in world space.
+ * Otherwise returns the single full AABB.
+ */
+function getFurnitureCollisionBoxes(item: FurnitureData): AABB[] {
+  const def = getFurnitureDef(item.type);
+  if (!def?.collisionBoxes || def.collisionBoxes.length === 0) {
+    return [getFurnitureAABB(item)];
+  }
+
+  const isRotated = Math.abs(Math.sin(item.rotation)) > 0.5;
+  const cx = item.position[0];
+  const cz = item.position[1];
+
+  return def.collisionBoxes.map((box) => {
+    // Rotate offsets if the item is rotated 90/270
+    const ox = isRotated ? box.offsetZ : box.offsetX;
+    const oz = isRotated ? box.offsetX : box.offsetZ;
+    const bw = isRotated ? box.depth : box.width;
+    const bd = isRotated ? box.width : box.depth;
+
+    // Handle 180 degree rotation (flip offsets)
+    const rot = Math.round(item.rotation / (Math.PI / 2)) % 4;
+    const flipX = (rot === 2 || rot === 3) ? -1 : 1;
+    const flipZ = (rot === 1 || rot === 2) ? -1 : 1;
+
+    const wx = cx + ox * flipX;
+    const wz = cz + oz * flipZ;
+
+    return {
+      minX: wx - bw / 2,
+      maxX: wx + bw / 2,
+      minZ: wz - bd / 2,
+      maxZ: wz + bd / 2,
+    };
+  });
+}
+
 function aabbOverlap(a: AABB, b: AABB): boolean {
   // Use a small inset so touching/flush edges don't count as overlap
   const E = COLLISION_INSET;
@@ -33,7 +74,7 @@ function aabbOverlap(a: AABB, b: AABB): boolean {
 // Small inset so "flush/touching" doesn't count as overlapping.
 // The snap system places furniture exactly touching walls — without this
 // tolerance the collision check would reject snapped positions.
-const COLLISION_INSET = 0.02;
+const COLLISION_INSET = 0.04;
 
 function wallOverlapsAABB(wall: WallData, box: AABB): boolean {
   const ht = wall.thickness / 2;
@@ -123,15 +164,22 @@ export function checkFurnitureCollision(
   allFurniture: FurnitureData[],
   walls: WallData[]
 ): boolean {
-  const box = getFurnitureAABB(item);
+  const itemBoxes = getFurnitureCollisionBoxes(item);
 
-  for (const other of allFurniture) {
-    if (other.id === item.id) continue;
-    if (aabbOverlap(box, getFurnitureAABB(other))) return true;
-  }
+  for (const box of itemBoxes) {
+    // Check against other furniture
+    for (const other of allFurniture) {
+      if (other.id === item.id) continue;
+      const otherBoxes = getFurnitureCollisionBoxes(other);
+      for (const otherBox of otherBoxes) {
+        if (aabbOverlap(box, otherBox)) return true;
+      }
+    }
 
-  for (const wall of walls) {
-    if (wallOverlapsAABB(wall, box)) return true;
+    // Check against walls
+    for (const wall of walls) {
+      if (wallOverlapsAABB(wall, box)) return true;
+    }
   }
 
   return false;
