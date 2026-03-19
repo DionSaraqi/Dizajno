@@ -32,16 +32,23 @@ function getFurnitureCollisionBoxes(item: FurnitureData): AABB[] {
     return [getFurnitureAABB(item)];
   }
 
+  const s = item.scale ?? 1;
   const isRotated = Math.abs(Math.sin(item.rotation)) > 0.5;
   const cx = item.position[0];
   const cz = item.position[1];
 
   return def.collisionBoxes.map((box) => {
+    // Scale offsets and sizes by item scale
+    const sox = box.offsetX * s;
+    const soz = box.offsetZ * s;
+    const sw = box.width * s;
+    const sd = box.depth * s;
+
     // Rotate offsets if the item is rotated 90/270
-    const ox = isRotated ? box.offsetZ : box.offsetX;
-    const oz = isRotated ? box.offsetX : box.offsetZ;
-    const bw = isRotated ? box.depth : box.width;
-    const bd = isRotated ? box.width : box.depth;
+    const ox = isRotated ? soz : sox;
+    const oz = isRotated ? sox : soz;
+    const bw = isRotated ? sd : sw;
+    const bd = isRotated ? sw : sd;
 
     // Handle 180 degree rotation (flip offsets)
     const rot = Math.round(item.rotation / (Math.PI / 2)) % 4;

@@ -94,6 +94,19 @@ When walls form a closed polygon, `wallGraph.ts` uses a planar face traversal al
 - Ghost preview shows actual furniture model during placement (semi-transparent, red if collision)
 - `DragGhost` component shows preview during HTML drag-and-drop from sidebar
 
+### GLTF Model Pipeline
+- `GLTFModel.tsx` loads `.glb` files from `public/models/`, auto-scales uniformly to fit target dimensions
+- Materials are deep-cloned per instance (ghost vs placed don't bleed)
+- Collision red uses emissive tint, not color replacement
+- **Critical: catalog width/depth must match the actual rendered model size.** The model is uniformly scaled by `Math.min(targetW/rawW, targetH/rawH, targetD/rawD)`. To get correct dimensions:
+  1. Measure the raw model: `node -e` script with GLTFLoader to get raw X/Y/Z
+  2. Pick a target depth (usually matches raw Z × scale)
+  3. Compute uniform scale = `min(targetW/rawX, targetH/rawY, targetD/rawZ)`
+  4. Set catalog width = `rawX × scale`, height = `rawY × scale`, depth = `rawZ × scale`
+- For non-rectangular shapes (L-shaped sofas etc), use `collisionBoxes` in the catalog — array of `{ offsetX, offsetZ, width, depth }` sub-boxes that tightly fit the actual geometry
+- `collisionBoxes` scale with the `scale` field and rotate with the item
+- Uniform scale slider (50%–200%) in properties panel scales width/depth/height proportionally from catalog base
+
 ### Landing Page
 - Animated 3D house scene with rotatable house (Y-axis only, camera fixed)
 - Clicking the door → house rotates back to home → camera moves to front → door opens → fade → navigate to `/designer`

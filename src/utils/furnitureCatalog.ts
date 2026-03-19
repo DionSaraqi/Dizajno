@@ -206,9 +206,10 @@ export const furnitureCatalog: FurnitureCatalogItem[] = [
   {
     type: "sectional-sofa",
     label: "Sectional Sofa",
+    // Actual rendered size after uniform scaling (raw: 0.698 x 0.213 x 1.0, scale: 2.5)
     width: 1.75,
     depth: 2.5,
-    height: 0.55,
+    height: 0.53,
     color: "#4A5C50",
     icon: "sofa",
     category: "Seating",
@@ -217,10 +218,32 @@ export const furnitureCatalog: FurnitureCatalogItem[] = [
       <path d="M10 10 L64 10 L64 40 L36 40 L36 90 L10 90 Z" fill="#5A6C60" stroke="currentColor" stroke-width="1"/>
     </svg>`,
     modelUrl: "/models/sectional-sofa.glb",
-    // L-shape collision: two rectangles forming the L
+    // L-shape collision: tightly fit the actual model geometry
+    // Total footprint: 1.75 x 2.5. L opens bottom-right.
     collisionBoxes: [
-      { offsetX: 0.2, offsetZ: -0.8, width: 1.75, depth: 0.9 },  // back (long arm)
-      { offsetX: -0.45, offsetZ: 0.3, width: 0.85, depth: 1.3 }, // left arm (short)
+      { offsetX: 0, offsetZ: -0.65, width: 1.75, depth: 1.2 },   // top bar (full width, ~half depth)
+      { offsetX: -0.44, offsetZ: 0.55, width: 0.87, depth: 1.2 }, // left leg
+    ],
+  },
+  {
+    type: "gray-sectional-sofa",
+    label: "Gray Sectional",
+    // Actual rendered size (raw: 0.988 x 0.291 x 1.0, scale: 2.5)
+    width: 2.47,
+    depth: 2.5,
+    height: 0.73,
+    color: "#6B6B6B",
+    icon: "sofa",
+    category: "Seating",
+    svgPreview: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+      <path d="M4 4 L96 4 L96 45 L50 45 L50 96 L4 96 Z" fill="#6B6B6B" stroke="currentColor" stroke-width="2"/>
+      <path d="M10 10 L90 10 L90 40 L44 40 L44 90 L10 90 Z" fill="#7B7B7B" stroke="currentColor" stroke-width="1"/>
+    </svg>`,
+    modelUrl: "/models/gray-sectional-sofa.glb",
+    // L-shape collision
+    collisionBoxes: [
+      { offsetX: 0, offsetZ: -0.65, width: 2.47, depth: 1.2 },
+      { offsetX: -0.8, offsetZ: 0.55, width: 0.87, depth: 1.2 },
     ],
   },
 
