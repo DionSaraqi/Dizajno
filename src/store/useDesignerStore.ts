@@ -47,6 +47,7 @@ interface DesignerActions {
 
   // Drop zone
   setPendingDrop: (drop: { type: string; ndcX: number; ndcY: number } | null) => void;
+  setDragPreview: (preview: { ndcX: number; ndcY: number } | null) => void;
 
   // Bulk
   clearAll: () => void;
@@ -71,6 +72,7 @@ const initialState: DesignerState = {
   wallHeight: 2.5,
   isDragging: false,
   pendingDrop: null,
+  dragPreview: null,
 };
 
 // ── Store ───────────────────────────────────────────────────────────────────
@@ -163,6 +165,7 @@ export const useDesignerStore = create<DesignerStore>()(
 
       // Drop zone
       setPendingDrop: (drop) => set({ pendingDrop: drop }),
+      setDragPreview: (preview) => set({ dragPreview: preview }),
 
       // Bulk
       clearAll: () => set({ ...initialState }),
@@ -197,3 +200,4 @@ export const useWallThickness = () =>
 export const useWallHeight = () => useDesignerStore((s) => s.wallHeight);
 export const useIsDragging = () => useDesignerStore((s) => s.isDragging);
 export const usePendingDrop = () => useDesignerStore((s) => s.pendingDrop);
+export const useDragPreview = () => useDesignerStore((s) => s.dragPreview);

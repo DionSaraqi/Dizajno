@@ -212,6 +212,9 @@ export default function Sidebar() {
       e.dataTransfer.setData("application/x-furniture-type", item.type);
       e.dataTransfer.effectAllowed = "copy";
 
+      // Set active furniture type so the 3D ghost preview knows what to show
+      setActiveFurniture(item.type);
+
       // Create a custom drag image
       const dragEl = document.createElement("div");
       dragEl.textContent = item.label;
@@ -222,7 +225,7 @@ export default function Sidebar() {
       // Clean up
       requestAnimationFrame(() => document.body.removeChild(dragEl));
     },
-    []
+    [setActiveFurniture]
   );
 
   const handleClick = useCallback(

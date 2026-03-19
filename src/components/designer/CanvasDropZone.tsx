@@ -19,6 +19,17 @@ export default function CanvasDropZone({ children }: CanvasDropZoneProps) {
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
+
+    // Update drag preview position so the 3D scene can show a ghost
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    useDesignerStore.getState().setDragPreview({ ndcX, ndcY });
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    useDesignerStore.getState().setDragPreview(null);
   }, []);
 
   const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -34,8 +45,10 @@ export default function CanvasDropZone({ children }: CanvasDropZoneProps) {
     const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-    // Store the pending drop for the 3D scene to pick up
-    useDesignerStore.getState().setPendingDrop({
+    // Clear drag preview and store the pending drop
+    const state = useDesignerStore.getState();
+    state.setDragPreview(null);
+    state.setPendingDrop({
       type: furnitureType,
       ndcX,
       ndcY,
@@ -45,8 +58,9 @@ export default function CanvasDropZone({ children }: CanvasDropZoneProps) {
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full"
+      className="relative flex-1 h-full"
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {children}

@@ -100,4 +100,7 @@ export interface DesignerState {
 
   // Drop zone support — NDC coordinates from the HTML overlay
   pendingDrop: { type: string; ndcX: number; ndcY: number } | null;
+
+  // Live drag preview position (NDC) while HTML dragging over canvas
+  dragPreview: { ndcX: number; ndcY: number } | null;
 }

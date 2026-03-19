@@ -17,12 +17,21 @@ import {
   useWallThickness,
   useWallHeight,
   usePendingDrop,
+  useDragPreview,
 } from "@/store/useDesignerStore";
 import GridPlane from "./GridPlane";
 import CameraController from "./CameraController";
 import WallMesh from "./WallMesh";
 import FloorMesh from "./FloorMesh";
 import FurnitureItem3D from "./FurnitureItem3D";
+import BedModel from "./furniture/BedModel";
+import TableModel from "./furniture/TableModel";
+import ChairModel from "./furniture/ChairModel";
+import SofaModel from "./furniture/SofaModel";
+import WardrobeModel from "./furniture/WardrobeModel";
+import DeskModel from "./furniture/DeskModel";
+import BookshelfModel from "./furniture/BookshelfModel";
+import NightstandModel from "./furniture/NightstandModel";
 import Measurements from "./Measurements";
 import SnapIndicator from "./SnapIndicator";
 import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
@@ -99,14 +108,108 @@ function DropHandler() {
   return null;
 }
 
+// ── HTML Drag Ghost (shows furniture preview while dragging from sidebar) ────
+
+function DragGhost() {
+  const dragPreview = useDragPreview();
+  const { camera, raycaster } = useThree();
+  const activeFurnitureType = useDesignerStore((s) => s.activeFurnitureType);
+  const walls = useWalls();
+  const furniture = useFurniture();
+  const snap = useSnap();
+  const gridSize = useGridSize();
+  const is3D = useIs3D();
+
+  const [pos, setPos] = useState<[number, number] | null>(null);
+  const [snapEdge, setSnapEdge] = useState<SnapEdge | null>(null);
+
+  // Try to figure out which furniture type is being dragged
+  // During HTML drag, activeFurnitureType is set from the sidebar click
+  const furnitureType = activeFurnitureType;
+  const def = furnitureType ? getFurnitureDef(furnitureType) : null;
+
+  useEffect(() => {
+    if (!dragPreview || !def) {
+      setPos(null);
+      return;
+    }
+
+    const ndc = new THREE.Vector2(dragPreview.ndcX, dragPreview.ndcY);
+    raycaster.setFromCamera(ndc, camera);
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const intersection = new THREE.Vector3();
+    raycaster.ray.intersectPlane(groundPlane, intersection);
+
+    if (!intersection) {
+      setPos(null);
+      return;
+    }
+
+    const itemDesc = { rotation: 0, width: def.width, depth: def.depth };
+    const result = smartSnap(
+      intersection.x, intersection.z,
+      itemDesc, walls, furniture, snap, gridSize
+    );
+    setPos(result.position);
+    setSnapEdge(result.snapEdge);
+  }, [dragPreview, def, camera, raycaster, walls, furniture, snap, gridSize]);
+
+  if (!pos || !def) return null;
+
+  const ghostItem: FurnitureData = {
+    id: "__drag_ghost__",
+    type: def.type,
+    position: pos,
+    rotation: 0,
+    width: def.width,
+    depth: def.depth,
+    height: def.height,
+    color: def.color,
+  };
+  const hasCollision = checkFurnitureCollision(ghostItem, furniture, walls);
+
+  return (
+    <GhostPreview
+      furnitureType={def.type}
+      position={pos}
+      rotation={0}
+      width={def.width}
+      depth={def.depth}
+      height={def.height}
+      color={def.color}
+      hasCollision={hasCollision}
+      snapEdge={snapEdge}
+      walls={walls}
+      furniture={furniture}
+      showMeasurements={!is3D}
+    />
+  );
+}
+
 // ── Ghost Furniture Preview ──────────────────────────────────────────────────
 
+function getGhostModel(type: string) {
+  switch (type) {
+    case "bed": return BedModel;
+    case "table": return TableModel;
+    case "chair": return ChairModel;
+    case "sofa": return SofaModel;
+    case "wardrobe": return WardrobeModel;
+    case "desk": return DeskModel;
+    case "bookshelf": return BookshelfModel;
+    case "nightstand": return NightstandModel;
+    default: return null;
+  }
+}
+
 interface GhostPreviewProps {
+  furnitureType: string;
   position: [number, number];
   rotation: number;
   width: number;
   depth: number;
   height: number;
+  color: string;
   hasCollision: boolean;
   snapEdge: SnapEdge | null;
   walls: ReturnType<typeof useWalls>;
@@ -115,11 +218,13 @@ interface GhostPreviewProps {
 }
 
 function GhostPreview({
+  furnitureType,
   position,
   rotation,
   width,
   depth,
   height,
+  color,
   hasCollision,
   snapEdge,
   walls,
@@ -128,28 +233,48 @@ function GhostPreview({
 }: GhostPreviewProps) {
   const ghostItem: FurnitureData = {
     id: "__ghost__",
-    type: "__ghost__",
+    type: furnitureType,
     position,
     rotation,
     width,
     depth,
     height,
-    color: "#6366f1",
+    color,
   };
+
+  const ModelComponent = getGhostModel(furnitureType);
 
   return (
     <>
       <group position={[position[0], 0, position[1]]} rotation={[0, rotation, 0]}>
-        {/* Ghost box */}
-        <mesh position={[0, height / 2, 0]}>
-          <boxGeometry args={[width, height, depth]} />
-          <meshBasicMaterial
-            color={hasCollision ? "#EF4444" : "#6366f1"}
-            transparent
-            opacity={0.25}
-          />
-          <Edges threshold={15} color={hasCollision ? "#EF4444" : "#818cf8"} />
-        </mesh>
+        {/* Render actual furniture model with transparency */}
+        {ModelComponent ? (
+          <group>
+            <ModelComponent
+              width={width}
+              depth={depth}
+              height={height}
+              color={hasCollision ? "#EF4444" : color}
+              opacity={0.45}
+            />
+            {/* Outline box */}
+            <mesh position={[0, height / 2, 0]}>
+              <boxGeometry args={[width + 0.01, height + 0.01, depth + 0.01]} />
+              <meshBasicMaterial visible={false} />
+              <Edges threshold={15} color={hasCollision ? "#EF4444" : "#818cf8"} />
+            </mesh>
+          </group>
+        ) : (
+          <mesh position={[0, height / 2, 0]}>
+            <boxGeometry args={[width, height, depth]} />
+            <meshBasicMaterial
+              color={hasCollision ? "#EF4444" : "#6366f1"}
+              transparent
+              opacity={0.25}
+            />
+            <Edges threshold={15} color={hasCollision ? "#EF4444" : "#818cf8"} />
+          </mesh>
+        )}
       </group>
 
       {/* Snap edge indicator (world space) */}
@@ -413,6 +538,7 @@ function SceneContent() {
 
       <CameraController is3D={is3D} mode={mode} />
       <DropHandler />
+      <DragGhost />
 
       <GridPlane
         gridSize={gridSize}
@@ -465,11 +591,13 @@ function SceneContent() {
       {/* Ghost preview when placing from sidebar */}
       {ghostItem && ghostPos && ghostDef && (
         <GhostPreview
+          furnitureType={ghostDef.type}
           position={ghostPos}
           rotation={0}
           width={ghostDef.width}
           depth={ghostDef.depth}
           height={ghostDef.height}
+          color={ghostDef.color}
           hasCollision={ghostHasCollision}
           snapEdge={ghostSnapEdge}
           walls={walls}

@@ -2,6 +2,8 @@
 
 import React, { useRef, useState } from "react";
 import { Edges } from "@react-three/drei";
+import { useThree, useFrame } from "@react-three/fiber";
+import * as THREE from "three";
 import {
   useDesignerStore,
   useSelectedIds,
@@ -46,6 +48,7 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const snap = useSnap();
   const gridSize = useGridSize();
   const is3D = useIs3D();
+  const { raycaster, camera, pointer } = useThree();
 
   const select = useDesignerStore((s) => s.select);
   const toggleSelect = useDesignerStore((s) => s.toggleSelect);
@@ -58,6 +61,7 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const [dragPos, setDragPos] = useState<[number, number]>(item.position);
   const [snapEdge, setSnapEdge] = useState<SnapEdge | null>(null);
   const groupRef = useRef<any>(null);
+  const groundPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
 
   const isSelected = selectedIds.includes(item.id);
   const pos = dragging ? dragPos : item.position;
@@ -82,18 +86,21 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
 
     setDragging(true);
     setStoreDragging(true);
-    (e.target as any)?.setPointerCapture?.(e.pointerId);
   };
 
-  const handlePointerMove = (e: any) => {
+  // Update drag position every frame using ground-plane raycast
+  // This avoids issues with pointer capture and mesh-surface e.point
+  useFrame(() => {
     if (!dragging) return;
-    e.stopPropagation();
-    const point = e.point;
-    if (!point) return;
+
+    raycaster.setFromCamera(pointer, camera);
+    const intersection = new THREE.Vector3();
+    const hit = raycaster.ray.intersectPlane(groundPlane.current, intersection);
+    if (!hit) return;
 
     const result = smartSnap(
-      point.x,
-      point.z,
+      intersection.x,
+      intersection.z,
       itemDesc,
       walls,
       furniture,
@@ -103,7 +110,7 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
 
     setDragPos(result.position);
     setSnapEdge(result.snapEdge);
-  };
+  });
 
   const handlePointerUp = (e: any) => {
     if (!dragging) return;
@@ -111,7 +118,6 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     setDragging(false);
     setStoreDragging(false);
     setSnapEdge(null);
-    (e.target as any)?.releasePointerCapture?.(e.pointerId);
 
     if (!hasCollision) {
       moveFurniture(item.id, dragPos);
@@ -129,7 +135,6 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
         position={[pos[0], 0, pos[1]]}
         rotation={[0, item.rotation, 0]}
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
         {ModelComponent && (
