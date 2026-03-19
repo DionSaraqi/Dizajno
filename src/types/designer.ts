@@ -24,6 +24,8 @@ export interface FurnitureData {
   color: string;
   /** When false/undefined the item is a ghost being placed; true means it is permanently placed */
   locked?: boolean;
+  /** Uniform scale multiplier (default 1.0). Affects width/depth/height proportionally. */
+  scale?: number;
 }
 
 export type FurnitureCategory = "Seating" | "Tables" | "Bedroom" | "Storage";

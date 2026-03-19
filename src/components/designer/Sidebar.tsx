@@ -73,6 +73,7 @@ function PropertiesSection() {
   const removeWall = useDesignerStore((s) => s.removeWall);
   const duplicateFurniture = useDesignerStore((s) => s.duplicateFurniture);
   const rotateFurniture = useDesignerStore((s) => s.rotateFurniture);
+  const scaleFurniture = useDesignerStore((s) => s.scaleFurniture);
   const updateWall = useDesignerStore((s) => s.updateWall);
 
   if (selectedIds.length !== 1) return null;
@@ -258,6 +259,27 @@ function PropertiesSection() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Scale */}
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Scale ({Math.round((selectedFurniture.scale ?? 1) * 100)}%)
+                </h4>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2"
+                  step="0.05"
+                  value={selectedFurniture.scale ?? 1}
+                  onChange={(e) => scaleFurniture(selectedFurniture.id, parseFloat(e.target.value))}
+                  className="w-full slider-input"
+                />
+                <div className="flex justify-between text-[9px] text-dizajno-muted font-mono mt-0.5">
+                  <span>50%</span>
+                  <span>100%</span>
+                  <span>200%</span>
                 </div>
               </div>
 

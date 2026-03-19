@@ -7,6 +7,7 @@ import type {
   FurnitureData,
   DesignerMode,
 } from "@/types/designer";
+import { getFurnitureDef } from "@/utils/furnitureCatalog";
 
 // ── Actions Interface ───────────────────────────────────────────────────────
 
@@ -24,6 +25,7 @@ interface DesignerActions {
   placeFurniture: (item: FurnitureData) => void;
   moveFurniture: (id: string, position: [number, number]) => void;
   rotateFurniture: (id: string) => void;
+  scaleFurniture: (id: string, scale: number) => void;
   removeFurniture: (id: string) => void;
   duplicateFurniture: (id: string) => void;
   deleteSelected: () => void;
@@ -112,6 +114,22 @@ export const useDesignerStore = create<DesignerStore>()(
           furniture: s.furniture.map((f) =>
             f.id === id ? { ...f, rotation: f.rotation + Math.PI / 2 } : f
           ),
+        })),
+      scaleFurniture: (id, scale) =>
+        set((s) => ({
+          furniture: s.furniture.map((f) => {
+            if (f.id !== id) return f;
+            const def = getFurnitureDef(f.type);
+            if (!def) return f;
+            // Apply uniform scale relative to the catalog base dimensions
+            return {
+              ...f,
+              scale,
+              width: def.width * scale,
+              depth: def.depth * scale,
+              height: def.height * scale,
+            };
+          }),
         })),
       removeFurniture: (id) =>
         set((s) => ({
