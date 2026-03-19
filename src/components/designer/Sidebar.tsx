@@ -328,15 +328,10 @@ export default function Sidebar() {
       // Set active furniture type so the 3D ghost preview knows what to show
       setActiveFurniture(item.type);
 
-      // Create a custom drag image
-      const dragEl = document.createElement("div");
-      dragEl.textContent = item.label;
-      dragEl.style.cssText =
-        "position:absolute;top:-999px;padding:6px 12px;background:#6366f1;color:white;border-radius:6px;font-size:12px;font-weight:500;pointer-events:none;";
-      document.body.appendChild(dragEl);
-      e.dataTransfer.setDragImage(dragEl, 40, 16);
-      // Clean up
-      requestAnimationFrame(() => document.body.removeChild(dragEl));
+      // Use a transparent 1x1 image so only the 3D ghost on canvas is visible
+      const emptyImg = new Image();
+      emptyImg.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+      e.dataTransfer.setDragImage(emptyImg, 0, 0);
     },
     [setActiveFurniture]
   );

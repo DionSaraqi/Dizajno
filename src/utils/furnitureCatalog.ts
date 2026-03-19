@@ -193,6 +193,23 @@ export const furnitureCatalog: FurnitureCatalogItem[] = [
     svgPreview: svgPreviews.chair,
   },
   {
+    type: "armchair",
+    label: "Armchair",
+    // Actual rendered (raw: 1.0 x 0.913 x 0.948, scale: 0.85)
+    width: 0.85,
+    depth: 0.81,
+    height: 0.78,
+    color: "#8B6B4A",
+    icon: "armchair",
+    category: "Seating",
+    svgPreview: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+      <rect x="8" y="8" width="84" height="84" rx="8" fill="#8B6B4A" stroke="currentColor" stroke-width="2"/>
+      <rect x="14" y="30" width="72" height="56" rx="4" fill="#9B7B5A" stroke="currentColor" stroke-width="1"/>
+      <rect x="8" y="8" width="84" height="26" rx="6" fill="#7B5B3A" stroke="currentColor" stroke-width="2"/>
+    </svg>`,
+    modelUrl: "/models/armchair.glb",
+  },
+  {
     type: "sofa",
     label: "Sofa",
     width: 2.0,
