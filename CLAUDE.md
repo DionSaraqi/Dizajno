@@ -2,6 +2,13 @@
 
 A browser-based 2D/3D room designer where users draw walls, place furniture via drag-and-drop, and visualize rooms in 3D.
 
+## Git Workflow
+
+**Never push directly to main.** Always:
+1. Create a feature branch (e.g. `feat/...`, `fix/...`)
+2. Commit and push to that branch
+3. **Ask the user before merging** into main
+
 ## Commands
 
 ```bash
