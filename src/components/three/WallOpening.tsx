@@ -15,6 +15,7 @@ interface WallOpeningProps {
   hovered?: boolean;
   ghost?: boolean;
   onClick?: (e: any) => void;
+  onPointerDown?: (e: any) => void;
   onPointerOver?: (e: any) => void;
   onPointerOut?: (e: any) => void;
 }
@@ -32,6 +33,7 @@ export default function WallOpening({
   hovered = false,
   ghost = false,
   onClick,
+  onPointerDown,
   onPointerOver,
   onPointerOut,
 }: WallOpeningProps) {
@@ -124,6 +126,7 @@ export default function WallOpening({
       rotation={[0, -angle, 0]}
       renderOrder={1}
       onClick={stopAndCall(onClick)}
+      onPointerDown={stopAndCall(onPointerDown)}
       onPointerOver={stopAndCall(onPointerOver)}
       onPointerOut={stopAndCall(onPointerOut)}
     >

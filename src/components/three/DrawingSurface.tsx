@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
 import {
@@ -349,8 +349,10 @@ function SceneContent() {
   const setDrawingFrom = useDesignerStore((s) => s.setDrawingFrom);
   const placeFurniture = useDesignerStore((s) => s.placeFurniture);
   const addOpening = useDesignerStore((s) => s.addOpening);
+  const updateOpening = useDesignerStore((s) => s.updateOpening);
   const select = useDesignerStore((s) => s.select);
   const setHoveredId = useDesignerStore((s) => s.setHoveredId);
+  const setStoreDragging = useDesignerStore((s) => s.setDragging);
   const selectedIds = useSelectedIds();
   const activeFurnitureType = useDesignerStore((s) => s.activeFurnitureType);
   const setMode = useDesignerStore((s) => s.setMode);
@@ -372,6 +374,50 @@ function SceneContent() {
     wallEnd: [number, number];
     wallThicknessLocal: number;
   } | null>(null);
+
+  // Opening drag state
+  const draggingOpeningRef = useRef<{
+    openingId: string;
+    wallId: string;
+    width: number;
+  } | null>(null);
+  const { raycaster, camera, pointer } = useThree();
+  const groundPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+
+  // Smoothly update opening position each frame during drag
+  useFrame(() => {
+    const drag = draggingOpeningRef.current;
+    if (!drag) return;
+
+    raycaster.setFromCamera(pointer, camera);
+    const intersection = new THREE.Vector3();
+    const hit = raycaster.ray.intersectPlane(groundPlaneRef.current, intersection);
+    if (!hit) return;
+
+    const wall = walls.find((w) => w.id === drag.wallId);
+    if (!wall) return;
+
+    const offset = projectPointOntoWall(intersection.x, intersection.z, wall);
+    if (offset === null) return;
+
+    const wallLen = Math.sqrt(
+      (wall.end[0] - wall.start[0]) ** 2 + (wall.end[1] - wall.start[1]) ** 2
+    );
+    const clamped = Math.max(0.05, Math.min(wallLen - drag.width - 0.05, offset - drag.width / 2));
+    updateOpening(drag.openingId, { offsetFromStart: clamped });
+  });
+
+  // Release opening drag on pointer up (window-level listener)
+  useEffect(() => {
+    const handlePointerUp = () => {
+      if (draggingOpeningRef.current) {
+        draggingOpeningRef.current = null;
+        setStoreDragging(false);
+      }
+    };
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => window.removeEventListener("pointerup", handlePointerUp);
+  }, [setStoreDragging]);
 
   const getSnappedPoint = useCallback(
     (e: any): [number, number] | null => {
@@ -713,7 +759,19 @@ function SceneContent() {
             selected={selectedIds.includes(opening.id)}
             hovered={hoveredId === opening.id}
             onClick={() => {
-              if (mode === "select") select(opening.id);
+              if (mode === "select" && !draggingOpeningRef.current) select(opening.id);
+            }}
+            onPointerDown={(e: any) => {
+              if (mode === "select" && e.button === 0) {
+                e.stopPropagation();
+                select(opening.id);
+                draggingOpeningRef.current = {
+                  openingId: opening.id,
+                  wallId: opening.wallId,
+                  width: opening.width,
+                };
+                setStoreDragging(true);
+              }
             }}
             onPointerOver={() => {
               if (!useDesignerStore.getState().isDragging) setHoveredId(opening.id);
