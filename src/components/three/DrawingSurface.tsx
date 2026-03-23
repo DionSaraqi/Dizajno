@@ -19,6 +19,9 @@ import {
   usePendingDrop,
   useDragPreview,
   useSelectedIds,
+  useOpenings,
+  useHoveredId,
+  usePendingOpeningType,
 } from "@/store/useDesignerStore";
 import GridPlane from "./GridPlane";
 import CameraController from "./CameraController";
@@ -40,7 +43,8 @@ import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
 import { findFloors, addWallWithIntersections, snapToCorner } from "@/utils/wallGraph";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { checkFurnitureCollision } from "@/utils/collision";
-import type { FurnitureData } from "@/types/designer";
+import type { FurnitureData, WallData, OpeningData } from "@/types/designer";
+import WallOpening from "./WallOpening";
 
 // ── Drop Handler Component (runs inside Canvas) ────────────────────────────
 
@@ -101,9 +105,10 @@ function DropHandler() {
 
     if (!checkFurnitureCollision(newItem, state.furniture, state.walls)) {
       state.placeFurniture(newItem);
-      state.select(newItem.id);
     }
 
+    // Deselect sidebar item after placing
+    state.setMode("select");
     state.setPendingDrop(null);
   }, [pendingDrop, camera, raycaster, snap, gridSize, walls, furniture]);
 
@@ -307,6 +312,20 @@ function GhostPreview({
   );
 }
 
+// ── Opening Placement Helpers ────────────────────────────────────────────────
+
+/** Project a world XZ point onto a specific wall, returning the offset (meters) from wall start. */
+function projectPointOntoWall(cx: number, cz: number, wall: WallData): number | null {
+  const ax = wall.start[0], az = wall.start[1];
+  const bx = wall.end[0], bz = wall.end[1];
+  const dx = bx - ax, dz = bz - az;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq < 0.0001) return null;
+
+  const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cz - az) * dz) / lenSq));
+  return t * Math.sqrt(lenSq);
+}
+
 // ── Scene Content ───────────────────────────────────────────────────────────
 
 function SceneContent() {
@@ -321,13 +340,20 @@ function SceneContent() {
   const wallThickness = useWallThickness();
   const wallHeight = useWallHeight();
 
+  const openings = useOpenings();
+  const hoveredId = useHoveredId();
+  const pendingOpeningType = usePendingOpeningType();
+
   const addWall = useDesignerStore((s) => s.addWall);
   const setWallsAndFloors = useDesignerStore((s) => s.setWallsAndFloors);
   const setDrawingFrom = useDesignerStore((s) => s.setDrawingFrom);
   const placeFurniture = useDesignerStore((s) => s.placeFurniture);
+  const addOpening = useDesignerStore((s) => s.addOpening);
   const select = useDesignerStore((s) => s.select);
+  const setHoveredId = useDesignerStore((s) => s.setHoveredId);
   const selectedIds = useSelectedIds();
   const activeFurnitureType = useDesignerStore((s) => s.activeFurnitureType);
+  const setMode = useDesignerStore((s) => s.setMode);
   const clearSelection = useDesignerStore((s) => s.clearSelection);
 
   const [previewEnd, setPreviewEnd] = useState<[number, number] | null>(null);
@@ -337,6 +363,15 @@ function SceneContent() {
   // Ghost furniture state (furniture mode hover)
   const [ghostPos, setGhostPos] = useState<[number, number] | null>(null);
   const [ghostSnapEdge, setGhostSnapEdge] = useState<SnapEdge | null>(null);
+
+  // Ghost opening state (opening mode hover)
+  const [ghostOpening, setGhostOpening] = useState<{
+    wallId: string;
+    offsetFromStart: number;
+    wallStart: [number, number];
+    wallEnd: [number, number];
+    wallThicknessLocal: number;
+  } | null>(null);
 
   const getSnappedPoint = useCallback(
     (e: any): [number, number] | null => {
@@ -430,8 +465,9 @@ function SceneContent() {
 
         if (!checkFurnitureCollision(newItem, state.furniture, state.walls)) {
           placeFurniture(newItem);
-          select(newItem.id);
         }
+        // Deselect sidebar item after placing
+        setMode("select");
         setGhostPos(null);
         setGhostSnapEdge(null);
         return;
@@ -573,9 +609,65 @@ function SceneContent() {
           thickness={wall.thickness}
           height={is3D ? wall.height : 0.15}
           selected={selectedIds.includes(wall.id)}
-          onClick={() => {
+          hovered={hoveredId === wall.id}
+          openings={openings.filter((o) => o.wallId === wall.id)}
+          onClick={(e: any) => {
             if (mode === "select" || mode === "draw") {
               select(wall.id);
+            }
+            // Place opening directly on the clicked wall (avoids click-through)
+            if (mode === "opening" && pendingOpeningType && e.point) {
+              const hit = projectPointOntoWall(e.point.x, e.point.z, wall);
+              if (hit === null) return;
+
+              const wallLen = Math.sqrt(
+                (wall.end[0] - wall.start[0]) ** 2 + (wall.end[1] - wall.start[1]) ** 2
+              );
+              const opWidth = pendingOpeningType === "door" ? 0.9 : 1.2;
+              const opHeight = pendingOpeningType === "door" ? 2.1 : 1.0;
+              const opSill = pendingOpeningType === "door" ? 0 : 0.9;
+
+              if (wallLen < opWidth + 0.1) return;
+              const clampedOffset = Math.max(0.05, Math.min(wallLen - opWidth - 0.05, hit - opWidth / 2));
+
+              addOpening({
+                id: `opening-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                wallId: wall.id,
+                type: pendingOpeningType,
+                offsetFromStart: clampedOffset,
+                width: opWidth,
+                height: opHeight,
+                sillHeight: opSill,
+              });
+              select(`opening-${Date.now()}`); // won't match — effectively no selection
+              clearSelection();
+              setGhostOpening(null);
+            }
+          }}
+          onPointerOver={() => {
+            if (!useDesignerStore.getState().isDragging) setHoveredId(wall.id);
+          }}
+          onPointerOut={() => {
+            setHoveredId(null);
+            if (mode === "opening") setGhostOpening(null);
+          }}
+          onPointerMove={(e: any) => {
+            // Show ghost opening preview on the hovered wall
+            if (mode === "opening" && pendingOpeningType && e.point) {
+              const hit = projectPointOntoWall(e.point.x, e.point.z, wall);
+              if (hit === null) { setGhostOpening(null); return; }
+              const wallLen = Math.sqrt(
+                (wall.end[0] - wall.start[0]) ** 2 + (wall.end[1] - wall.start[1]) ** 2
+              );
+              const opWidth = pendingOpeningType === "door" ? 0.9 : 1.2;
+              const clampedOffset = Math.max(0.05, Math.min(wallLen - opWidth - 0.05, hit - opWidth / 2));
+              setGhostOpening({
+                wallId: wall.id,
+                offsetFromStart: clampedOffset,
+                wallStart: wall.start,
+                wallEnd: wall.end,
+                wallThicknessLocal: wall.thickness,
+              });
             }
           }}
         />
@@ -605,6 +697,57 @@ function SceneContent() {
       {floors.map((floor) => (
         <FloorMesh key={floor.id} vertices={floor.vertices} />
       ))}
+
+      {/* Openings (door/window frames rendered in world space) */}
+      {openings.map((opening) => {
+        const wall = walls.find((w) => w.id === opening.wallId);
+        if (!wall) return null;
+        return (
+          <WallOpening
+            key={opening.id}
+            opening={opening}
+            wallStart={wall.start}
+            wallEnd={wall.end}
+            wallThickness={wall.thickness}
+            wallHeight={is3D ? wall.height : 0.15}
+            selected={selectedIds.includes(opening.id)}
+            hovered={hoveredId === opening.id}
+            onClick={() => {
+              if (mode === "select") select(opening.id);
+            }}
+            onPointerOver={() => {
+              if (!useDesignerStore.getState().isDragging) setHoveredId(opening.id);
+            }}
+            onPointerOut={() => setHoveredId(null)}
+          />
+        );
+      })}
+
+      {/* Ghost opening preview */}
+      {ghostOpening && pendingOpeningType && (() => {
+        const opWidth = pendingOpeningType === "door" ? 0.9 : 1.2;
+        const opHeight = pendingOpeningType === "door" ? 2.1 : 1.0;
+        const opSill = pendingOpeningType === "door" ? 0 : 0.9;
+        const wallH = is3D ? (walls.find((w) => w.id === ghostOpening.wallId)?.height ?? wallHeight) : 0.15;
+        return (
+          <WallOpening
+            opening={{
+              id: "__ghost_opening__",
+              wallId: ghostOpening.wallId,
+              type: pendingOpeningType,
+              offsetFromStart: ghostOpening.offsetFromStart,
+              width: opWidth,
+              height: opHeight,
+              sillHeight: opSill,
+            }}
+            wallStart={ghostOpening.wallStart}
+            wallEnd={ghostOpening.wallEnd}
+            wallThickness={ghostOpening.wallThicknessLocal}
+            wallHeight={wallH}
+            ghost
+          />
+        );
+      })()}
 
       {/* Furniture */}
       {furniture.map((item) => (

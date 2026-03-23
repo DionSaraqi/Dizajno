@@ -29,6 +29,7 @@ export default function RootLayout({
         className={`${inter.variable} ${jetBrainsMono.variable} antialiased`}
       >
         {children}
+        <div className="grain-overlay" aria-hidden />
       </body>
     </html>
   );

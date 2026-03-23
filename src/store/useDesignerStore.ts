@@ -5,6 +5,8 @@ import type {
   WallData,
   FloorData,
   FurnitureData,
+  OpeningData,
+  OpeningType,
   DesignerMode,
 } from "@/types/designer";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
@@ -30,6 +32,11 @@ interface DesignerActions {
   duplicateFurniture: (id: string) => void;
   deleteSelected: () => void;
 
+  // Opening actions
+  addOpening: (opening: OpeningData) => void;
+  removeOpening: (id: string) => void;
+  updateOpening: (id: string, changes: Partial<Omit<OpeningData, "id" | "wallId">>) => void;
+
   // Selection actions
   select: (id: string | null) => void;
   selectMultiple: (ids: string[]) => void;
@@ -37,9 +44,13 @@ interface DesignerActions {
   selectAll: () => void;
   clearSelection: () => void;
 
+  // Hover
+  setHoveredId: (id: string | null) => void;
+
   // Mode & UI
   setMode: (mode: DesignerMode) => void;
   setActiveFurniture: (furnitureType: string | null) => void;
+  setPendingOpeningType: (type: OpeningType | null) => void;
   toggleIs3D: () => void;
   setSnap: (snap: boolean) => void;
   setGridSize: (size: number) => void;
@@ -65,11 +76,14 @@ const initialState: DesignerState = {
   walls: [],
   floors: [],
   furniture: [],
+  openings: [],
   drawingFrom: null,
   activeFurnitureType: null,
+  pendingOpeningType: null,
   mode: "draw",
   is3D: false,
   selectedIds: [],
+  hoveredId: null,
   snap: true,
   gridSize: 1,
   wallThickness: 0.15,
@@ -90,6 +104,7 @@ export const useDesignerStore = create<DesignerStore>()(
       addWall: (wall) => set((s) => ({ walls: [...s.walls, wall] })),
       removeWall: (id) => set((s) => ({
         walls: s.walls.filter((w) => w.id !== id),
+        openings: s.openings.filter((o) => o.wallId !== id),
         selectedIds: s.selectedIds.filter((sid) => sid !== id),
       })),
       setWalls: (walls) => set({ walls }),
@@ -155,8 +170,24 @@ export const useDesignerStore = create<DesignerStore>()(
         set((s) => ({
           furniture: s.furniture.filter((f) => !s.selectedIds.includes(f.id)),
           walls: s.walls.filter((w) => !s.selectedIds.includes(w.id)),
+          openings: s.openings.filter((o) => {
+            // Remove openings for deleted walls AND directly selected openings
+            const wallDeleted = s.selectedIds.includes(o.wallId);
+            const openingSelected = s.selectedIds.includes(o.id);
+            return !wallDeleted && !openingSelected;
+          }),
           selectedIds: [],
         })),
+
+      // Opening actions
+      addOpening: (opening) => set((s) => ({ openings: [...s.openings, opening] })),
+      removeOpening: (id) => set((s) => ({
+        openings: s.openings.filter((o) => o.id !== id),
+        selectedIds: s.selectedIds.filter((sid) => sid !== id),
+      })),
+      updateOpening: (id, changes) => set((s) => ({
+        openings: s.openings.map((o) => o.id === id ? { ...o, ...changes } : o),
+      })),
 
       // Selection
       select: (id) => set({ selectedIds: id ? [id] : [] }),
@@ -176,11 +207,16 @@ export const useDesignerStore = create<DesignerStore>()(
         })),
       clearSelection: () => set({ selectedIds: [] }),
 
+      // Hover
+      setHoveredId: (id) => set({ hoveredId: id }),
+
       // Mode & UI
       setMode: (mode) =>
-        set({ mode, activeFurnitureType: null, selectedIds: [] }),
+        set({ mode, activeFurnitureType: null, pendingOpeningType: null, selectedIds: [] }),
       setActiveFurniture: (furnitureType) =>
         set({ activeFurnitureType: furnitureType, mode: "furniture" }),
+      setPendingOpeningType: (type) =>
+        set({ pendingOpeningType: type, mode: "opening", activeFurnitureType: null, selectedIds: [] }),
       toggleIs3D: () => set((s) => ({ is3D: !s.is3D })),
       setSnap: (snap) => set({ snap }),
       setGridSize: (size) => set({ gridSize: size }),
@@ -203,13 +239,15 @@ export const useDesignerStore = create<DesignerStore>()(
         walls: state.walls,
         floors: state.floors,
         furniture: state.furniture,
+        openings: state.openings,
       }),
       limit: 50,
       // Prevent duplicate undo entries when state hasn't actually changed
       equality: (past, current) =>
         past.walls === current.walls &&
         past.floors === current.floors &&
-        past.furniture === current.furniture,
+        past.furniture === current.furniture &&
+        past.openings === current.openings,
     }
   )
 );
@@ -233,3 +271,6 @@ export const useWallHeight = () => useDesignerStore((s) => s.wallHeight);
 export const useIsDragging = () => useDesignerStore((s) => s.isDragging);
 export const usePendingDrop = () => useDesignerStore((s) => s.pendingDrop);
 export const useDragPreview = () => useDesignerStore((s) => s.dragPreview);
+export const useOpenings = () => useDesignerStore((s) => s.openings);
+export const useHoveredId = () => useDesignerStore((s) => s.hoveredId);
+export const usePendingOpeningType = () => useDesignerStore((s) => s.pendingOpeningType);

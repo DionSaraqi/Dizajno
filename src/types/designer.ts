@@ -91,12 +91,29 @@ export interface FurnitureCatalogItem {
   collisionBoxes?: CollisionBox[];
 }
 
-export type DesignerMode = "draw" | "select" | "furniture";
+export type OpeningType = "door" | "window";
+
+export interface OpeningData {
+  id: string;
+  wallId: string;
+  type: OpeningType;
+  /** Distance from wall start point (meters) to the near edge of the opening */
+  offsetFromStart: number;
+  /** Opening width in meters */
+  width: number;
+  /** Opening height in meters */
+  height: number;
+  /** Distance from floor to bottom of opening — 0 for doors, ~0.9 for windows */
+  sillHeight: number;
+}
+
+export type DesignerMode = "draw" | "select" | "furniture" | "opening";
 
 export interface DesignerState {
   walls: WallData[];
   floors: FloorData[];
   furniture: FurnitureData[];
+  openings: OpeningData[];
 
   // Drawing state
   drawingFrom: [number, number] | null;
@@ -104,10 +121,14 @@ export interface DesignerState {
   // Active furniture type being placed from sidebar
   activeFurnitureType: string | null;
 
+  // Active opening type being placed (door or window)
+  pendingOpeningType: OpeningType | null;
+
   // UI
   mode: DesignerMode;
   is3D: boolean;
   selectedIds: string[];
+  hoveredId: string | null;
   snap: boolean;
   gridSize: number;
   wallThickness: number;

@@ -15,6 +15,8 @@ import {
   Square,
   ChevronDown,
   Layers,
+  DoorOpen,
+  AppWindow,
 } from "lucide-react";
 import {
   useDesignerStore,
@@ -24,6 +26,7 @@ import {
   useWallThickness,
   useWallHeight,
   useSelectedIds,
+  usePendingOpeningType,
 } from "@/store/useDesignerStore";
 import { Tooltip } from "@/components/ui";
 
@@ -163,8 +166,10 @@ export default function Toolbar() {
   const wallThickness = useWallThickness();
   const wallHeight = useWallHeight();
   const selectedIds = useSelectedIds();
+  const pendingOpeningType = usePendingOpeningType();
 
   const setMode = useDesignerStore((s) => s.setMode);
+  const setPendingOpeningType = useDesignerStore((s) => s.setPendingOpeningType);
   const toggleIs3D = useDesignerStore((s) => s.toggleIs3D);
   const setSnap = useDesignerStore((s) => s.setSnap);
   const setWallThickness = useDesignerStore((s) => s.setWallThickness);
@@ -311,6 +316,56 @@ export default function Toolbar() {
         setWallThickness={setWallThickness}
         setWallHeight={setWallHeight}
       />
+
+      <Divider />
+
+      {/* ── Openings (door / window) ── */}
+      <div
+        className="flex gap-0.5 bg-dizajno-bg rounded-lg p-0.5 border border-dizajno-border"
+        role="group"
+        aria-label="Opening tools"
+      >
+        <Tooltip content="Place Door (click on a wall)" side="bottom">
+          <button
+            type="button"
+            onClick={() =>
+              mode === "opening" && pendingOpeningType === "door"
+                ? setMode("select")
+                : setPendingOpeningType("door")
+            }
+            aria-pressed={mode === "opening" && pendingOpeningType === "door"}
+            className={[
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-150",
+              mode === "opening" && pendingOpeningType === "door"
+                ? "bg-dizajno-accent text-white shadow-sm"
+                : "text-dizajno-muted hover:text-dizajno-text hover:bg-dizajno-elevated",
+            ].join(" ")}
+          >
+            <DoorOpen size={14} />
+            <span>Door</span>
+          </button>
+        </Tooltip>
+        <Tooltip content="Place Window (click on a wall)" side="bottom">
+          <button
+            type="button"
+            onClick={() =>
+              mode === "opening" && pendingOpeningType === "window"
+                ? setMode("select")
+                : setPendingOpeningType("window")
+            }
+            aria-pressed={mode === "opening" && pendingOpeningType === "window"}
+            className={[
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-150",
+              mode === "opening" && pendingOpeningType === "window"
+                ? "bg-dizajno-accent text-white shadow-sm"
+                : "text-dizajno-muted hover:text-dizajno-text hover:bg-dizajno-elevated",
+            ].join(" ")}
+          >
+            <AppWindow size={14} />
+            <span>Window</span>
+          </button>
+        </Tooltip>
+      </div>
 
       <Divider />
 

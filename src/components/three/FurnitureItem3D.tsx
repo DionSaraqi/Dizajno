@@ -10,6 +10,7 @@ import {
   useSnap,
   useGridSize,
   useIs3D,
+  useHoveredId,
 } from "@/store/useDesignerStore";
 import type { FurnitureData } from "@/types/designer";
 import { checkFurnitureCollision } from "@/utils/collision";
@@ -52,10 +53,12 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const is3D = useIs3D();
   const { raycaster, camera, pointer } = useThree();
 
+  const hoveredId = useHoveredId();
   const select = useDesignerStore((s) => s.select);
   const toggleSelect = useDesignerStore((s) => s.toggleSelect);
   const moveFurniture = useDesignerStore((s) => s.moveFurniture);
   const setStoreDragging = useDesignerStore((s) => s.setDragging);
+  const setHoveredId = useDesignerStore((s) => s.setHoveredId);
   const furniture = useDesignerStore((s) => s.furniture);
   const walls = useDesignerStore((s) => s.walls);
 
@@ -66,6 +69,7 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const groundPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
 
   const isSelected = selectedIds.includes(item.id);
+  const isHovered = hoveredId === item.id && !dragging;
   const pos = dragging ? dragPos : item.position;
 
   const tempItem: FurnitureData = { ...item, position: pos };
@@ -78,6 +82,16 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
 
   // Item descriptor for snap calculations
   const itemDesc = { id: item.id, rotation: item.rotation, width: item.width, depth: item.depth };
+
+  const handlePointerOver = (e: any) => {
+    e.stopPropagation();
+    setHoveredId(item.id);
+  };
+
+  const handlePointerOut = (e: any) => {
+    e.stopPropagation();
+    setHoveredId(null);
+  };
 
   const handlePointerDown = (e: any) => {
     e.stopPropagation();
@@ -140,6 +154,8 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
         rotation={[0, item.rotation, 0]}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
       >
         {hasGLTF ? (
           <GLTFModel
@@ -159,14 +175,14 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
           />
         ) : null}
 
-        {/* Selection highlight */}
-        {isSelected && (
+        {/* Hover / selection outline */}
+        {(isSelected || isHovered) && (
           <mesh position={[0, item.height / 2, 0]}>
             <boxGeometry
               args={[item.width + 0.02, item.height + 0.02, item.depth + 0.02]}
             />
             <meshBasicMaterial visible={false} />
-            <Edges threshold={15} color="#6366f1" />
+            <Edges threshold={15} color={isSelected ? "#ffffff" : "#00aaff"} />
           </mesh>
         )}
       </group>

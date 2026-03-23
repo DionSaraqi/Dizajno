@@ -22,6 +22,7 @@ import {
   useMode,
   useSelectedIds,
   useFurniture,
+  useOpenings,
 } from "@/store/useDesignerStore";
 import {
   furnitureCategories,
@@ -68,9 +69,12 @@ function PropertiesSection() {
   const [open, setOpen] = useState(true);
   const selectedIds = useSelectedIds();
   const furniture = useFurniture();
+  const openings = useOpenings();
   const walls = useDesignerStore((s) => s.walls);
   const removeFurniture = useDesignerStore((s) => s.removeFurniture);
   const removeWall = useDesignerStore((s) => s.removeWall);
+  const removeOpening = useDesignerStore((s) => s.removeOpening);
+  const updateOpening = useDesignerStore((s) => s.updateOpening);
   const duplicateFurniture = useDesignerStore((s) => s.duplicateFurniture);
   const rotateFurniture = useDesignerStore((s) => s.rotateFurniture);
   const scaleFurniture = useDesignerStore((s) => s.scaleFurniture);
@@ -81,8 +85,9 @@ function PropertiesSection() {
 
   const selectedFurniture = furniture.find((f) => f.id === selectedId);
   const selectedWall = walls.find((w) => w.id === selectedId);
+  const selectedOpening = openings.find((o) => o.id === selectedId);
 
-  if (!selectedFurniture && !selectedWall) return null;
+  if (!selectedFurniture && !selectedWall && !selectedOpening) return null;
 
   const def = selectedFurniture ? getFurnitureDef(selectedFurniture.type) : null;
 
@@ -114,7 +119,7 @@ function PropertiesSection() {
       >
         <div className="min-w-0">
           <span className="text-xs font-semibold text-dizajno-text truncate block">
-            {selectedWall ? "Wall" : (def?.label ?? selectedFurniture!.type)}
+            {selectedWall ? "Wall" : selectedOpening ? (selectedOpening.type === "door" ? "Door" : "Window") : (def?.label ?? selectedFurniture!.type)}
           </span>
           <span className="text-[10px] text-dizajno-muted">Properties</span>
         </div>
@@ -300,6 +305,96 @@ function PropertiesSection() {
                 >
                   <Trash2 size={12} />
                   Delete
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ── Opening (door/window) properties ── */}
+          {selectedOpening && (
+            <>
+              {/* Dimensions */}
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Dimensions
+                </h4>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div>
+                    <span className="text-[10px] text-dizajno-muted block">W</span>
+                    <span className="text-xs text-dizajno-text font-mono">{selectedOpening.width.toFixed(2)}m</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-dizajno-muted block">H</span>
+                    <span className="text-xs text-dizajno-text font-mono">{selectedOpening.height.toFixed(2)}m</span>
+                  </div>
+                  {selectedOpening.type === "window" && (
+                    <div>
+                      <span className="text-[10px] text-dizajno-muted block">Sill</span>
+                      <span className="text-xs text-dizajno-text font-mono">{selectedOpening.sillHeight.toFixed(2)}m</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Width slider */}
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Width
+                </h4>
+                <input
+                  type="range"
+                  min={selectedOpening.type === "door" ? 0.6 : 0.4}
+                  max={selectedOpening.type === "door" ? 2.4 : 2.0}
+                  step="0.05"
+                  value={selectedOpening.width}
+                  onChange={(e) => updateOpening(selectedOpening.id, { width: parseFloat(e.target.value) })}
+                  className="w-full slider-input"
+                />
+              </div>
+
+              {/* Height slider */}
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Height
+                </h4>
+                <input
+                  type="range"
+                  min={selectedOpening.type === "door" ? 1.8 : 0.4}
+                  max={selectedOpening.type === "door" ? 2.4 : 1.5}
+                  step="0.05"
+                  value={selectedOpening.height}
+                  onChange={(e) => updateOpening(selectedOpening.id, { height: parseFloat(e.target.value) })}
+                  className="w-full slider-input"
+                />
+              </div>
+
+              {/* Sill height slider — windows only */}
+              {selectedOpening.type === "window" && (
+                <div className="px-4 py-2 border-t border-dizajno-border">
+                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                    Sill Height
+                  </h4>
+                  <input
+                    type="range"
+                    min="0.3"
+                    max="1.2"
+                    step="0.05"
+                    value={selectedOpening.sillHeight}
+                    onChange={(e) => updateOpening(selectedOpening.id, { sillHeight: parseFloat(e.target.value) })}
+                    className="w-full slider-input"
+                  />
+                </div>
+              )}
+
+              {/* Delete */}
+              <div className="px-4 pt-2">
+                <button
+                  onClick={() => removeOpening(selectedOpening.id)}
+                  title="Delete"
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs rounded-md bg-dizajno-danger hover:bg-red-500 text-white transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-dizajno-accent/50"
+                >
+                  <Trash2 size={12} />
+                  Delete {selectedOpening.type === "door" ? "Door" : "Window"}
                 </button>
               </div>
             </>
