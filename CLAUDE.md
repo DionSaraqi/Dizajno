@@ -12,9 +12,9 @@ A browser-based 2D/3D room designer where users draw walls, place furniture via 
 ## Commands
 
 ```bash
-npm run dev      # Start dev server (localhost:3000)
-npm run build    # Production build
-npm run lint     # ESLint
+pnpm run dev      # Start dev server (localhost:3000)
+pnpm run build    # Production build
+pnpm run lint     # ESLint
 ```
 
 ## Tech Stack
@@ -40,7 +40,7 @@ src/
 │   ├── designer/           # Designer UI panels (Sidebar, Toolbar, PropertiesPanel, StatusBar)
 │   ├── three/              # R3F 3D components
 │   │   ├── landing/        # Landing page 3D scene (House, BlueDoor, Yard, HouseScene)
-│   │   ├── furniture/      # 3D furniture models (BedModel, ChairModel, etc.)
+│   │   ├── furniture/      # 3D furniture models (BedModel, ChairModel, GLTFModel, etc.)
 │   │   ├── DrawingSurface  # Wall drawing canvas (2D mode)
 │   │   ├── FloorMesh       # Auto-generated floor polygons
 │   │   ├── WallMesh        # 3D wall rendering
@@ -64,8 +64,17 @@ All designer state lives in `src/store/useDesignerStore.ts` (Zustand). Undo/redo
 
 ### Designer Modes
 - `draw` — Left-click-hold-drag to draw walls
-- `select` — Click to select/move furniture
+- `select` — Click to select; hold-click and drag to move furniture
 - `furniture` — Drag from sidebar to place furniture
+
+### Furniture Drag Behavior
+Furniture movement uses a **hold-to-drag** pattern (not instant drag on click):
+1. Click on an item → selects it (no movement)
+2. Hold left click + move mouse beyond a 0.05 world-unit threshold → drag begins
+3. Release → item drops at the new position (or snaps back if collision)
+- Uses `useFrame` + ground-plane raycast for smooth movement
+- A window-level `pointerup` listener ensures drag ends even when released outside the item mesh
+- Camera is locked (`isDragging` state) during drag to prevent orbit conflicts
 
 ### Floor Detection
 When walls form a closed polygon, `wallGraph.ts` uses a planar face traversal algorithm to automatically detect enclosed rooms and generate floor geometry.
@@ -96,22 +105,64 @@ When walls form a closed polygon, `wallGraph.ts` uses a planar face traversal al
 - All 3D components use React Three Fiber (R3F)
 - `DrawingSurface.tsx` is loaded with `dynamic()` (no SSR) since R3F requires browser APIs
 - `FloorMesh` creates `THREE.Shape` geometry and rotates from XY to XZ plane — note: Z coordinates must be negated when creating shapes due to `rotateX(-PI/2)` mapping
-- Furniture drag uses `useFrame` + ground-plane raycast (not `e.point` on mesh) for smooth movement
-- Camera is locked (`isDragging` state) during furniture drag/placement
 - Ghost preview shows actual furniture model during placement (semi-transparent, red if collision)
 - `DragGhost` component shows preview during HTML drag-and-drop from sidebar
 
 ### GLTF Model Pipeline
-- `GLTFModel.tsx` loads `.glb` files from `public/models/`, auto-scales uniformly to fit target dimensions
+`GLTFModel.tsx` loads `.glb` files from `public/models/`, auto-scales uniformly to fit target dimensions.
+
+#### Adding a New GLB Model
+
+**Step 1: Process the GLB file**
+Many GLB files (especially from AI generators like Tripo) have issues that must be fixed before use:
+
+1. **Check for node-level transforms** — Use `gltf-transform` (with `@gltf-transform/core`, `@gltf-transform/extensions`, `draco3dgltf`) to inspect node rotations/scales. Non-identity transforms inflate the AABB and cause oversized hitboxes.
+2. **Bake node transforms into vertex data** — Apply any node rotation/scale to vertex positions and normals using quaternion math, then reset the node transforms to identity.
+3. **Remove stale Draco extension** — When gltf-transform decodes Draco-compressed meshes and writes them back, the `KHR_draco_mesh_compression` extension declaration persists even though the output is uncompressed. This causes Three.js GLTFLoader to fail silently. Always `dispose()` the Draco extension before saving.
+4. **Verify file size** — A properly saved uncompressed GLB for furniture models should be ~5–15 MB. If the output is suspiciously small (e.g. 843 KB vs 9 MB expected), the data is likely corrupt.
+
+**Step 2: Measure and compute catalog dimensions**
+```bash
+# Install measurement tools (remove after use):
+pnpm add -D @gltf-transform/core @gltf-transform/extensions draco3dgltf
+
+# Measure raw vertex bounds after processing:
+node -e "..." # iterate all mesh primitives, read POSITION attribute, compute min/max
+
+# After measurement, remove dev deps:
+pnpm remove -D @gltf-transform/core @gltf-transform/extensions draco3dgltf
+```
+
+After measuring raw vertex bounds (rawX, rawY, rawZ):
+1. Pick a uniform scale factor (e.g. 2.5 to match other sectional sofas)
+2. Set catalog: `width = rawX × scale`, `height = rawY × scale`, `depth = rawZ × scale`
+3. Verify all three scale ratios (`width/rawX`, `height/rawY`, `depth/rawZ`) are nearly equal (within 1%) — if not, the hitbox will have dead space
+
+**Step 3: Define collision boxes**
+- For rectangular furniture: the default single AABB from `width × depth` is sufficient
+- For non-rectangular shapes (L-shaped sofas etc): visualize the XZ vertex footprint and define `collisionBoxes` — array of `{ offsetX, offsetZ, width, depth }` sub-boxes that tightly fit the actual geometry
+- `collisionBoxes` scale with the `scale` field and rotate with the item
+
+**Step 4: Add to catalog**
+Add the entry to `utils/furnitureCatalog.ts` with all computed values. Include `modelUrl`, `collisionBoxes` (if non-rectangular), `materialSlots` (for color customization), and `textureSlots` (for texture customization).
+
+#### Material System
 - Materials are deep-cloned per instance (ghost vs placed don't bleed)
 - Collision red uses emissive tint, not color replacement
-- **Critical: catalog width/depth must match the actual rendered model size.** The model is uniformly scaled by `Math.min(targetW/rawW, targetH/rawH, targetD/rawD)`. To get correct dimensions:
-  1. Measure the raw model: `node -e` script with GLTFLoader to get raw X/Y/Z
-  2. Pick a target depth (usually matches raw Z × scale)
-  3. Compute uniform scale = `min(targetW/rawX, targetH/rawY, targetD/rawZ)`
-  4. Set catalog width = `rawX × scale`, height = `rawY × scale`, depth = `rawZ × scale`
-- For non-rectangular shapes (L-shaped sofas etc), use `collisionBoxes` in the catalog — array of `{ offsetX, offsetZ, width, depth }` sub-boxes that tightly fit the actual geometry
-- `collisionBoxes` scale with the `scale` field and rotate with the item
+- `materialSlots` in the catalog defines named material slots with default hex colors — enables per-material color picker in the sidebar
+- `materialColors` on each furniture item stores per-material color overrides
+- Color acts as a **tint** that multiplies with the texture (`mat.color × mat.map`) — darker colors darken the texture, hue shifts tint it
+
+#### Texture System
+- `textureSlots` in the catalog defines available textures per material slot — array of URLs (first entry can be `""` for "None")
+- `materialTextures` on each furniture item stores per-material texture URL overrides
+- Textures are loaded with `THREE.TextureLoader`, applied with `RepeatWrapping` (4×4 tiling), `SRGBColorSpace`
+- Selecting "None" disposes the texture, removes `mat.map`, and restores the original material color
+- The texture and color effects run independently — changing a color doesn't reload the texture
+- Texture files live in `public/textures/`
+
+#### Key Constraints
+- **Catalog width/depth must match the actual rendered model size.** The model is uniformly scaled by `Math.min(targetW/rawW, targetH/rawH, targetD/rawD)`. Mismatched dimensions cause the hitbox to be larger than the visible model.
 - Uniform scale slider (50%–200%) in properties panel scales width/depth/height proportionally from catalog base
 
 ### Landing Page
@@ -125,7 +176,6 @@ When walls form a closed polygon, `wallGraph.ts` uses a planar face traversal al
 - Use `@/*` path alias for imports (maps to `src/*`)
 - Coordinates are `[x, z]` tuples in the XZ plane (Y is up)
 - IDs use `type-timestamp` format (e.g., `wall-1718234567890`)
-- Furniture models are simple Three.js box geometries with color and `opacity` prop
 - All 3D canvas components must be client-side only (`"use client"` or dynamic import with `ssr: false`)
 - Wall endpoints snap to grid and to existing corners when snap is enabled
 - Package manager is **pnpm** (not npm)
@@ -133,5 +183,10 @@ When walls form a closed polygon, `wallGraph.ts` uses a planar face traversal al
 ## Known Patterns
 
 - The designer has two parallel state systems: the older `DesignerProvider` (React Context + useReducer in `components/designer/`) and the newer Zustand store (`store/useDesignerStore.ts`). The Zustand store is the canonical one going forward.
-- Furniture catalog is defined in `utils/furnitureCatalog.ts` — add new furniture types there. Each item has an `svgPreview` for the sidebar thumbnail and optional `modelUrl` for future GLTF loading.
+- Furniture catalog is defined in `utils/furnitureCatalog.ts` — add new furniture types there. Each item has an `svgPreview` for the sidebar thumbnail, optional `modelUrl` for GLTF loading, `materialSlots` for color customization, and `textureSlots` for texture customization.
 - Properties panel is a collapsible section inside the left sidebar (not a separate right panel).
+
+## Troubleshooting
+
+- **Stale `.next` cache** — If you get `Cannot find module './719.js'` or similar webpack errors, stop the dev server, run `rm -rf .next`, and restart. This happens when the cache gets corrupted (e.g. after installing/removing packages).
+- **Chrome DevTools 404** — `GET /.well-known/appspecific/com.chrome.devtools.json 404` is harmless; Chrome checks for this automatically. Ignore it.
