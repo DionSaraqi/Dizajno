@@ -18,7 +18,7 @@ export default function Yard() {
       {/* ── Property Ground (slightly lighter) ── */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
         <planeGeometry args={[8, 7]} />
-        <SketchMaterial baseColor="#1a1a28" />
+        <SketchMaterial baseColor="#c8c8d0" />
       </mesh>
 
       {/* ── Walkway from fence to door ── */}

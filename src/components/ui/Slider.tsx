@@ -44,7 +44,7 @@ export default function Slider({
         onChange={(e) => onChange(parseFloat(e.target.value))}
         className="slider-input w-full h-1.5 rounded-full appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
         style={{
-          background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${percentage}%, #2e2e3a ${percentage}%, #2e2e3a 100%)`,
+          background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${percentage}%, #d8d8e3 ${percentage}%, #d8d8e3 100%)`,
         }}
       />
     </div>

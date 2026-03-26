@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Edges } from "@react-three/drei";
 import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
@@ -65,8 +65,15 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const [dragging, setDragging] = useState(false);
   const [dragPos, setDragPos] = useState<[number, number]>(item.position);
   const [snapEdge, setSnapEdge] = useState<SnapEdge | null>(null);
+  // Actual rendered model dimensions (from GLTFModel's uniform scaling)
+  const [modelBounds, setModelBounds] = useState<[number, number, number] | null>(null);
+  const handleBoundsComputed = useCallback((bounds: [number, number, number]) => setModelBounds(bounds), []);
   const groupRef = useRef<any>(null);
   const groundPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  // Track pointer-down state before drag threshold is met
+  const pointerDownRef = useRef(false);
+  const pointerStartRef = useRef<{ x: number; z: number } | null>(null);
+  const DRAG_THRESHOLD = 0.05; // world-space distance before drag starts
 
   const isSelected = selectedIds.includes(item.id);
   const isHovered = hoveredId === item.id && !dragging;
@@ -102,19 +109,34 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
       select(item.id);
     }
 
-    setDragging(true);
-    setStoreDragging(true);
+    // Record pointer-down; actual drag starts after threshold is exceeded
+    pointerDownRef.current = true;
+    raycaster.setFromCamera(pointer, camera);
+    const startPt = new THREE.Vector3();
+    raycaster.ray.intersectPlane(groundPlane.current, startPt);
+    pointerStartRef.current = { x: startPt.x, z: startPt.z };
   };
 
   // Update drag position every frame using ground-plane raycast
-  // This avoids issues with pointer capture and mesh-surface e.point
+  // Drag only begins after the pointer moves beyond DRAG_THRESHOLD while held
   useFrame(() => {
-    if (!dragging) return;
+    if (!pointerDownRef.current) return;
 
     raycaster.setFromCamera(pointer, camera);
     const intersection = new THREE.Vector3();
     const hit = raycaster.ray.intersectPlane(groundPlane.current, intersection);
     if (!hit) return;
+
+    // Check threshold before activating drag
+    if (!dragging) {
+      const start = pointerStartRef.current;
+      if (!start) return;
+      const dx = intersection.x - start.x;
+      const dz = intersection.z - start.z;
+      if (Math.sqrt(dx * dx + dz * dz) < DRAG_THRESHOLD) return;
+      setDragging(true);
+      setStoreDragging(true);
+    }
 
     const result = smartSnap(
       intersection.x,
@@ -130,9 +152,11 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     setSnapEdge(result.snapEdge);
   });
 
-  const handlePointerUp = (e: any) => {
+  const finishDrag = useCallback(() => {
+    pointerDownRef.current = false;
+    pointerStartRef.current = null;
+
     if (!dragging) return;
-    e.stopPropagation();
     setDragging(false);
     setStoreDragging(false);
     setSnapEdge(null);
@@ -141,7 +165,20 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
       moveFurniture(item.id, dragPos);
     }
     setDragPos(item.position);
+  }, [dragging, hasCollision, dragPos, item.id, item.position, moveFurniture, setStoreDragging]);
+
+  const handlePointerUp = (e: any) => {
+    e.stopPropagation();
+    finishDrag();
   };
+
+  // Global pointerup so drag ends even when released outside the item mesh
+  useEffect(() => {
+    if (!pointerDownRef.current && !dragging) return;
+    const onUp = () => finishDrag();
+    window.addEventListener("pointerup", onUp);
+    return () => window.removeEventListener("pointerup", onUp);
+  }, [dragging, finishDrag]);
 
   // Show measurements in 2D when selected and not currently dragging (or while dragging)
   const showMeasurements = !is3D && isSelected;
@@ -165,6 +202,9 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
             height={item.height}
             color={hasCollision ? "#EF4444" : item.color}
             opacity={1}
+            materialColors={item.materialColors}
+            materialTextures={item.materialTextures}
+            onBoundsComputed={handleBoundsComputed}
           />
         ) : ModelComponent ? (
           <ModelComponent

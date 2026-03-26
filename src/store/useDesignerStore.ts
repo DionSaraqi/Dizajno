@@ -28,6 +28,8 @@ interface DesignerActions {
   moveFurniture: (id: string, position: [number, number]) => void;
   rotateFurniture: (id: string) => void;
   scaleFurniture: (id: string, scale: number) => void;
+  setFurnitureMaterialColors: (id: string, colors: Record<string, string>) => void;
+  setFurnitureMaterialTextures: (id: string, textures: Record<string, string>) => void;
   removeFurniture: (id: string) => void;
   duplicateFurniture: (id: string) => void;
   deleteSelected: () => void;
@@ -145,6 +147,18 @@ export const useDesignerStore = create<DesignerStore>()(
               height: def.height * scale,
             };
           }),
+        })),
+      setFurnitureMaterialColors: (id, colors) =>
+        set((s) => ({
+          furniture: s.furniture.map((f) =>
+            f.id === id ? { ...f, materialColors: { ...f.materialColors, ...colors } } : f
+          ),
+        })),
+      setFurnitureMaterialTextures: (id, textures) =>
+        set((s) => ({
+          furniture: s.furniture.map((f) =>
+            f.id === id ? { ...f, materialTextures: { ...f.materialTextures, ...textures } } : f
+          ),
         })),
       removeFurniture: (id) =>
         set((s) => ({

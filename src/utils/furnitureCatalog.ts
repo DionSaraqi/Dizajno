@@ -264,6 +264,40 @@ export const furnitureCatalog: FurnitureCatalogItem[] = [
     ],
   },
 
+  {
+    type: "colorable-sectional-sofa",
+    label: "Designer Sectional",
+    // Actual rendered size (raw after baking node rotations: 0.824 x 0.186 x 0.707, scale: 2.5)
+    width: 2.06,
+    depth: 1.77,
+    height: 0.47,
+    color: "#4A5C50",
+    icon: "sofa",
+    category: "Seating",
+    svgPreview: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+      <path d="M4 4 L96 4 L96 45 L50 45 L50 96 L4 96 Z" fill="#4A5C50" stroke="currentColor" stroke-width="2"/>
+      <path d="M10 10 L90 10 L90 40 L44 40 L44 90 L10 90 Z" fill="#5A6C60" stroke="currentColor" stroke-width="1"/>
+      <circle cx="30" cy="18" r="6" fill="#5A6C60" stroke="currentColor" stroke-width="1" opacity="0.8"/>
+      <circle cx="50" cy="18" r="6" fill="#5A6C60" stroke="currentColor" stroke-width="1" opacity="0.8"/>
+      <circle cx="70" cy="18" r="6" fill="#5A6C60" stroke="currentColor" stroke-width="1" opacity="0.8"/>
+    </svg>`,
+    modelUrl: "/models/colorable-sectional-sofa.glb",
+    materialSlots: {
+      Body:    "#4A5C50",
+      Legs:    "#1e120a",
+      Pillows: "#5A6C60",
+    },
+    textureSlots: {
+      Body:    ["", "/textures/corduroy-fabric.jpg"],
+      Pillows: ["", "/textures/corduroy-fabric.jpg"],
+    },
+    // L-shape collision: chaise (left, tall in Z) + sofa back (wide, bottom)
+    collisionBoxes: [
+      { offsetX: -0.75, offsetZ: -0.30, width: 0.58, depth: 1.20 },  // chaise
+      { offsetX: 0, offsetZ: 0.59, width: 2.06, depth: 0.60 },       // sofa
+    ],
+  },
+
   // ── Tables ──────────────────────────────────────────────────────────────
   {
     type: "table",

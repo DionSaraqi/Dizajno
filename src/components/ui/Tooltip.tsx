@@ -53,7 +53,7 @@ export default function Tooltip({
           className={[
             "pointer-events-none absolute z-50 whitespace-nowrap",
             "rounded px-2 py-1 text-[11px] font-medium",
-            "bg-gray-900 text-gray-100 shadow-lg",
+            "bg-gray-100 text-gray-900 shadow-lg border border-gray-200",
             positionClasses[side],
           ].join(" ")}
         >

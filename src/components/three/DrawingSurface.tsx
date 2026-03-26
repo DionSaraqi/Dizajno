@@ -630,7 +630,7 @@ function SceneContent() {
 
   return (
     <>
-      <color attach="background" args={["#0f0f13"]} />
+      <color attach="background" args={["#e8ecf0"]} />
       <ambientLight intensity={0.6} />
       <directionalLight position={[10, 15, 10]} intensity={0.8} castShadow />
       <directionalLight position={[-5, 10, -5]} intensity={0.3} />

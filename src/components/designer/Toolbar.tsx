@@ -109,9 +109,9 @@ function WallControlsPopover({
                 style={{
                   background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${
                     ((wallThickness - 0.05) / (0.4 - 0.05)) * 100
-                  }%, #2e2e3a ${
+                  }%, #d8d8e3 ${
                     ((wallThickness - 0.05) / (0.4 - 0.05)) * 100
-                  }%, #2e2e3a 100%)`,
+                  }%, #d8d8e3 100%)`,
                 }}
               />
               <div className="flex justify-between text-[9px] text-dizajno-muted">
@@ -140,9 +140,9 @@ function WallControlsPopover({
                 style={{
                   background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${
                     ((wallHeight - 1) / (4 - 1)) * 100
-                  }%, #2e2e3a ${
+                  }%, #d8d8e3 ${
                     ((wallHeight - 1) / (4 - 1)) * 100
-                  }%, #2e2e3a 100%)`,
+                  }%, #d8d8e3 100%)`,
                 }}
               />
               <div className="flex justify-between text-[9px] text-dizajno-muted">

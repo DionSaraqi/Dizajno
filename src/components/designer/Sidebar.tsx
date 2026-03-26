@@ -78,6 +78,8 @@ function PropertiesSection() {
   const duplicateFurniture = useDesignerStore((s) => s.duplicateFurniture);
   const rotateFurniture = useDesignerStore((s) => s.rotateFurniture);
   const scaleFurniture = useDesignerStore((s) => s.scaleFurniture);
+  const setFurnitureMaterialColors = useDesignerStore((s) => s.setFurnitureMaterialColors);
+  const setFurnitureMaterialTextures = useDesignerStore((s) => s.setFurnitureMaterialTextures);
   const updateWall = useDesignerStore((s) => s.updateWall);
 
   if (selectedIds.length !== 1) return null;
@@ -287,6 +289,67 @@ function PropertiesSection() {
                   <span>200%</span>
                 </div>
               </div>
+
+              {/* Material color pickers — only shown for models with named material slots */}
+              {def?.materialSlots && (
+                <div className="px-4 py-2 border-t border-dizajno-border">
+                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-2">
+                    Colors
+                  </h4>
+                  <div className="space-y-1.5">
+                    {Object.entries(def.materialSlots).map(([slotName, defaultHex]) => {
+                      const currentColor = selectedFurniture.materialColors?.[slotName] ?? defaultHex;
+                      return (
+                        <div key={slotName} className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-dizajno-muted truncate">{slotName}</span>
+                          <input
+                            type="color"
+                            value={currentColor}
+                            onChange={(e) =>
+                              setFurnitureMaterialColors(selectedFurniture.id, { [slotName]: e.target.value })
+                            }
+                            className="w-7 h-5 rounded cursor-pointer border border-dizajno-border bg-transparent"
+                            title={slotName}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Texture pickers — only shown for models with texture slots */}
+              {def?.textureSlots && (
+                <div className="px-4 py-2 border-t border-dizajno-border">
+                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-2">
+                    Textures
+                  </h4>
+                  <div className="space-y-1.5">
+                    {Object.entries(def.textureSlots).map(([slotName, textures]) => {
+                      const currentTex = selectedFurniture.materialTextures?.[slotName] ?? "";
+                      return (
+                        <div key={slotName} className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-dizajno-muted truncate">{slotName}</span>
+                          <select
+                            value={currentTex}
+                            onChange={(e) =>
+                              setFurnitureMaterialTextures(selectedFurniture.id, { [slotName]: e.target.value })
+                            }
+                            className="text-[10px] bg-dizajno-elevated border border-dizajno-border rounded px-1.5 py-0.5 text-dizajno-text cursor-pointer"
+                          >
+                            <option value="">None</option>
+                            {textures.filter(Boolean).map((tex) => (
+                              <option key={tex} value={tex}>
+                                {tex.split("/").pop()?.replace(/\.[^.]+$/, "")}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Actions */}
               <div className="px-4 pt-2 flex gap-1.5">
@@ -566,7 +629,7 @@ function FurnitureButton({
       {/* SVG preview thumbnail */}
       <div
         className={`w-10 h-10 flex-shrink-0 rounded ${
-          isActive ? "text-white bg-white/10" : "text-dizajno-muted bg-dizajno-bg"
+          isActive ? "text-white bg-dizajno-accent/10" : "text-dizajno-muted bg-dizajno-bg"
         }`}
         dangerouslySetInnerHTML={{ __html: item.svgPreview }}
       />

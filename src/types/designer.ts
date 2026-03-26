@@ -26,6 +26,10 @@ export interface FurnitureData {
   locked?: boolean;
   /** Uniform scale multiplier (default 1.0). Affects width/depth/height proportionally. */
   scale?: number;
+  /** Per-material color overrides keyed by material name in the GLB */
+  materialColors?: Record<string, string>;
+  /** Per-material texture URL overrides keyed by material name in the GLB */
+  materialTextures?: Record<string, string>;
 }
 
 export type FurnitureCategory = "Seating" | "Tables" | "Bedroom" | "Storage";
@@ -89,6 +93,18 @@ export interface FurnitureCatalogItem {
    * Each box is relative to the item center. If omitted, a single AABB from width/depth is used.
    */
   collisionBoxes?: CollisionBox[];
+  /**
+   * Named material slots available for color customization.
+   * Key = material name in the GLB, value = default hex color.
+   * Only models with named PBR materials support this.
+   */
+  materialSlots?: Record<string, string>;
+  /**
+   * Named material slots available for texture customization.
+   * Key = material name in the GLB, value = array of available texture URLs.
+   * The first entry is the default texture (or empty string for no texture).
+   */
+  textureSlots?: Record<string, string[]>;
 }
 
 export type OpeningType = "door" | "window";
