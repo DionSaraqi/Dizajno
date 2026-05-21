@@ -38,6 +38,8 @@ if (app.Environment.IsDevelopment())
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Dizajno API v1");
         options.RoutePrefix = "swagger";
     });
+
+    app.MapGet("/", () => Results.Redirect("/swagger"));
 }
 
 app.UseCors(FrontendCorsPolicy);
