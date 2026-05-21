@@ -2,6 +2,15 @@
 
 A browser-based 2D/3D room designer where users draw walls, place furniture via drag-and-drop, and visualize rooms in 3D.
 
+## Repo Layout
+
+The repository is a pnpm workspace split into two top-level packages:
+
+- `frontend/` — Next.js 14 application (the existing codebase). All paths in this document are relative to `frontend/` unless prefixed otherwise.
+- `backend/` — .NET 8 Web API (under construction; Phase 1 — see [PLAN.md](PLAN.md) when added). Empty placeholder today.
+
+Root-level convenience scripts re-export the frontend's most common commands so you can run them from the repo root.
+
 ## Git Workflow
 
 **Never push directly to main.** Always:
@@ -11,10 +20,27 @@ A browser-based 2D/3D room designer where users draw walls, place furniture via 
 
 ## Commands
 
+Run from the repo root (uses pnpm workspace scripts):
+
 ```bash
-pnpm run dev      # Start dev server (localhost:3000)
-pnpm run build    # Production build
-pnpm run lint     # ESLint
+pnpm dev          # Start frontend dev server (localhost:3000)
+pnpm build        # Production build (frontend)
+pnpm lint         # ESLint (frontend)
+```
+
+Or scope to a package explicitly:
+
+```bash
+pnpm --filter dizajno dev
+cd frontend && pnpm dev
+```
+
+Backend commands (added once the .NET solution lands):
+
+```bash
+# from backend/
+dotnet run --project src/Dizajno.Api
+docker compose up -d            # Postgres for local dev
 ```
 
 ## Tech Stack
@@ -30,31 +56,38 @@ pnpm run lint     # ESLint
 ## Project Structure
 
 ```
-src/
-├── app/                    # Next.js App Router pages
-│   ├── page.tsx            # Landing page (3D house scene)
-│   ├── designer/           # Designer page (room editor)
-│   ├── login/              # Login page (placeholder)
-│   └── profile/            # Profile page (placeholder)
-├── components/
-│   ├── designer/           # Designer UI panels (Sidebar, Toolbar, PropertiesPanel, StatusBar)
-│   ├── three/              # R3F 3D components
-│   │   ├── landing/        # Landing page 3D scene (House, BlueDoor, Yard, HouseScene)
-│   │   ├── furniture/      # 3D furniture models (BedModel, ChairModel, GLTFModel, etc.)
-│   │   ├── DrawingSurface  # Wall drawing canvas (2D mode)
-│   │   ├── FloorMesh       # Auto-generated floor polygons
-│   │   ├── WallMesh        # 3D wall rendering
-│   │   ├── CameraController# Bounded OrbitControls for 3D mode
-│   │   └── GridPlane       # Snap grid overlay
-│   └── ui/                 # Reusable UI primitives (Button, Panel, Slider, etc.)
-├── hooks/                  # Custom hooks (useFurnitureCatalog, useKeyboardShortcuts)
-├── store/                  # Zustand store (useDesignerStore)
-├── types/                  # TypeScript types (designer.ts)
-└── utils/                  # Pure utilities
-    ├── wallGraph.ts        # Planar face traversal for floor detection
-    ├── collision.ts        # Furniture/wall collision detection
-    ├── furnitureCatalog.ts # Furniture catalog definitions
-    └── snapToGrid.ts       # Grid snapping helpers
+.
+├── frontend/                  # Next.js 14 app (active codebase)
+│   ├── public/                # Static assets — GLBs in models/, textures in textures/
+│   └── src/
+│       ├── app/               # Next.js App Router pages
+│       │   ├── page.tsx       # Landing page (3D house scene)
+│       │   ├── designer/      # Designer page (room editor)
+│       │   ├── login/         # Login page (placeholder)
+│       │   └── profile/       # Profile page (placeholder)
+│       ├── components/
+│       │   ├── designer/      # Designer UI panels (Sidebar, Toolbar, PropertiesPanel, StatusBar)
+│       │   ├── three/         # R3F 3D components
+│       │   │   ├── landing/   # Landing page 3D scene (House, BlueDoor, Yard, HouseScene)
+│       │   │   ├── furniture/ # 3D furniture models (BedModel, ChairModel, GLTFModel, etc.)
+│       │   │   ├── DrawingSurface  # Wall drawing canvas (2D mode)
+│       │   │   ├── FloorMesh       # Auto-generated floor polygons
+│       │   │   ├── WallMesh        # 3D wall rendering
+│       │   │   ├── CameraController# Bounded OrbitControls for 3D mode
+│       │   │   └── GridPlane       # Snap grid overlay
+│       │   └── ui/            # Reusable UI primitives (Button, Panel, Slider, etc.)
+│       ├── hooks/             # Custom hooks (useFurnitureCatalog, useKeyboardShortcuts)
+│       ├── store/             # Zustand store (useDesignerStore)
+│       ├── types/             # TypeScript types (designer.ts)
+│       └── utils/             # Pure utilities
+│           ├── wallGraph.ts       # Planar face traversal for floor detection
+│           ├── collision.ts       # Furniture/wall collision detection
+│           ├── furnitureCatalog.ts# Furniture catalog definitions
+│           └── snapToGrid.ts      # Grid snapping helpers
+├── backend/                   # .NET 8 Web API (under construction)
+├── package.json               # Root pnpm workspace
+├── pnpm-workspace.yaml
+└── CLAUDE.md                  # This file
 ```
 
 ## Architecture
