@@ -3,6 +3,7 @@ using Dizajno.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+// Note: RefreshToken lives in the Identity namespace alongside ApplicationUser.
 
 namespace Dizajno.Infrastructure.Persistence;
 
@@ -19,6 +20,7 @@ public sealed class DizajnoDbContext : IdentityDbContext<ApplicationUser, Identi
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<Translation> Translations => Set<Translation>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

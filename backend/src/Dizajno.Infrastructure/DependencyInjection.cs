@@ -1,3 +1,5 @@
+using Dizajno.Application.Auth;
+using Dizajno.Infrastructure.Auth;
 using Dizajno.Infrastructure.Identity;
 using Dizajno.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -26,9 +28,11 @@ public static class DependencyInjection
                 options.User.RequireUniqueEmail = true;
             })
             .AddRoles<IdentityRole<Guid>>()
-            .AddEntityFrameworkStores<DizajnoDbContext>();
-        // Token providers (password reset, email confirmation) wired in step 4
-        // when Microsoft.AspNetCore.Identity becomes part of the dependency graph.
+            .AddRoleManager<RoleManager<IdentityRole<Guid>>>()
+            .AddEntityFrameworkStores<DizajnoDbContext>()
+            .AddDefaultTokenProviders();
+
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
 
         return services;
     }
