@@ -7,8 +7,9 @@ services:
       POSTGRES_DB: dizajno
       POSTGRES_USER: dizajno
       POSTGRES_PASSWORD: dizajno-dev
+    # Host port 5433 (not 5432) to avoid colliding with host-installed Postgres.
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - dizajno-pgdata:/var/lib/postgresql/data
     healthcheck:

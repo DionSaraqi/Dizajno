@@ -1,8 +1,16 @@
+using Dizajno.Infrastructure;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
 const string FrontendCorsPolicy = "FrontendDev";
+
+var connectionString = builder.Configuration.GetConnectionString("Dizajno")
+    ?? throw new InvalidOperationException(
+        "ConnectionStrings:Dizajno is not configured. Set it in appsettings.Development.json " +
+        "or via the DIZAJNO_ConnectionStrings__Dizajno environment variable.");
+
+builder.Services.AddInfrastructure(connectionString);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

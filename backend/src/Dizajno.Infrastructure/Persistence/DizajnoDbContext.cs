@@ -1,0 +1,28 @@
+using Dizajno.Domain.Entities;
+using Dizajno.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+
+namespace Dizajno.Infrastructure.Persistence;
+
+public sealed class DizajnoDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
+{
+    public DizajnoDbContext(DbContextOptions<DizajnoDbContext> options) : base(options)
+    {
+    }
+
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<SupplierMember> SupplierMembers => Set<SupplierMember>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
+    public DbSet<Asset> Assets => Set<Asset>();
+    public DbSet<Translation> Translations => Set<Translation>();
+
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        base.OnModelCreating(builder);
+        builder.ApplyConfigurationsFromAssembly(typeof(DizajnoDbContext).Assembly);
+    }
+}
