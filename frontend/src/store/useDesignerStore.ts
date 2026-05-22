@@ -9,6 +9,7 @@ import type {
   OpeningType,
   DesignerMode,
 } from "@/types/designer";
+// (no extra imports needed — OpeningData already covers the reassign helper)
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { newId } from "@/utils/ids";
 
@@ -19,7 +20,11 @@ interface DesignerActions {
   addWall: (wall: WallData) => void;
   removeWall: (id: string) => void;
   setWalls: (walls: WallData[]) => void;
-  setWallsAndFloors: (walls: WallData[], floors: FloorData[]) => void;
+  setWallsAndFloors: (
+    walls: WallData[],
+    floors: FloorData[],
+    openings?: OpeningData[]
+  ) => void;
   updateWall: (id: string, changes: Partial<Pick<WallData, "thickness" | "height">>) => void;
   setDrawingFrom: (point: [number, number] | null) => void;
   setFloors: (floors: FloorData[]) => void;
@@ -111,7 +116,8 @@ export const useDesignerStore = create<DesignerStore>()(
         selectedIds: s.selectedIds.filter((sid) => sid !== id),
       })),
       setWalls: (walls) => set({ walls }),
-      setWallsAndFloors: (walls, floors) => set({ walls, floors }),
+      setWallsAndFloors: (walls, floors, openings) =>
+        set((s) => ({ walls, floors, openings: openings ?? s.openings })),
       updateWall: (id, changes) => set((s) => ({
         walls: s.walls.map((w) => w.id === id ? { ...w, ...changes } : w),
       })),

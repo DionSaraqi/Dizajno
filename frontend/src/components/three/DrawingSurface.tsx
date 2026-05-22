@@ -41,7 +41,12 @@ import GLTFModel from "./furniture/GLTFModel";
 import Measurements from "./Measurements";
 import SnapIndicator from "./SnapIndicator";
 import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
-import { findFloors, addWallWithIntersections, snapToCorner } from "@/utils/wallGraph";
+import {
+  findFloors,
+  addWallWithIntersections,
+  snapToCorner,
+  reassignOpeningsAfterWallChange,
+} from "@/utils/wallGraph";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { checkFurnitureCollision } from "@/utils/collision";
 import type { FurnitureData, WallData, OpeningData } from "@/types/designer";
@@ -453,12 +458,20 @@ function SceneContent() {
         // Process intersections: splits walls at crossings and T-junctions
         const updatedWalls = addWallWithIntersections(newWall, walls);
         const detectedFloors = findFloors(updatedWalls);
+        // Any opening on a wall that just got split would otherwise reference
+        // a vanished id — reassign each to whichever child segment still
+        // contains its footprint, drop the rest.
+        const updatedOpenings = reassignOpeningsAfterWallChange(openings, walls, updatedWalls);
 
         // Atomic update — single undo step
-        setWallsAndFloors(updatedWalls, detectedFloors.length > 0 ? detectedFloors : floors);
+        setWallsAndFloors(
+          updatedWalls,
+          detectedFloors.length > 0 ? detectedFloors : floors,
+          updatedOpenings
+        );
       }
     },
-    [walls, floors, wallThickness, wallHeight, setWallsAndFloors]
+    [walls, floors, openings, wallThickness, wallHeight, setWallsAndFloors]
   );
 
   const handlePointerDown = useCallback(

@@ -1,4 +1,4 @@
-import type { WallData, FloorData } from "@/types/designer";
+import type { WallData, FloorData, OpeningData } from "@/types/designer";
 import { newId } from "@/utils/ids";
 
 type Key = string;
@@ -207,6 +207,109 @@ function deduplicatePoints(points: Point[], threshold: number): Point[] {
     }
   }
   return result;
+}
+
+// ── Opening Reconciliation ───────────────────────────────────────────────────
+
+const ON_LINE_EPS = 0.05;
+
+/**
+ * After a wall split (or any wall-list mutation that changes ids), find each
+ * opening a new home: the child segment that lies on the original wall's line
+ * AND contains the opening's full footprint. Openings whose host wall vanished
+ * outright, or whose footprint straddles a split point, are dropped — the
+ * backend validates `opening.wallId ∈ walls` and would otherwise 400 the save.
+ */
+export function reassignOpeningsAfterWallChange(
+  openings: OpeningData[],
+  oldWalls: WallData[],
+  newWalls: WallData[]
+): OpeningData[] {
+  const newWallById = new Map(newWalls.map((w) => [w.id, w]));
+  const oldWallById = new Map(oldWalls.map((w) => [w.id, w]));
+  const result: OpeningData[] = [];
+
+  for (const opening of openings) {
+    // Fast path: host wall still exists with the same id and the opening still
+    // fits — keep it as-is.
+    const stillHere = newWallById.get(opening.wallId);
+    if (stillHere) {
+      const len = dist(stillHere.start, stillHere.end);
+      if (opening.offsetFromStart + opening.width <= len + 0.01) {
+        result.push(opening);
+        continue;
+      }
+    }
+
+    const oldWall = oldWallById.get(opening.wallId);
+    if (!oldWall) continue; // truly orphaned — drop
+
+    // World position of the opening's start and end along the old wall.
+    const oldLen = dist(oldWall.start, oldWall.end);
+    if (oldLen < 1e-6) continue;
+    const dx = (oldWall.end[0] - oldWall.start[0]) / oldLen;
+    const dz = (oldWall.end[1] - oldWall.start[1]) / oldLen;
+    const openingStart: Point = [
+      oldWall.start[0] + dx * opening.offsetFromStart,
+      oldWall.start[1] + dz * opening.offsetFromStart,
+    ];
+    const openingEnd: Point = [
+      openingStart[0] + dx * opening.width,
+      openingStart[1] + dz * opening.width,
+    ];
+
+    // Find a new wall colinear with the old one that fully contains both ends.
+    let assigned = false;
+    for (const candidate of newWalls) {
+      // Quick colinearity check: both endpoints lie close to the candidate's
+      // infinite line.
+      if (
+        !isCloseToLine(openingStart, candidate.start, candidate.end, ON_LINE_EPS) ||
+        !isCloseToLine(openingEnd, candidate.start, candidate.end, ON_LINE_EPS)
+      ) {
+        continue;
+      }
+      const candidateLen = dist(candidate.start, candidate.end);
+      if (candidateLen < 1e-6) continue;
+      const cdx = (candidate.end[0] - candidate.start[0]) / candidateLen;
+      const cdz = (candidate.end[1] - candidate.start[1]) / candidateLen;
+      const tStart =
+        (openingStart[0] - candidate.start[0]) * cdx +
+        (openingStart[1] - candidate.start[1]) * cdz;
+      const tEnd =
+        (openingEnd[0] - candidate.start[0]) * cdx +
+        (openingEnd[1] - candidate.start[1]) * cdz;
+
+      const lo = Math.min(tStart, tEnd);
+      const hi = Math.max(tStart, tEnd);
+      if (lo < -0.01 || hi > candidateLen + 0.01) continue;
+
+      // Opening direction may be opposite to the candidate wall's direction.
+      // Re-derive offsetFromStart relative to the candidate's `start`.
+      result.push({
+        ...opening,
+        wallId: candidate.id,
+        offsetFromStart: Math.max(0, lo),
+      });
+      assigned = true;
+      break;
+    }
+    if (!assigned) {
+      // Could not find a child that fully contains the opening — drop it.
+    }
+  }
+
+  return result;
+}
+
+function isCloseToLine(p: Point, a: Point, b: Point, threshold: number): boolean {
+  const dx = b[0] - a[0];
+  const dz = b[1] - a[1];
+  const len2 = dx * dx + dz * dz;
+  if (len2 < 1e-10) return dist(p, a) <= threshold;
+  const t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / len2;
+  const proj: Point = [a[0] + t * dx, a[1] + t * dz];
+  return dist(p, proj) <= threshold;
 }
 
 /**
