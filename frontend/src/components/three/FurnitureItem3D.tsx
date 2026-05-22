@@ -11,6 +11,7 @@ import {
   useGridSize,
   useIs3D,
   useHoveredId,
+  useReadOnly,
 } from "@/store/useDesignerStore";
 import type { FurnitureData } from "@/types/designer";
 import { checkFurnitureCollision } from "@/utils/collision";
@@ -51,6 +52,7 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const snap = useSnap();
   const gridSize = useGridSize();
   const is3D = useIs3D();
+  const readOnly = useReadOnly();
   const { raycaster, camera, pointer } = useThree();
 
   const hoveredId = useHoveredId();
@@ -108,6 +110,9 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     } else {
       select(item.id);
     }
+
+    // In read-only (share viewer), allow selection but never start a drag.
+    if (readOnly) return;
 
     // Record pointer-down; actual drag starts after threshold is exceeded
     pointerDownRef.current = true;

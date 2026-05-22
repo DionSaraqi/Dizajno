@@ -12,6 +12,7 @@ import type {
   OpeningData,
   OpeningType,
 } from "@/types/designer";
+import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import type {
   FloorApi,
   OpeningApi,
@@ -153,6 +154,10 @@ export function mapApiSceneToStore(
       unmappedPlacedItems.push(p);
       continue;
     }
+    // The API doesn't persist `color` (it's a catalog property, not user state),
+    // so fall back to the catalog default. Procedural models use this as their
+    // material color; GLB models use it as a tint over the texture.
+    const def = getFurnitureDef(type);
     furniture.push({
       id: p.id,
       type,
@@ -161,7 +166,7 @@ export function mapApiSceneToStore(
       width: p.scaledWidth,
       depth: p.scaledDepth,
       height: p.scaledHeight,
-      color: "#ffffff",
+      color: def?.color ?? "#ffffff",
       locked: true,
       scale: p.scale,
       materialColors: p.materialColors ?? undefined,

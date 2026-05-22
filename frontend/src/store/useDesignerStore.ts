@@ -68,6 +68,9 @@ interface DesignerActions {
   // Interaction lock (disables camera while dragging/placing furniture)
   setDragging: (dragging: boolean) => void;
 
+  // Read-only mode (share viewer): blocks pointer-driven edits on the canvas
+  setReadOnly: (readOnly: boolean) => void;
+
   // Drop zone
   setPendingDrop: (drop: { type: string; ndcX: number; ndcY: number } | null) => void;
   setDragPreview: (preview: { ndcX: number; ndcY: number } | null) => void;
@@ -97,6 +100,7 @@ const initialState: DesignerState = {
   wallThickness: 0.15,
   wallHeight: 2.5,
   isDragging: false,
+  readOnly: false,
   pendingDrop: null,
   dragPreview: null,
 };
@@ -247,6 +251,9 @@ export const useDesignerStore = create<DesignerStore>()(
       // Interaction lock
       setDragging: (dragging) => set({ isDragging: dragging }),
 
+      // Read-only mode
+      setReadOnly: (readOnly) => set({ readOnly }),
+
       // Drop zone
       setPendingDrop: (drop) => set({ pendingDrop: drop }),
       setDragPreview: (preview) => set({ dragPreview: preview }),
@@ -290,6 +297,7 @@ export const useWallThickness = () =>
   useDesignerStore((s) => s.wallThickness);
 export const useWallHeight = () => useDesignerStore((s) => s.wallHeight);
 export const useIsDragging = () => useDesignerStore((s) => s.isDragging);
+export const useReadOnly = () => useDesignerStore((s) => s.readOnly);
 export const usePendingDrop = () => useDesignerStore((s) => s.pendingDrop);
 export const useDragPreview = () => useDesignerStore((s) => s.dragPreview);
 export const useOpenings = () => useDesignerStore((s) => s.openings);

@@ -22,6 +22,7 @@ import {
   useOpenings,
   useHoveredId,
   usePendingOpeningType,
+  useReadOnly,
 } from "@/store/useDesignerStore";
 import GridPlane from "./GridPlane";
 import CameraController from "./CameraController";
@@ -349,6 +350,7 @@ function SceneContent() {
   const openings = useOpenings();
   const hoveredId = useHoveredId();
   const pendingOpeningType = usePendingOpeningType();
+  const readOnly = useReadOnly();
 
   const addWall = useDesignerStore((s) => s.addWall);
   const setWallsAndFloors = useDesignerStore((s) => s.setWallsAndFloors);
@@ -778,6 +780,8 @@ function SceneContent() {
               if (mode === "select" && e.button === 0) {
                 e.stopPropagation();
                 select(opening.id);
+                // Read-only viewer: select but never start a drag.
+                if (readOnly) return;
                 draggingOpeningRef.current = {
                   openingId: opening.id,
                   wallId: opening.wallId,

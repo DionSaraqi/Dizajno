@@ -58,8 +58,10 @@ export default function SharedProjectPage() {
           furniture: mapped.furniture,
           openings: mapped.openings,
           // Public viewer is always read-only — start in select mode with
-          // nothing drawn-from.
+          // nothing drawn-from. `readOnly` blocks pointer-driven edits
+          // (furniture drag, opening drag) even when items are selected.
           mode: "select",
+          readOnly: true,
         });
         setProject(detail);
         setHydrated(true);

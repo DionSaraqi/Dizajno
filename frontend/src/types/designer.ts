@@ -159,6 +159,9 @@ export interface DesignerState {
   // Interaction lock — true while dragging/placing furniture (disables camera)
   isDragging: boolean;
 
+  // Read-only — set by the share viewer; blocks pointer-driven edits on the canvas
+  readOnly: boolean;
+
   // Drop zone support — NDC coordinates from the HTML overlay
   pendingDrop: { type: string; ndcX: number; ndcY: number } | null;
 
