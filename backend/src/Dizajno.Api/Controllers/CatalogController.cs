@@ -150,7 +150,8 @@ public sealed class CatalogController : ControllerBase
             ModelUrl: row.GlbAssetUrl,
             CollisionBoxes: collisionBoxes,
             MaterialSlots: materialSlots,
-            TextureSlots: textureSlots);
+            TextureSlots: textureSlots,
+            VariantId: row.Variant.Id);
     }
 
     private static T? ReadAttribute<T>(string? json, string key)

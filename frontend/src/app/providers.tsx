@@ -1,10 +1,22 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuthStore } from "@/store/useAuthStore";
 
 interface ProvidersProps {
   children: React.ReactNode;
+}
+
+function AuthBootstrap(): null {
+  const bootstrap = useAuthStore((s) => s.bootstrap);
+  const status = useAuthStore((s) => s.status);
+  useEffect(() => {
+    if (status === "idle") {
+      void bootstrap();
+    }
+  }, [status, bootstrap]);
+  return null;
 }
 
 export function Providers({ children }: ProvidersProps) {
@@ -23,5 +35,10 @@ export function Providers({ children }: ProvidersProps) {
       })
   );
 
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      <AuthBootstrap />
+      {children}
+    </QueryClientProvider>
+  );
 }

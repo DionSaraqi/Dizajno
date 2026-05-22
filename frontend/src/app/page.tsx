@@ -15,7 +15,7 @@ import Scene from "@/components/three/Scene";
 
 const menuItems = [
   { icon: PlusSquare, label: "New Design", href: "/designer", enabled: true },
-  { icon: FolderOpen, label: "My Projects", href: "#", enabled: false },
+  { icon: FolderOpen, label: "My Projects", href: "/projects", enabled: true },
   { icon: BookOpen, label: "Templates", href: "#", enabled: false },
   { icon: Settings, label: "Settings", href: "#", enabled: false },
   { icon: HelpCircle, label: "Help & Docs", href: "#", enabled: false },

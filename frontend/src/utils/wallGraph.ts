@@ -1,4 +1,5 @@
 import type { WallData, FloorData } from "@/types/designer";
+import { newId } from "@/utils/ids";
 
 type Key = string;
 type Point = [number, number];
@@ -19,7 +20,7 @@ function dist(a: Point, b: Point): number {
 }
 
 function makeWallId(): string {
-  return `wall-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  return newId();
 }
 
 // ── Line Segment Intersection ────────────────────────────────────────────────
@@ -302,7 +303,7 @@ export function findFloors(walls: WallData[]): FloorData[] {
       // Negative area = CW winding = outer (unbounded) face -> skip
       if (area > 0.01) {
         floors.push({
-          id: `floor-${floors.length}-${Date.now()}`,
+          id: newId(),
           vertices: verts,
         });
       }

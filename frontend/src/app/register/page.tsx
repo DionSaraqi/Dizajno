@@ -1,54 +1,43 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/useAuthStore";
 
-export default function LoginPage() {
-  return (
-    <Suspense fallback={null}>
-      <LoginForm />
-    </Suspense>
-  );
-}
-
-function LoginForm() {
+export default function RegisterPage() {
   const router = useRouter();
-  const params = useSearchParams();
-  const redirect = params.get("redirect") ?? "/projects";
-
   const status = useAuthStore((s) => s.status);
-  const login = useAuthStore((s) => s.login);
-  const storeError = useAuthStore((s) => s.error);
+  const register = useAuthStore((s) => s.register);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace(redirect);
+      router.replace("/projects");
     }
-  }, [status, redirect, router]);
+  }, [status, router]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    setLocalError(null);
+    setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
-    } catch (error) {
-      setLocalError(
-        error instanceof Error ? error.message : "Login failed. Check your credentials."
+      await register(email, password, displayName.trim() || null);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Registration failed. Password must be 8+ chars with a digit and an uppercase letter."
       );
     } finally {
       setSubmitting(false);
     }
   }
-
-  const errorMessage = localError ?? storeError;
 
   return (
     <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg blueprint-grid">
@@ -57,7 +46,7 @@ function LoginForm() {
           DIZAJNO
         </h1>
         <p className="font-mono text-xs text-dizajno-muted tracking-wider mb-6">
-          sign in to continue
+          create an account
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -76,21 +65,37 @@ function LoginForm() {
           </label>
           <label className="flex flex-col gap-1">
             <span className="font-mono text-[11px] tracking-widest text-dizajno-muted uppercase">
+              Display name (optional)
+            </span>
+            <input
+              type="text"
+              autoComplete="name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="font-mono text-[11px] tracking-widest text-dizajno-muted uppercase">
               Password
             </span>
             <input
               type="password"
-              autoComplete="current-password"
+              autoComplete="new-password"
               required
+              minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none"
             />
+            <span className="font-mono text-[10px] text-dizajno-muted/70 mt-1">
+              8+ chars, one digit, one uppercase letter
+            </span>
           </label>
 
-          {errorMessage && (
+          {error && (
             <p className="font-mono text-[11px] text-red-400 break-words">
-              {errorMessage}
+              {error}
             </p>
           )}
 
@@ -99,14 +104,14 @@ function LoginForm() {
             disabled={submitting}
             className="mt-2 rounded bg-white/10 border border-white/20 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed py-2 font-mono text-sm tracking-wider text-dizajno-text transition"
           >
-            {submitting ? "Signing in…" : "Sign in"}
+            {submitting ? "Creating…" : "Create account"}
           </button>
         </form>
 
         <p className="mt-6 font-mono text-[11px] text-dizajno-muted">
-          No account?{" "}
-          <Link href="/register" className="text-dizajno-text underline">
-            Create one
+          Already have an account?{" "}
+          <Link href="/login" className="text-dizajno-text underline">
+            Sign in
           </Link>
         </p>
       </div>

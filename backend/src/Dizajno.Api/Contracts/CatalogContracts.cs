@@ -17,7 +17,8 @@ public sealed record FurnitureItemDto(
     string? ModelUrl,
     IReadOnlyList<CollisionBoxDto>? CollisionBoxes,
     IReadOnlyDictionary<string, string>? MaterialSlots,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? TextureSlots);
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? TextureSlots,
+    Guid VariantId);
 
 public sealed record CollisionBoxDto(
     decimal OffsetX,

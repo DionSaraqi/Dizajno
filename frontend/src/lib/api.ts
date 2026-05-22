@@ -28,16 +28,47 @@ export class ApiError extends Error {
   }
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+// Access token is set by the auth store once the user has logged in. The
+// module-scoped variable is mutated via setAccessToken so apiFetch can attach
+// the Bearer header without taking a hard dependency on the store.
+let accessToken: string | null = null;
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+interface ApiFetchOptions extends RequestInit {
+  auth?: boolean;
+  jsonBody?: unknown;
+}
+
+async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  let body: BodyInit | null | undefined = init?.body;
+  if (init?.jsonBody !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(init.jsonBody);
+  }
+  if (init?.auth && accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+
   let response: Response;
   try {
     response = await fetch(url, {
       ...init,
-      headers: {
-        Accept: "application/json",
-        ...(init?.headers ?? {}),
-      },
+      headers,
+      body,
+      // Always include the refresh-token cookie on auth endpoints.
+      credentials: "include",
     });
   } catch (error: unknown) {
     const message =
@@ -59,6 +90,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
+  // 204 No Content: nothing to parse.
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return (await response.json()) as T;
 }
 
@@ -111,4 +146,283 @@ export async function listCategories(
 
 export async function listSuppliers(): Promise<SupplierDto[]> {
   return apiFetch<SupplierDto[]>("/api/catalog/suppliers");
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+export interface UserSummary {
+  id: string;
+  email: string;
+  displayName: string | null;
+  locale: string;
+  roles: string[];
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  accessTokenExpiresAt: string;
+  user: UserSummary;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  displayName?: string | null;
+  locale?: string | null;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export function register(input: RegisterRequest): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/api/auth/register", {
+    method: "POST",
+    jsonBody: input,
+  });
+}
+
+export function login(input: LoginRequest): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/api/auth/login", {
+    method: "POST",
+    jsonBody: input,
+  });
+}
+
+/**
+ * Uses the HttpOnly refresh cookie to obtain a new access token. Returns null
+ * on 401 so the caller can treat "no session" as a normal state.
+ */
+export async function refresh(): Promise<AuthResponse | null> {
+  try {
+    return await apiFetch<AuthResponse>("/api/auth/refresh", { method: "POST" });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function logout(): Promise<void> {
+  return apiFetch<void>("/api/auth/logout", { method: "POST" });
+}
+
+export function me(): Promise<UserSummary> {
+  return apiFetch<UserSummary>("/api/auth/me", { auth: true });
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  thumbnailUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectVersionSummary {
+  id: string;
+  label: string;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+export interface WallApi {
+  id: string;
+  startX: number;
+  startZ: number;
+  endX: number;
+  endZ: number;
+  thickness: number;
+  height: number;
+}
+
+export interface FloorApi {
+  id: string;
+  vertices: number[][];
+}
+
+export type OpeningTypeApi = "Door" | "Window";
+
+export interface OpeningApi {
+  id: string;
+  wallId: string;
+  type: OpeningTypeApi;
+  offsetFromStart: number;
+  width: number;
+  height: number;
+  sillHeight: number;
+  productVariantId: string | null;
+  materialOverrides: Record<string, string> | null;
+}
+
+export interface PlacedItemApi {
+  id: string;
+  productVariantId: string;
+  positionX: number;
+  positionZ: number;
+  rotation: number;
+  scale: number;
+  scaledWidth: number;
+  scaledDepth: number;
+  scaledHeight: number;
+  materialColors: Record<string, string> | null;
+  materialTextures: Record<string, string> | null;
+}
+
+export interface SceneApi {
+  walls: WallApi[];
+  floors: FloorApi[];
+  openings: OpeningApi[];
+  placedItems: PlacedItemApi[];
+}
+
+export interface ProjectDetail {
+  id: string;
+  name: string;
+  thumbnailUrl: string | null;
+  thumbnailAssetId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  scene: SceneApi;
+  versions: ProjectVersionSummary[];
+}
+
+export function listProjects(skip = 0, take = 50): Promise<ProjectSummary[]> {
+  return apiFetch<ProjectSummary[]>(`/api/projects?skip=${skip}&take=${take}`, {
+    auth: true,
+  });
+}
+
+export function createProject(name: string): Promise<ProjectDetail> {
+  return apiFetch<ProjectDetail>("/api/projects", {
+    method: "POST",
+    auth: true,
+    jsonBody: { name },
+  });
+}
+
+export function getProject(id: string): Promise<ProjectDetail> {
+  return apiFetch<ProjectDetail>(`/api/projects/${id}`, { auth: true });
+}
+
+export function replaceScene(
+  id: string,
+  scene: SceneApi
+): Promise<ProjectDetail> {
+  return apiFetch<ProjectDetail>(`/api/projects/${id}/scene`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: { scene },
+  });
+}
+
+export function updateProject(
+  id: string,
+  input: { name?: string | null; thumbnailAssetId?: string | null }
+): Promise<ProjectSummary> {
+  return apiFetch<ProjectSummary>(`/api/projects/${id}`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function deleteProject(id: string): Promise<void> {
+  return apiFetch<void>(`/api/projects/${id}`, {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
+export function createVersion(
+  id: string,
+  label: string
+): Promise<ProjectVersionSummary> {
+  return apiFetch<ProjectVersionSummary>(`/api/projects/${id}/versions`, {
+    method: "POST",
+    auth: true,
+    jsonBody: { label },
+  });
+}
+
+export function restoreVersion(
+  id: string,
+  versionId: string
+): Promise<ProjectDetail> {
+  return apiFetch<ProjectDetail>(
+    `/api/projects/${id}/versions/${versionId}/restore`,
+    { method: "POST", auth: true }
+  );
+}
+
+// ── Admin assets (used by thumbnail upload) ────────────────────────────────
+
+export interface PresignAssetRequest {
+  kind:
+    | "Glb"
+    | "SvgPreview"
+    | "Image"
+    | "CadSource"
+    | "Doc"
+    | "Attachment";
+  contentType: string;
+  sizeBytes: number;
+  originalFileName?: string | null;
+  checksumSha256?: string | null;
+}
+
+export interface PresignAssetResponse {
+  key: string;
+  uploadUrl: string;
+  expiresAt: string;
+  publicUrl: string;
+  requiredHeaders: Record<string, string>;
+}
+
+export interface CreateAssetRequest {
+  key: string;
+  kind: PresignAssetRequest["kind"];
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256?: string | null;
+  productId?: string | null;
+  variantId?: string | null;
+  ownerSupplierId?: string | null;
+  sortOrder: number;
+}
+
+export interface AssetSummary {
+  id: string;
+  kind: string;
+  url: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256: string | null;
+  productId: string | null;
+  variantId: string | null;
+  ownerSupplierId: string | null;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export function presignAsset(
+  input: PresignAssetRequest
+): Promise<PresignAssetResponse> {
+  return apiFetch<PresignAssetResponse>("/api/admin/assets/presign", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function registerAsset(input: CreateAssetRequest): Promise<AssetSummary> {
+  return apiFetch<AssetSummary>("/api/admin/assets", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
 }

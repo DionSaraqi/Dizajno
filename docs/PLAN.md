@@ -407,7 +407,7 @@ audit_log
 |---|---|---|
 | 1 — Foundation | ✓ Done | Identity, JWT auth, catalog API, seeder for 12 furniture items, frontend swap, integration tests |
 | 1.5 — Cloudflare R2 | ✓ Done | `IObjectStorage` + AWSSDK.S3 R2 client; admin presign + asset-create endpoints; integration tests with mocked storage. Bulk migration of seeded `/models/*.glb` URLs still pending an R2 bucket. |
-| 2 — Projects | backend ✓ / frontend pending | Backend: `projects`/`project_versions`/`walls`/`floors`/`openings`/`placed_items` tables (migration `0004_Projects`), full CRUD + scene replace-all + version snapshot/restore at `/api/projects/*`, 8 new integration tests. Frontend wiring (projects list, designer load/debounced save, login UI, thumbnail upload) still pending. |
+| 2 — Projects | ✓ Done (thumbnails deferred) | Backend: `projects`/`project_versions`/`walls`/`floors`/`openings`/`placed_items` tables (migration `0004_Projects`), full CRUD + scene replace-all + version snapshot/restore at `/api/projects/*`. Frontend: auth store with HttpOnly-cookie refresh bootstrap, login + register pages, `/projects` list with create/delete, `/projects/[id]` designer that loads a scene and auto-saves on changes (1.5 s debounce). All client IDs are now UUIDs at creation so they round-trip without remapping. Thumbnail capture/upload deferred — projects list gracefully renders without one. |
 | 3 — Sharing | pending | `ProjectShare`, `ProjectComment`, share-link routes, comment thread UI, spatial anchors |
 | 4 — Customizer textures | pending | `SupplierTexture` + `ProductVariantTextureSlot`, move Phase 1's jsonb textureSlots into proper tables |
 | 5 — Quoting | pending | `Quote` fan-out, `QuoteRequest`/`QuoteLine`/`QuoteResponse`, inbox UIs |

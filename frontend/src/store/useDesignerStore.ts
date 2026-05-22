@@ -10,6 +10,7 @@ import type {
   DesignerMode,
 } from "@/types/designer";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
+import { newId } from "@/utils/ids";
 
 // ── Actions Interface ───────────────────────────────────────────────────────
 
@@ -171,7 +172,7 @@ export const useDesignerStore = create<DesignerStore>()(
         if (!item) return;
         const newItem: FurnitureData = {
           ...item,
-          id: `furn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: newId(),
           position: [item.position[0] + 0.5, item.position[1] + 0.5],
           locked: true,
         };

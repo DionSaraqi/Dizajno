@@ -27,6 +27,7 @@ import GridPlane from "./GridPlane";
 import CameraController from "./CameraController";
 import WallMesh from "./WallMesh";
 import FloorMesh from "./FloorMesh";
+import { newId } from "@/utils/ids";
 import FurnitureItem3D from "./FurnitureItem3D";
 import BedModel from "./furniture/BedModel";
 import TableModel from "./furniture/TableModel";
@@ -93,7 +94,7 @@ function DropHandler() {
     const state = useDesignerStore.getState();
 
     const newItem: FurnitureData = {
-      id: `furn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: newId(),
       type: def.type,
       position: [x, z],
       rotation: 0,
@@ -442,7 +443,7 @@ function SceneContent() {
       );
       if (d > 0.05) {
         const newWall = {
-          id: `wall-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: newId(),
           start,
           end: endPoint,
           thickness: wallThickness,
@@ -499,7 +500,7 @@ function SceneContent() {
         const state = useDesignerStore.getState();
 
         const newItem: FurnitureData = {
-          id: `furn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: newId(),
           type: def.type,
           position: [x, z],
           rotation: 0,
@@ -677,7 +678,7 @@ function SceneContent() {
               const clampedOffset = Math.max(0.05, Math.min(wallLen - opWidth - 0.05, hit - opWidth / 2));
 
               addOpening({
-                id: `opening-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                id: newId(),
                 wallId: wall.id,
                 type: pendingOpeningType,
                 offsetFromStart: clampedOffset,
@@ -685,7 +686,6 @@ function SceneContent() {
                 height: opHeight,
                 sillHeight: opSill,
               });
-              select(`opening-${Date.now()}`); // won't match — effectively no selection
               clearSelection();
               setGhostOpening(null);
             }

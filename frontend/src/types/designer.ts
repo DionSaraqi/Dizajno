@@ -63,6 +63,12 @@ export interface CollisionBox {
 export interface FurnitureCatalogItem {
   /** Unique identifier / furniture type slug (e.g. "sofa", "bed") */
   type: string;
+  /**
+   * Backend product-variant uuid for the default variant of this product.
+   * Required when persisting placed items back to the backend (Phase 2). The
+   * offline fallback catalog leaves this empty.
+   */
+  variantId?: string;
   /** Human-readable display name */
   label: string;
   /** Width in meters (X axis) */
