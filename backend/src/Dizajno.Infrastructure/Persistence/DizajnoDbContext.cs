@@ -21,6 +21,12 @@ public sealed class DizajnoDbContext : IdentityDbContext<ApplicationUser, Identi
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<Translation> Translations => Set<Translation>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectVersion> ProjectVersions => Set<ProjectVersion>();
+    public DbSet<Wall> Walls => Set<Wall>();
+    public DbSet<Floor> Floors => Set<Floor>();
+    public DbSet<Opening> Openings => Set<Opening>();
+    public DbSet<PlacedItem> PlacedItems => Set<PlacedItem>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

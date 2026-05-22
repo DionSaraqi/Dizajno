@@ -181,6 +181,32 @@ All GET, no auth required in Phase 1.
 DTO shape mirrors `frontend/src/types/designer.ts` `FurnitureCatalogItem` so the
 frontend can deserialize without renaming.
 
+### Projects (`/api/projects`)
+
+All endpoints require a bearer token. Ownership is enforced server-side — a
+project belonging to user A 404s for user B (no distinction from "not found",
+which avoids id enumeration).
+
+- `GET /` `?skip&take` — paginated list of the caller's non-deleted projects,
+  most-recently-updated first (`ProjectSummaryDto[]`)
+- `POST /` — `{ name }` → 201 `ProjectDetailDto` with an empty scene
+- `GET /{id}` → `ProjectDetailDto` (full scene + version summaries)
+- `PUT /{id}` — `{ name?, thumbnailAssetId? }` → 200 `ProjectSummaryDto`
+- `PUT /{id}/scene` — replace-all of walls/floors/openings/placedItems; `{ scene: { walls, floors, openings, placedItems } }` → 200 `ProjectDetailDto`
+- `POST /{id}/versions` — `{ label }` → 201 `ProjectVersionSummaryDto`; snapshots the live scene as jsonb
+- `POST /{id}/versions/{versionId}/restore` → 200 `ProjectDetailDto`; restores the snapshot in place
+- `DELETE /{id}` → 204; soft-delete (`deleted_at` set, row stays for audit)
+
+Scene shape:
+- The client owns ids — all wall/floor/opening/placedItem ids are uuids generated
+  client-side and round-trip unchanged on PUT/GET. Openings reference walls by
+  uuid; the server rejects a PUT that contains an opening pointing at a wall id
+  not present in the same payload.
+- `PUT /{id}/scene` is a full replace inside a single transaction: existing
+  walls/floors/openings/placedItems are deleted, the new set is inserted. There
+  is no PATCH today; small edits should debounce on the client and resend the
+  whole scene.
+
 ### Admin assets (`/api/admin/assets`)
 
 All endpoints require the `Admin` role.
@@ -237,11 +263,12 @@ then start the API host (which runs the seeder against the freshly migrated DB).
 Each test class gets its own container — slower than sharing, but each class
 sees a deterministic starting state.
 
-Three test classes today (29 tests):
+Four test classes today (37 tests):
 - `CatalogEndpointsTests` — 12 tests
 - `AuthEndpointsTests` — 9 tests
 - `AssetsEndpointsTests` — 8 tests (presign + finalize; uses `FakeObjectStorage`
   registered via `ConfigureTestServices`, so no live R2 credentials needed)
+- `ProjectsEndpointsTests` — 8 tests (CRUD, scene replace-all, version snapshot/restore, ownership 404)
 
 ## Troubleshooting
 
