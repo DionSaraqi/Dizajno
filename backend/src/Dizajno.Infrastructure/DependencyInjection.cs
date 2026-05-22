@@ -1,7 +1,9 @@
 using Dizajno.Application.Auth;
+using Dizajno.Application.Seed;
 using Dizajno.Infrastructure.Auth;
 using Dizajno.Infrastructure.Identity;
 using Dizajno.Infrastructure.Persistence;
+using Dizajno.Infrastructure.Persistence.Seed;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +35,7 @@ public static class DependencyInjection
             .AddDefaultTokenProviders();
 
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<IDataSeeder, DataSeeder>();
 
         return services;
     }

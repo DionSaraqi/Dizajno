@@ -18,6 +18,11 @@ public sealed class Product
     public int? LeadTimeDays { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
+    /// <summary>
+    /// Inline top-down floor-plan SVG markup used as the sidebar thumbnail.
+    /// In Phase 4 this moves to an Asset row generated from CAD.
+    /// </summary>
+    public string? PreviewSvg { get; set; }
     /// <summary>Family-specific JSON attributes (lumen, energy class, ...). Stored as jsonb.</summary>
     public string Attributes { get; set; } = "{}";
     public DateTime CreatedAt { get; set; }

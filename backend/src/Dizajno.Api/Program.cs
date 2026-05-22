@@ -1,5 +1,6 @@
 using System.Text;
 using Dizajno.Application.Auth;
+using Dizajno.Application.Seed;
 using Dizajno.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -17,6 +18,7 @@ var connectionString = builder.Configuration.GetConnectionString("Dizajno")
         "or via the DIZAJNO_ConnectionStrings__Dizajno environment variable.");
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException(
         $"Configuration section '{JwtOptions.SectionName}' is missing. " +
@@ -123,7 +125,14 @@ app.MapGet("/health", () => Results.Ok(new
 
 app.MapControllers();
 
-app.Run();
+// Seed baseline data (idempotent). Runs in a scoped DI scope so EF DbContext resolves.
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<IDataSeeder>();
+    await seeder.SeedAsync(CancellationToken.None);
+}
+
+await app.RunAsync();
 
 // Expose Program class for WebApplicationFactory<Program> integration tests
 public partial class Program;

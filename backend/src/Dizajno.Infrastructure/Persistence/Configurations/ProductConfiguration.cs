@@ -14,6 +14,7 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         b.Property(x => x.UnitOfSale).HasConversion<string>().HasMaxLength(32);
         b.Property(x => x.Slug).HasMaxLength(160).IsRequired();
         b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+        b.Property(x => x.PreviewSvg).HasColumnType("text");
         b.Property(x => x.CoverageRate).HasColumnType("numeric(10,3)");
         b.Property(x => x.WasteFactor).HasColumnType("numeric(5,3)");
         b.Property(x => x.Attributes).HasColumnType("jsonb").IsRequired();

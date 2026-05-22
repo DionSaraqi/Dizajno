@@ -1,0 +1,36 @@
+namespace Dizajno.Api.Contracts;
+
+/// <summary>
+/// Shape designed to drop into the frontend's FurnitureCatalogItem TypeScript type
+/// with no changes — every field maps 1:1.
+/// </summary>
+public sealed record FurnitureItemDto(
+    string Type,
+    string Label,
+    decimal Width,
+    decimal Depth,
+    decimal Height,
+    string Color,
+    string Icon,
+    string Category,
+    string SvgPreview,
+    string? ModelUrl,
+    IReadOnlyList<CollisionBoxDto>? CollisionBoxes,
+    IReadOnlyDictionary<string, string>? MaterialSlots,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? TextureSlots);
+
+public sealed record CollisionBoxDto(
+    decimal OffsetX,
+    decimal OffsetZ,
+    decimal Width,
+    decimal Depth);
+
+public sealed record CategoryDto(
+    string Slug,
+    string Name,
+    string Family);
+
+public sealed record SupplierDto(
+    string Slug,
+    string Name,
+    string? LogoUrl);
