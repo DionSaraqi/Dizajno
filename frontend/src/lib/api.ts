@@ -359,6 +359,48 @@ export function restoreVersion(
   );
 }
 
+// ── Project thumbnails (owner-scoped, no admin role required) ──────────────
+
+export interface PresignProjectThumbnailRequest {
+  contentType: string;
+  sizeBytes: number;
+}
+
+export interface PresignProjectThumbnailResponse {
+  key: string;
+  uploadUrl: string;
+  expiresAt: string;
+  publicUrl: string;
+  requiredHeaders: Record<string, string>;
+}
+
+export interface AttachProjectThumbnailRequest {
+  key: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export function presignProjectThumbnail(
+  projectId: string,
+  input: PresignProjectThumbnailRequest
+): Promise<PresignProjectThumbnailResponse> {
+  return apiFetch<PresignProjectThumbnailResponse>(
+    `/api/projects/${projectId}/thumbnail/presign`,
+    { method: "POST", auth: true, jsonBody: input }
+  );
+}
+
+export function attachProjectThumbnail(
+  projectId: string,
+  input: AttachProjectThumbnailRequest
+): Promise<ProjectSummary> {
+  return apiFetch<ProjectSummary>(`/api/projects/${projectId}/thumbnail`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
 // ── Admin assets (used by thumbnail upload) ────────────────────────────────
 
 export interface PresignAssetRequest {

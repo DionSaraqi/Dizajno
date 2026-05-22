@@ -78,6 +78,24 @@ public sealed record PlacedItemDto(
 
 public sealed record ReplaceSceneRequest(SceneDto Scene);
 
+// ── Thumbnails ─────────────────────────────────────────────────────────────
+
+public sealed record PresignProjectThumbnailRequest(
+    string ContentType,
+    long SizeBytes);
+
+public sealed record PresignProjectThumbnailResponse(
+    string Key,
+    string UploadUrl,
+    DateTime ExpiresAt,
+    string PublicUrl,
+    Dictionary<string, string> RequiredHeaders);
+
+public sealed record AttachProjectThumbnailRequest(
+    string Key,
+    string MimeType,
+    long SizeBytes);
+
 // ── Versions ───────────────────────────────────────────────────────────────
 
 public sealed record CreateVersionRequest(string Label);

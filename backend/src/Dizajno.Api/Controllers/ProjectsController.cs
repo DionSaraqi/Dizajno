@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Dizajno.Api.Contracts;
+using Dizajno.Application.Storage;
 using Dizajno.Domain.Entities;
+using Dizajno.Domain.Enums;
 using Dizajno.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,9 +18,24 @@ public sealed class ProjectsController : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    private readonly DizajnoDbContext _db;
+    // Thumbnail upload constraints. Smaller than the catalog-asset image cap
+    // because thumbnails are downscaled by the client to ~800x600 before upload.
+    private const long ThumbnailMaxBytes = 5L * 1024 * 1024;
+    private static readonly HashSet<string> ThumbnailAllowedMimeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png",
+        "image/jpeg",
+        "image/webp"
+    };
 
-    public ProjectsController(DizajnoDbContext db) => _db = db;
+    private readonly DizajnoDbContext _db;
+    private readonly IObjectStorage _storage;
+
+    public ProjectsController(DizajnoDbContext db, IObjectStorage storage)
+    {
+        _db = db;
+        _storage = storage;
+    }
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ProjectSummaryDto>>> List(
@@ -192,6 +209,128 @@ public sealed class ProjectsController : ControllerBase
 
         return Ok(new ProjectSummaryDto(
             project.Id, project.Name, thumbnailUrl, project.CreatedAt, project.UpdatedAt));
+    }
+
+    [HttpPost("{id:guid}/thumbnail/presign")]
+    public async Task<ActionResult<PresignProjectThumbnailResponse>> PresignThumbnail(
+        Guid id,
+        PresignProjectThumbnailRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var project = await LoadOwnedProjectAsync(id, userId, cancellationToken);
+        if (project is null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ContentType))
+        {
+            return Problem("Content type is required.", statusCode: StatusCodes.Status400BadRequest);
+        }
+        var contentType = request.ContentType.Trim().ToLowerInvariant();
+        if (!ThumbnailAllowedMimeTypes.Contains(contentType))
+        {
+            return Problem(
+                $"Thumbnail content type '{request.ContentType}' is not allowed. Use PNG, JPEG, or WebP.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (request.SizeBytes <= 0 || request.SizeBytes > ThumbnailMaxBytes)
+        {
+            return Problem(
+                $"Thumbnail size must be between 1 byte and {ThumbnailMaxBytes / (1024 * 1024)} MB.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var extension = contentType switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" => ".jpg",
+            "image/webp" => ".webp",
+            _ => ".png"
+        };
+        // One key per upload — old thumbnails remain in R2 until garbage collected.
+        var key = $"projects/{id}/thumbnail-{Guid.NewGuid():N}{extension}";
+
+        PresignedUploadUrl presigned;
+        try
+        {
+            presigned = await _storage.CreatePresignedUploadUrlAsync(
+                key, contentType, request.SizeBytes, cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // R2 not configured in this environment — surface as 503 so the
+            // client can degrade gracefully.
+            return Problem(
+                ex.Message,
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        return Ok(new PresignProjectThumbnailResponse(
+            Key: key,
+            UploadUrl: presigned.Url,
+            ExpiresAt: presigned.ExpiresAt,
+            PublicUrl: _storage.GetPublicUrl(key),
+            RequiredHeaders: new Dictionary<string, string>(presigned.RequiredHeaders, StringComparer.OrdinalIgnoreCase)));
+    }
+
+    [HttpPut("{id:guid}/thumbnail")]
+    public async Task<ActionResult<ProjectSummaryDto>> AttachThumbnail(
+        Guid id,
+        AttachProjectThumbnailRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var project = await LoadOwnedProjectAsync(id, userId, cancellationToken);
+        if (project is null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Key))
+        {
+            return Problem("Key is required.", statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (string.IsNullOrWhiteSpace(request.MimeType) || !ThumbnailAllowedMimeTypes.Contains(request.MimeType))
+        {
+            return Problem("Invalid mime type.", statusCode: StatusCodes.Status400BadRequest);
+        }
+        if (request.SizeBytes <= 0 || request.SizeBytes > ThumbnailMaxBytes)
+        {
+            return Problem("Invalid size.", statusCode: StatusCodes.Status400BadRequest);
+        }
+        // Defence in depth: only accept keys we issued for this project so an
+        // owner can't point their thumbnail at someone else's blob.
+        if (!request.Key.StartsWith($"projects/{id}/thumbnail-", StringComparison.Ordinal))
+        {
+            return Problem("Key does not belong to this project.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var asset = new Asset
+        {
+            Id = Guid.NewGuid(),
+            Kind = AssetKind.Image,
+            Url = _storage.GetPublicUrl(request.Key),
+            MimeType = request.MimeType,
+            SizeBytes = request.SizeBytes,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.Assets.Add(asset);
+        project.ThumbnailAssetId = asset.Id;
+        project.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return Ok(new ProjectSummaryDto(
+            project.Id, project.Name, asset.Url, project.CreatedAt, project.UpdatedAt));
     }
 
     [HttpDelete("{id:guid}")]

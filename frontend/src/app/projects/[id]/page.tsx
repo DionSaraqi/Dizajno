@@ -15,6 +15,7 @@ import { useDesignerStore } from "@/store/useDesignerStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useVariantLookup } from "@/hooks/useVariantLookup";
 import { mapApiSceneToStore, mapStoreToApiScene } from "@/utils/sceneMapper";
+import { captureCanvasThumbnail } from "@/utils/captureCanvas";
 import * as api from "@/lib/api";
 
 const DrawingSurface = dynamic(
@@ -37,6 +38,48 @@ const DrawingSurface = dynamic(
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 const SAVE_DEBOUNCE_MS = 1500;
+const THUMBNAIL_THROTTLE_MS = 30_000;
+
+async function uploadThumbnail(projectId: string): Promise<void> {
+  const blob = await captureCanvasThumbnail(800, 600);
+  if (!blob) return;
+
+  let presigned;
+  try {
+    presigned = await api.presignProjectThumbnail(projectId, {
+      contentType: "image/png",
+      sizeBytes: blob.size,
+    });
+  } catch (error) {
+    if (error instanceof api.ApiError && error.status === 503) {
+      // R2 not configured — silently no-op; the projects list already renders
+      // a "NO THUMBNAIL" placeholder gracefully.
+      return;
+    }
+    throw error;
+  }
+
+  // The presigned PUT goes directly to R2 — never the backend. We bypass
+  // apiFetch so the bearer header isn't attached (R2 wouldn't recognise it).
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(presigned.requiredHeaders)) {
+    headers[k] = v;
+  }
+  const put = await fetch(presigned.uploadUrl, {
+    method: "PUT",
+    headers,
+    body: blob,
+  });
+  if (!put.ok) {
+    throw new Error(`R2 upload failed: ${put.status}`);
+  }
+
+  await api.attachProjectThumbnail(projectId, {
+    key: presigned.key,
+    mimeType: "image/png",
+    sizeBytes: blob.size,
+  });
+}
 
 export default function ProjectDesignerPage() {
   useKeyboardShortcuts();
@@ -56,6 +99,8 @@ export default function ProjectDesignerPage() {
   lookupRef.current = lookup;
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
+  const lastThumbnailAtRef = useRef(0);
+  const thumbnailInFlightRef = useRef(false);
 
   // ── Auth gate ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -128,6 +173,26 @@ export default function ProjectDesignerPage() {
           );
           await api.replaceScene(projectIdRef.current, scene);
           setSaveStatus("saved");
+
+          // Fire-and-forget thumbnail upload, throttled to one every 30s and
+          // never overlapping itself. Failures are silent — thumbnails are a
+          // nice-to-have, not a save blocker.
+          const now = Date.now();
+          if (
+            !thumbnailInFlightRef.current &&
+            now - lastThumbnailAtRef.current >= THUMBNAIL_THROTTLE_MS
+          ) {
+            thumbnailInFlightRef.current = true;
+            lastThumbnailAtRef.current = now;
+            void uploadThumbnail(projectIdRef.current)
+              .catch((err) => {
+                // eslint-disable-next-line no-console
+                console.warn("Thumbnail upload failed", err);
+              })
+              .finally(() => {
+                thumbnailInFlightRef.current = false;
+              });
+          }
         } catch (error) {
           setSaveStatus("error");
           // eslint-disable-next-line no-console

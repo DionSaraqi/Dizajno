@@ -863,7 +863,10 @@ export default function DrawingSurface() {
       onContextMenu={(e) => e.preventDefault()}
       tabIndex={0}
     >
-      <Canvas shadows>
+      {/* preserveDrawingBuffer lets us screenshot the canvas for project
+          thumbnails (utils/captureCanvas.ts). Without it WebGL clears the
+          framebuffer between frames and toBlob/toDataURL come back blank. */}
+      <Canvas shadows gl={{ preserveDrawingBuffer: true }}>
         <SceneContent />
       </Canvas>
     </div>

@@ -224,6 +224,96 @@ public sealed class ProjectsEndpointsTests : IClassFixture<DizajnoApiFactory>
     }
 
     [Fact]
+    public async Task PresignThumbnail_AsOwner_ReturnsScopedKey()
+    {
+        var (client, _) = await NewAuthedClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        var created = (await (await client.PostAsJsonAsync("/api/projects",
+            new CreateProjectRequest("Thumb"))).Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
+
+        var resp = await client.PostAsJsonAsync(
+            $"/api/projects/{created.Id}/thumbnail/presign",
+            new PresignProjectThumbnailRequest("image/png", 50_000));
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = (await resp.Content.ReadFromJsonAsync<PresignProjectThumbnailResponse>(JsonOpts))!;
+
+        body.Key.Should().StartWith($"projects/{created.Id}/thumbnail-").And.EndWith(".png");
+        body.UploadUrl.Should().StartWith("https://fake-r2.test.local/");
+        body.PublicUrl.Should().Be($"https://assets.test.local/{body.Key}");
+    }
+
+    [Fact]
+    public async Task PresignThumbnail_ForeignProject_Returns404()
+    {
+        var (ownerClient, _) = await NewAuthedClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        var created = (await (await ownerClient.PostAsJsonAsync("/api/projects",
+            new CreateProjectRequest("Owned"))).Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
+
+        var (otherClient, _) = await NewAuthedClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        var resp = await otherClient.PostAsJsonAsync(
+            $"/api/projects/{created.Id}/thumbnail/presign",
+            new PresignProjectThumbnailRequest("image/png", 50_000));
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task PresignThumbnail_RejectsNonImageMime()
+    {
+        var (client, _) = await NewAuthedClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        var created = (await (await client.PostAsJsonAsync("/api/projects",
+            new CreateProjectRequest("Thumb"))).Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
+
+        var resp = await client.PostAsJsonAsync(
+            $"/api/projects/{created.Id}/thumbnail/presign",
+            new PresignProjectThumbnailRequest("application/pdf", 50_000));
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task AttachThumbnail_AsOwner_SetsThumbnailUrlOnProject()
+    {
+        var (client, _) = await NewAuthedClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        var created = (await (await client.PostAsJsonAsync("/api/projects",
+            new CreateProjectRequest("Thumb"))).Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
+
+        var presign = (await (await client.PostAsJsonAsync(
+            $"/api/projects/{created.Id}/thumbnail/presign",
+            new PresignProjectThumbnailRequest("image/png", 50_000)))
+            .Content.ReadFromJsonAsync<PresignProjectThumbnailResponse>(JsonOpts))!;
+
+        var attach = await client.PutAsJsonAsync(
+            $"/api/projects/{created.Id}/thumbnail",
+            new AttachProjectThumbnailRequest(presign.Key, "image/png", 50_000));
+        attach.StatusCode.Should().Be(HttpStatusCode.OK);
+        var summary = (await attach.Content.ReadFromJsonAsync<ProjectSummaryDto>(JsonOpts))!;
+        summary.ThumbnailUrl.Should().Be(presign.PublicUrl);
+
+        // The list endpoint should also reflect the new thumbnail.
+        var list = (await client.GetFromJsonAsync<List<ProjectSummaryDto>>("/api/projects", JsonOpts))!;
+        list.First(p => p.Id == created.Id).ThumbnailUrl.Should().Be(presign.PublicUrl);
+    }
+
+    [Fact]
+    public async Task AttachThumbnail_WithKeyFromAnotherProject_Returns400()
+    {
+        var (client, _) = await NewAuthedClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        var a = (await (await client.PostAsJsonAsync("/api/projects",
+            new CreateProjectRequest("A"))).Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
+        var b = (await (await client.PostAsJsonAsync("/api/projects",
+            new CreateProjectRequest("B"))).Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
+
+        // Request a key for project A, then try to attach it to project B.
+        var presignA = (await (await client.PostAsJsonAsync(
+            $"/api/projects/{a.Id}/thumbnail/presign",
+            new PresignProjectThumbnailRequest("image/png", 50_000)))
+            .Content.ReadFromJsonAsync<PresignProjectThumbnailResponse>(JsonOpts))!;
+
+        var attach = await client.PutAsJsonAsync(
+            $"/api/projects/{b.Id}/thumbnail",
+            new AttachProjectThumbnailRequest(presignA.Key, "image/png", 50_000));
+        attach.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task UpdateName_PersistsAndAppearsInList()
     {
         var (client, _) = await NewAuthedClientAsync(Guid.NewGuid().ToString("N")[..8]);
