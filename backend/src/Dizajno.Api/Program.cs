@@ -50,7 +50,16 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddControllers();
+builder.Services
+    .AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Accept both "Door"/"Window" strings and numeric enum values on the
+        // wire. The integration tests post numbers via PutAsJsonAsync defaults;
+        // the frontend posts strings via its own JsonSerializer config.
+        options.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
