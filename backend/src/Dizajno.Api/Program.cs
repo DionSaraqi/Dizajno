@@ -3,6 +3,7 @@ using Dizajno.Application.Auth;
 using Dizajno.Application.Seed;
 using Dizajno.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
@@ -19,10 +20,6 @@ var connectionString = builder.Configuration.GetConnectionString("Dizajno")
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
-var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
-    ?? throw new InvalidOperationException(
-        $"Configuration section '{JwtOptions.SectionName}' is missing. " +
-        "Provide Issuer, Audience, and SigningKey (>=32 bytes).");
 
 // ── Services ───────────────────────────────────────────────────────────────
 
@@ -30,16 +27,25 @@ builder.Services.AddInfrastructure(connectionString);
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer();
+
+// Configure JwtBearer options from IOptions<JwtOptions> at resolution time, not at
+// startup time. This ensures test config overrides (added via WebApplicationFactory
+// after WebApplication.CreateBuilder runs) apply uniformly to issuance and validation.
+builder.Services
+    .AddOptions<Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerOptions>(
+        JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtOptions>>((bearer, jwtOpts) =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        var v = jwtOpts.Value;
+        bearer.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = jwtOptions.Issuer,
+            ValidIssuer = v.Issuer,
             ValidateAudience = true,
-            ValidAudience = jwtOptions.Audience,
+            ValidAudience = v.Audience,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(v.SigningKey)),
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromSeconds(30)
         };

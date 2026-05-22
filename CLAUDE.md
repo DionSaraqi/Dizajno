@@ -7,7 +7,7 @@ A browser-based 2D/3D room designer where users draw walls, place furniture via 
 The repository is a pnpm workspace split into two top-level packages:
 
 - `frontend/` — Next.js 14 application (the existing codebase). All paths in this document are relative to `frontend/` unless prefixed otherwise.
-- `backend/` — .NET 8 Web API (under construction; Phase 1 — see [PLAN.md](PLAN.md) when added). Empty placeholder today.
+- `backend/` — .NET 8 Web API (Phase 1 complete: catalog API + auth). See [backend/BACKEND.md](backend/BACKEND.md) for the full backend reference (endpoints, env vars, migrations, troubleshooting).
 
 Root-level convenience scripts re-export the frontend's most common commands so you can run them from the repo root.
 
@@ -35,13 +35,17 @@ pnpm --filter dizajno dev
 cd frontend && pnpm dev
 ```
 
-Backend commands (added once the .NET solution lands):
+Backend commands (from `backend/` — full reference in [backend/BACKEND.md](backend/BACKEND.md)):
 
 ```bash
-# from backend/
-dotnet run --project src/Dizajno.Api
-docker compose up -d            # Postgres for local dev
+docker compose up -d                                         # Postgres on host port 5433 + Adminer on 8081
+dotnet ef database update --project src/Dizajno.Infrastructure --startup-project src/Dizajno.Api
+dotnet run --project src/Dizajno.Api                          # API on http://localhost:5000
+dotnet test tests/Dizajno.IntegrationTests                    # Testcontainers + WebApplicationFactory
 ```
+
+Seeded admin (dev only): `admin@dizajno.local` / `Admin1234!`. The frontend reads the
+API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 
 ## Tech Stack
 
