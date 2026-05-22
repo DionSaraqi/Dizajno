@@ -401,6 +401,115 @@ export function attachProjectThumbnail(
   });
 }
 
+// ── Sharing & comments ────────────────────────────────────────────────────
+
+export type ShareMode = "View" | "Comment";
+export type ShareKind = "Link" | "Email";
+
+export interface ShareSummary {
+  id: string;
+  mode: ShareMode;
+  token: string | null;
+  invitedEmail: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export interface CreateShareRequest {
+  mode: ShareMode;
+  kind: ShareKind;
+  invitedEmail?: string | null;
+  expiresAt?: string | null;
+}
+
+export function listShares(projectId: string): Promise<ShareSummary[]> {
+  return apiFetch<ShareSummary[]>(`/api/projects/${projectId}/shares`, {
+    auth: true,
+  });
+}
+
+export function createShare(
+  projectId: string,
+  input: CreateShareRequest
+): Promise<ShareSummary> {
+  return apiFetch<ShareSummary>(`/api/projects/${projectId}/shares`, {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function revokeShare(projectId: string, shareId: string): Promise<void> {
+  return apiFetch<void>(`/api/projects/${projectId}/shares/${shareId}`, {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
+export type CommentAnchor =
+  | { type: "item"; id: string }
+  | { type: "wall"; id: string }
+  | { type: "point"; x: number; z: number };
+
+export interface CommentDto {
+  id: string;
+  parentCommentId: string | null;
+  authorUserId: string | null;
+  authorDisplayName: string | null;
+  guestName: string | null;
+  body: string;
+  anchor: CommentAnchor | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface PostCommentRequest {
+  body: string;
+  guestName?: string | null;
+  guestEmail?: string | null;
+  parentCommentId?: string | null;
+  anchor?: CommentAnchor | null;
+}
+
+export interface SharedProject {
+  projectId: string;
+  name: string;
+  thumbnailUrl: string | null;
+  mode: ShareMode;
+  scene: SceneApi;
+}
+
+/** Public viewer: load a shared project by its token (no bearer required). */
+export function loadSharedProject(token: string): Promise<SharedProject> {
+  return apiFetch<SharedProject>(`/api/share/${encodeURIComponent(token)}`);
+}
+
+export function listSharedComments(token: string): Promise<CommentDto[]> {
+  return apiFetch<CommentDto[]>(
+    `/api/share/${encodeURIComponent(token)}/comments`
+  );
+}
+
+export function postSharedComment(
+  token: string,
+  input: PostCommentRequest
+): Promise<CommentDto> {
+  // If the visitor is signed in, attaching the bearer lets the backend record
+  // their user id; otherwise they post as a guest.
+  return apiFetch<CommentDto>(
+    `/api/share/${encodeURIComponent(token)}/comments`,
+    { method: "POST", auth: true, jsonBody: input }
+  );
+}
+
+/** Owner inbox view of every comment on the project. */
+export function listProjectComments(projectId: string): Promise<CommentDto[]> {
+  return apiFetch<CommentDto[]>(`/api/projects/${projectId}/comments`, {
+    auth: true,
+  });
+}
+
 // ── Admin assets (used by thumbnail upload) ────────────────────────────────
 
 export interface PresignAssetRequest {

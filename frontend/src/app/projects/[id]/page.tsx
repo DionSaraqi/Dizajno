@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Cloud, CloudOff, Save } from "lucide-react";
+import { ArrowLeft, Cloud, CloudOff, Save, Share2 } from "lucide-react";
 import Sidebar from "@/components/designer/Sidebar";
 import Toolbar from "@/components/designer/Toolbar";
 import StatusBar from "@/components/designer/StatusBar";
 import CanvasDropZone from "@/components/designer/CanvasDropZone";
 import { DesignerProvider } from "@/components/designer/DesignerProvider";
+import { ShareDialog } from "@/components/designer/ShareDialog";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDesignerStore } from "@/store/useDesignerStore";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -93,6 +94,7 @@ export default function ProjectDesignerPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [hydrated, setHydrated] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // We use refs for things the debounced effect needs without re-triggering it.
   const lookupRef = useRef(lookup);
@@ -259,7 +261,18 @@ export default function ProjectDesignerPage() {
             </p>
           </div>
           <SaveBadge status={saveStatus} />
+          <button
+            onClick={() => setShareOpen(true)}
+            className="ml-2 flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
+          >
+            <Share2 size={12} /> Share
+          </button>
         </div>
+        <ShareDialog
+          projectId={projectId}
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+        />
         <Toolbar />
         <div className="flex flex-1 overflow-hidden">
           <Sidebar />
