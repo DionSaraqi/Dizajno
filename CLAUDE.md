@@ -50,52 +50,107 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 
 ## Tech Stack
 
+**Frontend** (`frontend/`):
 - **Framework**: Next.js 14 (App Router) + React 18 + TypeScript
 - **3D**: Three.js 0.171, React Three Fiber, Drei
 - **State**: Zustand + Zundo (undo/redo via temporal middleware)
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide React
 - **Notifications**: Sonner
-- **Data fetching**: TanStack React Query
+- **Data fetching**: TanStack React Query (v5)
+
+**Backend** (`backend/`):
+- **Framework**: .NET 8, ASP.NET Core Web API
+- **ORM**: EF Core 8 + Npgsql (snake_case via EFCore.NamingConventions)
+- **Identity**: ASP.NET Core Identity (extended `ApplicationUser : IdentityUser<Guid>`)
+- **Auth**: JWT bearer (15-min access) + rotating refresh tokens (30 days, SHA-256 hashed at rest)
+- **Database**: PostgreSQL 16 (Docker)
+- **Tests**: xUnit + FluentAssertions + Microsoft.AspNetCore.Mvc.Testing + Testcontainers.PostgreSql
+- **DI/Options**: built-in `Microsoft.Extensions.*` + Options pattern
 
 ## Project Structure
 
 ```
 .
-├── frontend/                  # Next.js 14 app (active codebase)
-│   ├── public/                # Static assets — GLBs in models/, textures in textures/
+├── frontend/                              # Next.js 14 app
+│   ├── public/                            # Static assets — GLBs in models/, textures in textures/
+│   ├── .env.example                       # NEXT_PUBLIC_API_URL template
 │   └── src/
-│       ├── app/               # Next.js App Router pages
-│       │   ├── page.tsx       # Landing page (3D house scene)
-│       │   ├── designer/      # Designer page (room editor)
-│       │   ├── login/         # Login page (placeholder)
-│       │   └── profile/       # Profile page (placeholder)
+│       ├── app/                           # Next.js App Router pages
+│       │   ├── page.tsx                   # Landing page (3D house scene)
+│       │   ├── layout.tsx                 # Root layout, wraps children in <Providers>
+│       │   ├── providers.tsx              # QueryClientProvider ('use client')
+│       │   ├── designer/                  # Designer page (room editor)
+│       │   ├── login/                     # Login page (placeholder)
+│       │   └── profile/                   # Profile page (placeholder)
 │       ├── components/
-│       │   ├── designer/      # Designer UI panels (Sidebar, Toolbar, PropertiesPanel, StatusBar)
-│       │   ├── three/         # R3F 3D components
-│       │   │   ├── landing/   # Landing page 3D scene (House, BlueDoor, Yard, HouseScene)
-│       │   │   ├── furniture/ # 3D furniture models (BedModel, ChairModel, GLTFModel, etc.)
-│       │   │   ├── DrawingSurface  # Wall drawing canvas (2D mode)
-│       │   │   ├── FloorMesh       # Auto-generated floor polygons
-│       │   │   ├── WallMesh        # 3D wall rendering
-│       │   │   ├── CameraController# Bounded OrbitControls for 3D mode
-│       │   │   └── GridPlane       # Snap grid overlay
-│       │   └── ui/            # Reusable UI primitives (Button, Panel, Slider, etc.)
-│       ├── hooks/             # Custom hooks (useFurnitureCatalog, useKeyboardShortcuts)
-│       ├── store/             # Zustand store (useDesignerStore)
-│       ├── types/             # TypeScript types (designer.ts)
-│       └── utils/             # Pure utilities
-│           ├── wallGraph.ts       # Planar face traversal for floor detection
-│           ├── collision.ts       # Furniture/wall collision detection
-│           ├── furnitureCatalog.ts# Furniture catalog definitions
-│           └── snapToGrid.ts      # Grid snapping helpers
-├── backend/                   # .NET 8 Web API (under construction)
-├── package.json               # Root pnpm workspace
+│       │   ├── designer/                  # Sidebar, Toolbar, PropertiesPanel, StatusBar
+│       │   ├── three/                     # R3F 3D components
+│       │   │   ├── landing/               # Landing page 3D scene (House, BlueDoor, Yard, HouseScene)
+│       │   │   ├── furniture/             # 3D furniture models (BedModel, ChairModel, GLTFModel, ...)
+│       │   │   ├── DrawingSurface         # Wall drawing canvas (2D mode)
+│       │   │   ├── FloorMesh              # Auto-generated floor polygons
+│       │   │   ├── WallMesh               # 3D wall rendering
+│       │   │   ├── CameraController       # Bounded OrbitControls for 3D mode
+│       │   │   └── GridPlane              # Snap grid overlay
+│       │   └── ui/                        # Reusable UI primitives
+│       ├── hooks/                         # useFurnitureCatalog (TanStack Query), useKeyboardShortcuts
+│       ├── lib/
+│       │   └── api.ts                     # Typed backend fetch client (listProducts, listCategories, ...)
+│       ├── store/                         # Zustand store (useDesignerStore)
+│       ├── types/                         # designer.ts — FurnitureCatalogItem mirrors backend DTOs
+│       └── utils/
+│           ├── wallGraph.ts               # Planar face traversal for floor detection
+│           ├── collision.ts               # Furniture/wall collision detection
+│           ├── furnitureCatalog.ts        # Fallback baseline for the API (see Known Patterns)
+│           └── snapToGrid.ts              # Grid snapping helpers
+│
+├── backend/                               # .NET 8 Web API — full reference: backend/BACKEND.md
+│   ├── Dizajno.sln
+│   ├── docker-compose.yml                 # Postgres 16-alpine on host 5433 + Adminer on 8081
+│   ├── NuGet.config                       # pins nuget.org as the source
+│   ├── .config/dotnet-tools.json          # local dotnet-ef tool manifest
+│   ├── src/
+│   │   ├── Dizajno.Api/                   # ASP.NET Core host
+│   │   │   ├── Program.cs                 # Swagger, CORS, JWT, seeder invocation
+│   │   │   ├── Controllers/               # AuthController, CatalogController
+│   │   │   ├── Contracts/                 # AuthContracts, CatalogContracts (DTOs)
+│   │   │   ├── appsettings.json
+│   │   │   └── appsettings.Development.json
+│   │   ├── Dizajno.Application/           # Cross-layer contracts
+│   │   │   ├── Auth/                      # IJwtTokenService, JwtOptions
+│   │   │   └── Seed/                      # IDataSeeder, SeedOptions
+│   │   ├── Dizajno.Domain/                # Pure entities + enums (no deps)
+│   │   │   ├── Entities/                  # Supplier, Category, Product, ProductVariant, Asset, Translation
+│   │   │   └── Enums/                     # ProductFamily, ProductStatus, UnitOfSale, AssetKind, ...
+│   │   └── Dizajno.Infrastructure/
+│   │       ├── Auth/JwtTokenService.cs
+│   │       ├── Identity/                  # ApplicationUser, RefreshToken
+│   │       ├── Persistence/
+│   │       │   ├── DizajnoDbContext.cs
+│   │       │   ├── Configurations/        # IEntityTypeConfiguration<T> per entity
+│   │       │   └── Seed/                  # DataSeeder + CatalogSeedData (source of truth for seeded items)
+│   │       └── Migrations/                # 0001_Foundation, 0002_RefreshTokens, 0003_ProductPreviewSvg
+│   └── tests/Dizajno.IntegrationTests/    # xUnit + Testcontainers + WebApplicationFactory<Program>
+│
+├── docs/
+│   └── PLAN.md                            # Product + schema master plan (source of truth for decisions)
+│
+├── package.json                           # Root pnpm workspace (re-exports frontend scripts)
 ├── pnpm-workspace.yaml
-└── CLAUDE.md                  # This file
+├── CLAUDE.md                              # This file
+└── README.md
 ```
 
 ## Architecture
+
+### Catalog API integration
+- The catalog (12 furniture items + categories + suppliers) is **owned by the backend** and served from `GET /api/catalog/products|categories|suppliers`.
+- The frontend's `useFurnitureCatalog` hook fetches via TanStack Query with a 60s staleTime and `retry: 1`.
+- API client lives in `lib/api.ts` — base URL from `NEXT_PUBLIC_API_URL` (default `http://localhost:5000`).
+- DTOs returned by the API map 1:1 onto `FurnitureCatalogItem` in `types/designer.ts` — no transformation needed.
+- `utils/furnitureCatalog.ts` is a **fallback baseline** used during the initial fetch and when the backend is offline. `getFurnitureDef(type)` (synchronous, called by collision and store mutations) reads from this fallback.
+- The seeded backend rows are sourced from `backend/src/Dizajno.Infrastructure/Persistence/Seed/CatalogSeedData.cs`, which mirrors the frontend fallback file. Keep both in sync until the supplier portal ships (Phase 4 of the master plan).
 
 ### State Management
 All designer state lives in `src/store/useDesignerStore.ts` (Zustand). Undo/redo is provided by Zundo's `temporal` middleware. The store manages walls, floors, furniture, selections, modes, and UI settings.
@@ -221,10 +276,15 @@ Add the entry to `utils/furnitureCatalog.ts` with all computed values. Include `
 ## Known Patterns
 
 - The designer has two parallel state systems: the older `DesignerProvider` (React Context + useReducer in `components/designer/`) and the newer Zustand store (`store/useDesignerStore.ts`). The Zustand store is the canonical one going forward.
-- Furniture catalog is defined in `utils/furnitureCatalog.ts` — add new furniture types there. Each item has an `svgPreview` for the sidebar thumbnail, optional `modelUrl` for GLTF loading, `materialSlots` for color customization, and `textureSlots` for texture customization.
+- **Adding a new furniture item**: add it to **both** `frontend/src/utils/furnitureCatalog.ts` (fallback + sync lookups via `getFurnitureDef`) **and** `backend/src/Dizajno.Infrastructure/Persistence/Seed/CatalogSeedData.cs` (backend seed). The seeder is idempotent — restart the API to pick up the new item; existing seeded rows are not touched. Long-term, the supplier portal (Phase 4) replaces both with admin-uploaded products.
+- Each catalog item has `svgPreview` for the sidebar thumbnail, optional `modelUrl` for GLTF loading, `materialSlots` for color customization, and `textureSlots` for texture customization.
 - Properties panel is a collapsible section inside the left sidebar (not a separate right panel).
+- **Backend port collision**: Postgres runs on host port **5433** (not 5432) to avoid colliding with host-installed Postgres services. The API runs on **5000** in dev. Frontend dev server picks 3000 unless taken (Next auto-increments).
+- **Backend layering** (Clean Architecture-ish): `Api` → `Application` + `Infrastructure`; `Application` → `Domain`; `Infrastructure` → `Application` + `Domain`; `Domain` depends on nothing. Service interfaces live in `Application` so `Domain` stays pure and `Infrastructure` implements.
+- **JWT options** are configured via `IOptions<JwtOptions>` at request time — not captured at startup. This is deliberate so `WebApplicationFactory` config overrides in tests apply uniformly to both token issuance and validation.
 
 ## Troubleshooting
 
-- **Stale `.next` cache** — If you get `Cannot find module './719.js'` or similar webpack errors, stop the dev server, run `rm -rf .next`, and restart. This happens when the cache gets corrupted (e.g. after installing/removing packages).
+- **Stale `.next` cache** — If you get `Cannot find module './719.js'` or similar webpack errors, stop the dev server, run `rm -rf .next` (or PowerShell `Remove-Item -Recurse -Force .next`), and restart. This happens when the cache gets corrupted (e.g. after installing/removing packages).
 - **Chrome DevTools 404** — `GET /.well-known/appspecific/com.chrome.devtools.json 404` is harmless; Chrome checks for this automatically. Ignore it.
+- **Backend issues** — see the troubleshooting section in [backend/BACKEND.md](backend/BACKEND.md#troubleshooting). Covers: `.NET` PATH staleness after install, the Postgres 5432 collision, MSB3027 file-locking during `dotnet ef` while the API is running, missing NuGet sources, and the JWT validation race that broke tests in Step 7.
