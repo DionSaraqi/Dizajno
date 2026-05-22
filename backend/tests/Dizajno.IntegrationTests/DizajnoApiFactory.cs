@@ -1,8 +1,12 @@
+using Dizajno.Application.Storage;
 using Dizajno.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -49,8 +53,22 @@ public sealed class DizajnoApiFactory : WebApplicationFactory<Program>, IAsyncLi
                 ["JwtSettings:RefreshTokenLifetimeDays"] = "30",
                 ["Seed:AdminEmail"] = "admin@test.local",
                 ["Seed:AdminPassword"] = "Admin1234!",
-                ["Seed:AdminDisplayName"] = "Test Admin"
+                ["Seed:AdminDisplayName"] = "Test Admin",
+                ["R2:AccountId"] = "test-account",
+                ["R2:AccessKeyId"] = "test-key",
+                ["R2:SecretAccessKey"] = "test-secret",
+                ["R2:Bucket"] = "dizajno-test",
+                ["R2:PublicBaseUrl"] = "https://assets.test.local",
+                ["R2:PresignedUrlLifetimeMinutes"] = "10"
             });
+        });
+
+        // Replace the real R2-backed storage with a deterministic fake so tests
+        // never make outbound network calls.
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IObjectStorage>();
+            services.AddSingleton<IObjectStorage>(new FakeObjectStorage("https://assets.test.local"));
         });
     }
 

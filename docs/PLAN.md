@@ -406,7 +406,7 @@ audit_log
 | Phase | Status | Deliverables |
 |---|---|---|
 | 1 — Foundation | ✓ Done | Identity, JWT auth, catalog API, seeder for 12 furniture items, frontend swap, integration tests |
-| 1.5 — Cloudflare R2 | pending | Asset uploads via presigned URLs; migrate seeded GLB/texture URLs to R2 |
+| 1.5 — Cloudflare R2 | ✓ Done | `IObjectStorage` + AWSSDK.S3 R2 client; admin presign + asset-create endpoints; integration tests with mocked storage. Bulk migration of seeded `/models/*.glb` URLs still pending an R2 bucket. |
 | 2 — Projects | pending | `Project` + scene tables, save/load endpoints, thumbnail upload, named versions |
 | 3 — Sharing | pending | `ProjectShare`, `ProjectComment`, share-link routes, comment thread UI, spatial anchors |
 | 4 — Customizer textures | pending | `SupplierTexture` + `ProductVariantTextureSlot`, move Phase 1's jsonb textureSlots into proper tables |
@@ -431,9 +431,21 @@ Built:
 
 Phase 1 done-bar: **the designer renders its catalog from the live API**. Hit.
 
-### Phase 1.5 — Cloudflare R2 (deferred from Phase 1)
+### Phase 1.5 — Cloudflare R2 ✓ Done
 
-Add R2 client (AWS S3 SDK against R2 endpoint), `POST /api/admin/assets/presign` for admin uploads, migrate the seeded `/models/*.glb` URLs to R2. ~1–2 days.
+Branch: `feat/backend-foundation`. Built on top of Phase 1.
+
+Built:
+- `IObjectStorage` abstraction in `Dizajno.Application/Storage/` + matching `R2Options`
+- `S3ObjectStorage` in `Dizajno.Infrastructure/Storage/` using `AWSSDK.S3` against the R2 endpoint (`https://{accountId}.r2.cloudflarestorage.com`, `ForcePathStyle = true`)
+- `POST /api/admin/assets/presign` — admin-only; validates per-`AssetKind` MIME + size caps, returns a short-lived PUT URL plus the derived public URL and the headers the client must echo
+- `POST /api/admin/assets` — admin-only; persists an `Asset` row with the public URL derived from `R2:PublicBaseUrl` + the key
+- `FakeObjectStorage` registered via `ConfigureTestServices` so the integration tests never hit the wire
+- 8 new integration tests covering auth gating, MIME/size validation, and persistence — full suite is 29 green
+- Refactored `AddInfrastructure` to resolve the connection string from `IConfiguration` at DbContext construction time so test config overrides (including R2 settings) take effect uniformly
+
+Outstanding (parked until an R2 bucket is provisioned):
+- Upload the seeded `frontend/public/models/*.glb` + `textures/*.jpg` to R2 and update `CatalogSeedData.cs` to point at the R2 URLs. The migration recipe is documented in [backend/BACKEND.md](../backend/BACKEND.md#migrating-the-phase-1-seed-assets-to-r2).
 
 ### Phase 2 — Projects
 

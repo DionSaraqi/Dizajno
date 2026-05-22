@@ -87,6 +87,16 @@ Environment variables use the standard double-underscore syntax:
 | `Seed:AdminEmail` | yes | `admin@dizajno.local` | |
 | `Seed:AdminPassword` | yes | `Admin1234!` (Development only) | **Override in production** |
 | `Seed:AdminDisplayName` | no | `Dizajno Admin` | |
+| `R2:AccountId` | no¹ | empty | Cloudflare account id |
+| `R2:AccessKeyId` | no¹ | empty | R2 API token access key |
+| `R2:SecretAccessKey` | no¹ | empty | R2 API token secret |
+| `R2:Bucket` | no¹ | empty | Bucket name (e.g. `dizajno-assets`) |
+| `R2:PublicBaseUrl` | no¹ | empty | Public asset base URL (R2.dev or custom domain), no trailing slash |
+| `R2:PresignedUrlLifetimeMinutes` | no | `10` | TTL for presigned PUT URLs |
+
+¹ `R2:*` keys are only required if you call the asset upload endpoints
+(`/api/admin/assets/*`). The API boots fine without them; the endpoints surface a
+clear configuration error on first use.
 
 Production: set `Seed:AdminPassword` and `JwtSettings:SigningKey` via environment
 variables or a secret manager — never check the production values into git.
@@ -171,6 +181,45 @@ All GET, no auth required in Phase 1.
 DTO shape mirrors `frontend/src/types/designer.ts` `FurnitureCatalogItem` so the
 frontend can deserialize without renaming.
 
+### Admin assets (`/api/admin/assets`)
+
+All endpoints require the `Admin` role.
+
+- `POST /presign` — `{ kind, contentType, sizeBytes, originalFileName?, checksumSha256? }`
+  → `{ key, uploadUrl, expiresAt, publicUrl, requiredHeaders }`. Returns a short-lived
+  PUT URL the client uses to upload the file directly to R2. Per-kind MIME and size
+  caps are enforced before signing (see `AssetUploadRules` in `AssetsController.cs`).
+- `POST /` — `{ key, kind, mimeType, sizeBytes, checksumSha256?, productId?, variantId?, ownerSupplierId?, sortOrder }`
+  → 201 `AssetDto`. Records the completed upload as an `Asset` row whose URL is
+  derived from `R2:PublicBaseUrl` + `key`.
+
+Upload flow:
+
+1. Client `POST /presign` with the file's `Content-Type` and `sizeBytes`.
+2. Client PUTs the bytes to `uploadUrl` with every header from `requiredHeaders`
+   (notably `Content-Type` and `Content-Length` — the signature includes them).
+3. Once the PUT returns 200, client `POST /` with the same `key` to persist
+   the `Asset` row.
+
+### Migrating the Phase 1 seed assets to R2
+
+The Phase 1 seeder stores frontend-relative URLs (e.g. `/models/sofa.glb`) on
+catalog rows. After R2 is provisioned:
+
+1. Configure `R2:*` env vars (or `appsettings.Development.json` overrides).
+2. Run `dotnet run --project src/Dizajno.Api` and obtain an admin bearer token
+   from `POST /api/auth/login`.
+3. For each file under `frontend/public/models/` and `frontend/public/textures/`:
+   - `POST /api/admin/assets/presign` with the appropriate `kind` / `contentType`.
+   - PUT the bytes to the returned `uploadUrl`.
+   - `POST /api/admin/assets` to persist.
+4. Update `CatalogSeedData.cs` so `GlbAssetUrl` / texture URLs point at the new
+   R2 public URLs, then drop and re-seed (or write a one-shot migration to UPDATE
+   the existing rows).
+
+`frontend/public/` files can stay in place as an offline-dev fallback until the
+supplier portal (Phase 7) replaces the seeded catalog.
+
 ## Tests
 
 ```powershell
@@ -188,9 +237,11 @@ then start the API host (which runs the seeder against the freshly migrated DB).
 Each test class gets its own container — slower than sharing, but each class
 sees a deterministic starting state.
 
-Two test classes today:
+Three test classes today (29 tests):
 - `CatalogEndpointsTests` — 12 tests
 - `AuthEndpointsTests` — 9 tests
+- `AssetsEndpointsTests` — 8 tests (presign + finalize; uses `FakeObjectStorage`
+  registered via `ConfigureTestServices`, so no live R2 credentials needed)
 
 ## Troubleshooting
 

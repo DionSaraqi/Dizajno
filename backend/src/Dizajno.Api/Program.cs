@@ -1,6 +1,7 @@
 using System.Text;
 using Dizajno.Application.Auth;
 using Dizajno.Application.Seed;
+using Dizajno.Application.Storage;
 using Dizajno.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
@@ -13,17 +14,13 @@ const string FrontendCorsPolicy = "FrontendDev";
 
 // ── Configuration ──────────────────────────────────────────────────────────
 
-var connectionString = builder.Configuration.GetConnectionString("Dizajno")
-    ?? throw new InvalidOperationException(
-        "ConnectionStrings:Dizajno is not configured. Set it in appsettings.Development.json " +
-        "or via the DIZAJNO_ConnectionStrings__Dizajno environment variable.");
-
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
+builder.Services.Configure<R2Options>(builder.Configuration.GetSection(R2Options.SectionName));
 
 // ── Services ───────────────────────────────────────────────────────────────
 
-builder.Services.AddInfrastructure(connectionString);
+builder.Services.AddInfrastructure();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
