@@ -8,6 +8,7 @@ The repository is a pnpm workspace split into two top-level packages:
 
 - `frontend/` — Next.js 14 application (the existing codebase). All paths in this document are relative to `frontend/` unless prefixed otherwise.
 - `backend/` — .NET 8 Web API (Phase 1 complete: catalog API + auth). See [backend/BACKEND.md](backend/BACKEND.md) for the full backend reference (endpoints, env vars, migrations, troubleshooting).
+- `docs/` — product + schema master plan. **[docs/PLAN.md](docs/PLAN.md)** is the source of truth for design decisions and the 7-phase roadmap — read it first when picking up the project cold or starting a new chat.
 
 Root-level convenience scripts re-export the frontend's most common commands so you can run them from the repo root.
 
