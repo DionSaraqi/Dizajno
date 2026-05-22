@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Eye, MessageSquare } from "lucide-react";
-import { useDesignerStore } from "@/store/useDesignerStore";
+import { ArrowLeft, Box, Eye, MessageSquare, Square } from "lucide-react";
+import { useDesignerStore, useIs3D } from "@/store/useDesignerStore";
 import { useVariantLookup } from "@/hooks/useVariantLookup";
 import { mapApiSceneToStore } from "@/utils/sceneMapper";
 import * as api from "@/lib/api";
@@ -32,6 +32,8 @@ export default function SharedProjectPage() {
   const params = useParams<{ token: string }>();
   const token = params?.token ?? "";
   const lookup = useVariantLookup();
+  const is3D = useIs3D();
+  const toggleIs3D = useDesignerStore((s) => s.toggleIs3D);
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
@@ -121,6 +123,20 @@ export default function SharedProjectPage() {
             shared {project.mode === "Comment" ? "with comments" : "read-only"}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={toggleIs3D}
+          aria-pressed={is3D}
+          className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase transition
+            ${
+              is3D
+                ? "border-white/40 bg-white/10 text-dizajno-text"
+                : "border-white/10 text-dizajno-muted hover:text-dizajno-text hover:bg-white/5"
+            }`}
+        >
+          {is3D ? <Box size={12} /> : <Square size={12} />}
+          <span>{is3D ? "3D" : "2D"}</span>
+        </button>
         <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest uppercase text-dizajno-muted">
           {project.mode === "Comment" ? (
             <>
