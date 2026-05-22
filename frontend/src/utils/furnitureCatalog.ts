@@ -1,20 +1,21 @@
 /**
- * Local furniture catalog — static data used while the backend API is not yet available.
+ * Bundled furniture catalog — fallback baseline.
  *
- * FUTURE INTEGRATION NOTE:
- * This catalog is intentionally structured to mirror the shape of the furniture API
- * that will be provided by local furniture companies and manufacturers.
+ * As of Phase 1, the canonical catalog lives in the backend (Postgres) and is
+ * served via `GET /api/catalog/products`. The hook `useFurnitureCatalog`
+ * (src/hooks/useFurnitureCatalog.ts) fetches from there.
  *
- * When the API is ready, replace this static array with a fetch call:
- *   const res = await fetch('/api/furniture');
- *   const catalog: FurnitureCatalogItem[] = await res.json();
+ * This file remains for two reasons:
+ *   1. First-paint fallback: `useFurnitureCatalog` shows these entries while
+ *      the API query is in flight and when the backend is unreachable.
+ *   2. Sync lookups: `getFurnitureDef(type)` is called from non-React code
+ *      (collision, store mutations) where async fetches are inappropriate. The
+ *      backend is seeded from this exact array (backend/src/Dizajno.Infrastructure/
+ *      Persistence/Seed/CatalogSeedData.cs), so the lookup stays correct.
  *
- * Each item's `svgPreview` will be auto-generated server-side from the company's
- * CAD files (DXF/DWG), producing a top-down 2D floor-plan SVG thumbnail.
- * The `modelUrl` field will point to a GLTF/GLB 3D model served from the same API.
- *
- * The hook `useFurnitureCatalog` (src/hooks/useFurnitureCatalog.ts) is already
- * structured with `isLoading` to support the async API transition.
+ * When the backend grows products beyond this seed (supplier portal, Phase 4 of
+ * the master plan), `getFurnitureDef` will need to shift to a runtime cache
+ * populated by the hook.
  */
 
 import type { FurnitureCatalogItem, FurnitureCategory } from "@/types/designer";
