@@ -27,6 +27,8 @@ public sealed class DizajnoDbContext : IdentityDbContext<ApplicationUser, Identi
     public DbSet<Floor> Floors => Set<Floor>();
     public DbSet<Opening> Openings => Set<Opening>();
     public DbSet<PlacedItem> PlacedItems => Set<PlacedItem>();
+    public DbSet<ProjectShare> ProjectShares => Set<ProjectShare>();
+    public DbSet<ProjectComment> ProjectComments => Set<ProjectComment>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

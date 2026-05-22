@@ -333,6 +333,156 @@ public sealed class ProjectsController : ControllerBase
             project.Id, project.Name, asset.Url, project.CreatedAt, project.UpdatedAt));
     }
 
+    // ── Shares (owner-side) ────────────────────────────────────────────────
+
+    [HttpGet("{id:guid}/shares")]
+    public async Task<ActionResult<IReadOnlyList<ShareSummaryDto>>> ListShares(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        var project = await LoadOwnedProjectAsync(id, userId, cancellationToken);
+        if (project is null) return NotFound();
+
+        var rows = await _db.ProjectShares
+            .AsNoTracking()
+            .Where(s => s.ProjectId == id)
+            .OrderByDescending(s => s.CreatedAt)
+            .Select(s => new ShareSummaryDto(
+                s.Id, s.Mode, s.Token, s.InvitedEmail, s.ExpiresAt, s.CreatedAt, s.RevokedAt))
+            .ToListAsync(cancellationToken);
+
+        return Ok(rows);
+    }
+
+    [HttpPost("{id:guid}/shares")]
+    public async Task<ActionResult<ShareSummaryDto>> CreateShare(
+        Guid id,
+        CreateShareRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        var project = await LoadOwnedProjectAsync(id, userId, cancellationToken);
+        if (project is null) return NotFound();
+
+        if (!Enum.IsDefined(typeof(ShareMode), request.Mode))
+        {
+            return Problem("Invalid share mode.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        string? token = null;
+        string? invitedEmail = null;
+        if (request.Kind == ShareKind.Link)
+        {
+            token = GenerateShareToken();
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(request.InvitedEmail))
+            {
+                return Problem("invitedEmail is required for email shares.",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+            invitedEmail = request.InvitedEmail.Trim().ToLowerInvariant();
+        }
+
+        var share = new ProjectShare
+        {
+            Id = Guid.NewGuid(),
+            ProjectId = id,
+            Mode = request.Mode,
+            Token = token,
+            InvitedEmail = invitedEmail,
+            ExpiresAt = request.ExpiresAt,
+            CreatedByUserId = userId,
+            CreatedAt = DateTime.UtcNow
+        };
+        _db.ProjectShares.Add(share);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return StatusCode(StatusCodes.Status201Created, new ShareSummaryDto(
+            share.Id, share.Mode, share.Token, share.InvitedEmail,
+            share.ExpiresAt, share.CreatedAt, share.RevokedAt));
+    }
+
+    [HttpDelete("{id:guid}/shares/{shareId:guid}")]
+    public async Task<ActionResult> RevokeShare(
+        Guid id,
+        Guid shareId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        var project = await LoadOwnedProjectAsync(id, userId, cancellationToken);
+        if (project is null) return NotFound();
+
+        var share = await _db.ProjectShares.FirstOrDefaultAsync(
+            s => s.Id == shareId && s.ProjectId == id, cancellationToken);
+        if (share is null) return NotFound();
+
+        if (share.RevokedAt is null)
+        {
+            share.RevokedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        return NoContent();
+    }
+
+    // ── Comments (owner inbox) ─────────────────────────────────────────────
+
+    [HttpGet("{id:guid}/comments")]
+    public async Task<ActionResult<IReadOnlyList<CommentDto>>> ListComments(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        var project = await LoadOwnedProjectAsync(id, userId, cancellationToken);
+        if (project is null) return NotFound();
+
+        var rows = await _db.ProjectComments
+            .AsNoTracking()
+            .Where(c => c.ProjectId == id && c.DeletedAt == null)
+            .OrderBy(c => c.CreatedAt)
+            .Select(c => new
+            {
+                c.Id,
+                c.ParentCommentId,
+                c.AuthorUserId,
+                c.GuestName,
+                c.Body,
+                c.Anchor,
+                c.CreatedAt,
+                c.ResolvedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        var authorIds = rows
+            .Where(r => r.AuthorUserId != null)
+            .Select(r => r.AuthorUserId!.Value)
+            .Distinct()
+            .ToList();
+        var displayNames = authorIds.Count == 0
+            ? new Dictionary<Guid, string?>()
+            : await _db.Users
+                .AsNoTracking()
+                .Where(u => authorIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.DisplayName, cancellationToken);
+
+        var dtos = rows.Select(r => new CommentDto(
+            r.Id,
+            r.ParentCommentId,
+            r.AuthorUserId,
+            r.AuthorUserId is null ? null
+                : displayNames.TryGetValue(r.AuthorUserId.Value, out var dn) ? dn : null,
+            r.GuestName,
+            r.Body,
+            ParseAnchor(r.Anchor),
+            r.CreatedAt,
+            r.ResolvedAt
+        )).ToList();
+
+        return Ok(dtos);
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
@@ -440,6 +590,32 @@ public sealed class ProjectsController : ControllerBase
         var raw = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? User.FindFirst("sub")?.Value;
         return Guid.TryParse(raw, out userId);
+    }
+
+    internal static string GenerateShareToken()
+    {
+        // 32 url-safe characters from 24 random bytes. Enough entropy that
+        // brute-forcing a single token is infeasible.
+        Span<byte> bytes = stackalloc byte[24];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        return Convert.ToBase64String(bytes)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
+    internal static System.Text.Json.JsonElement? ParseAnchor(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            return doc.RootElement.Clone();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private Task<Project?> LoadOwnedProjectAsync(Guid id, Guid userId, CancellationToken cancellationToken) =>
