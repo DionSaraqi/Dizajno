@@ -46,6 +46,7 @@ public sealed class DataSeeder : IDataSeeder
         var supplier = await SeedSupplierAsync(cancellationToken);
         var categories = await SeedCategoriesAsync(cancellationToken);
         await SeedProductsAsync(supplier, categories, cancellationToken);
+        await SeedTextureLibraryAsync(supplier, cancellationToken);
     }
 
     private async Task SeedRolesAsync()
@@ -234,9 +235,7 @@ public sealed class DataSeeder : IDataSeeder
                 MaterialDefaults = seed.MaterialSlots is null
                     ? null
                     : JsonSerializer.Serialize(seed.MaterialSlots, JsonOpts),
-                Attributes = seed.TextureSlots is null
-                    ? "{}"
-                    : JsonSerializer.Serialize(new { textureSlots = seed.TextureSlots }, JsonOpts),
+                Attributes = "{}",
                 SortOrder = 0,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -251,5 +250,159 @@ public sealed class DataSeeder : IDataSeeder
             await _db.SaveChangesAsync(cancellationToken);
             _log.LogInformation("Seeded {Count} furniture products", added);
         }
+    }
+
+    /// <summary>
+    /// Materialises the per-variant texture options declared in
+    /// <see cref="CatalogSeedData.Items"/> as proper relational rows:
+    /// one <see cref="Asset"/> + <see cref="SupplierTexture"/> per distinct URL
+    /// under the seed supplier, then a <see cref="ProductVariantTextureSlot"/>
+    /// for each (variant, slot, url) tuple. Empty-string entries in the seed
+    /// represent the implicit "None" option and are skipped — the catalog DTO
+    /// re-prepends them when serving the slot list.
+    /// </summary>
+    private async Task SeedTextureLibraryAsync(Supplier supplier, CancellationToken cancellationToken)
+    {
+        // 1. Gather distinct (url, displayName) pairs across all items.
+        var library = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var item in CatalogSeedData.Items)
+        {
+            if (item.TextureSlots is null) continue;
+            foreach (var urls in item.TextureSlots.Values)
+            {
+                foreach (var url in urls)
+                {
+                    if (string.IsNullOrWhiteSpace(url)) continue;
+                    if (library.ContainsKey(url)) continue;
+                    library[url] = DeriveTextureName(url);
+                }
+            }
+        }
+
+        if (library.Count == 0)
+        {
+            return;
+        }
+
+        // 2. Upsert SupplierTexture rows (and their backing Asset) keyed by name.
+        var existingTextures = await _db.SupplierTextures
+            .Where(t => t.SupplierId == supplier.Id)
+            .ToDictionaryAsync(t => t.Name, cancellationToken);
+
+        var textureIdByUrl = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var newTextures = 0;
+        var now = DateTime.UtcNow;
+        foreach (var (url, name) in library)
+        {
+            if (existingTextures.TryGetValue(name, out var existing))
+            {
+                textureIdByUrl[url] = existing.Id;
+                continue;
+            }
+
+            var assetId = Guid.NewGuid();
+            _db.Assets.Add(new Asset
+            {
+                Id = assetId,
+                OwnerSupplierId = supplier.Id,
+                Kind = AssetKind.Image,
+                Url = url,
+                MimeType = GuessMimeType(url),
+                SizeBytes = 0,
+                SortOrder = 0,
+                CreatedAt = now
+            });
+
+            var textureId = Guid.NewGuid();
+            _db.SupplierTextures.Add(new SupplierTexture
+            {
+                Id = textureId,
+                SupplierId = supplier.Id,
+                Name = name,
+                AssetId = assetId,
+                Tags = Array.Empty<string>(),
+                RepeatU = 4,
+                RepeatV = 4,
+                CreatedAt = now
+            });
+            textureIdByUrl[url] = textureId;
+            newTextures++;
+        }
+
+        if (newTextures > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _log.LogInformation("Seeded {Count} supplier textures", newTextures);
+        }
+
+        // 3. For each seeded item with TextureSlots, ensure the matching variant
+        // has ProductVariantTextureSlot rows. The first non-empty URL per slot is
+        // marked IsDefault.
+        var newSlots = 0;
+        foreach (var item in CatalogSeedData.Items)
+        {
+            if (item.TextureSlots is null) continue;
+
+            var sku = $"{item.Type}-default";
+            var variantId = await _db.ProductVariants
+                .Where(v => v.Sku == sku)
+                .Select(v => v.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (variantId == Guid.Empty) continue;
+
+            var hasAnySlot = await _db.ProductVariantTextureSlots
+                .AnyAsync(s => s.VariantId == variantId, cancellationToken);
+            if (hasAnySlot) continue;
+
+            foreach (var (slotName, urls) in item.TextureSlots)
+            {
+                var defaultAssigned = false;
+                foreach (var url in urls)
+                {
+                    if (string.IsNullOrWhiteSpace(url)) continue;
+                    if (!textureIdByUrl.TryGetValue(url, out var textureId)) continue;
+
+                    _db.ProductVariantTextureSlots.Add(new ProductVariantTextureSlot
+                    {
+                        Id = Guid.NewGuid(),
+                        VariantId = variantId,
+                        SlotName = slotName,
+                        SupplierTextureId = textureId,
+                        IsDefault = !defaultAssigned
+                    });
+                    defaultAssigned = true;
+                    newSlots++;
+                }
+            }
+        }
+
+        if (newSlots > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _log.LogInformation("Seeded {Count} product-variant texture slots", newSlots);
+        }
+    }
+
+    private static string DeriveTextureName(string url)
+    {
+        var basename = url.Split('/').Last();
+        var withoutExt = basename.Contains('.') ? basename[..basename.LastIndexOf('.')] : basename;
+        var pretty = withoutExt.Replace('-', ' ').Replace('_', ' ').Trim();
+        if (pretty.Length == 0) return basename;
+        return string.Join(' ', pretty.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(word => char.ToUpperInvariant(word[0]) + word[1..]));
+    }
+
+    private static string GuessMimeType(string url)
+    {
+        var dot = url.LastIndexOf('.');
+        if (dot < 0) return "application/octet-stream";
+        return url[(dot + 1)..].ToLowerInvariant() switch
+        {
+            "jpg" or "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "webp" => "image/webp",
+            _ => "application/octet-stream"
+        };
     }
 }

@@ -3,7 +3,10 @@ namespace Dizajno.Infrastructure.Persistence.Seed;
 /// <summary>
 /// Initial catalog data mirroring frontend/src/utils/furnitureCatalog.ts.
 /// Kept here as code (not JSON) so the SVG strings stay diff-friendly and reviewable.
-/// Phase 4 (supplier portal) will deprecate this file in favor of admin-uploaded products.
+/// Phase 7 (admin tooling + supplier portal) will deprecate this file in favor of
+/// admin-uploaded products. Phase 4 already promoted TextureSlots from a jsonb stash
+/// on ProductVariant.Attributes to relational SupplierTexture + ProductVariantTextureSlot
+/// rows; the dictionary here is still the source of truth for what the seeder creates.
 /// </summary>
 public static class CatalogSeedData
 {

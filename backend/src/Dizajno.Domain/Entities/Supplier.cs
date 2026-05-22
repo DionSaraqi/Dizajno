@@ -15,4 +15,5 @@ public sealed class Supplier
     public Asset? LogoAsset { get; set; }
     public ICollection<Product> Products { get; set; } = new List<Product>();
     public ICollection<SupplierMember> Members { get; set; } = new List<SupplierMember>();
+    public ICollection<SupplierTexture> Textures { get; set; } = new List<SupplierTexture>();
 }

@@ -51,7 +51,7 @@ backend/
 │   │   │   ├── DizajnoDbContext.cs
 │   │   │   ├── Configurations/
 │   │   │   └── Seed/               DataSeeder + CatalogSeedData
-│   │   └── Migrations/             0001_Foundation, 0002_RefreshTokens, 0003_ProductPreviewSvg
+│   │   └── Migrations/             0001_Foundation, 0002_RefreshTokens, 0003_ProductPreviewSvg, 0004_Projects, 0005_Sharing, 0006_CustomizerTextures
 │   └── Dizajno.Api/                ASP.NET Core host
 │       ├── Program.cs              wiring (Swagger, CORS, JWT, seeder invocation)
 │       ├── Controllers/            AuthController, CatalogController
@@ -263,12 +263,16 @@ then start the API host (which runs the seeder against the freshly migrated DB).
 Each test class gets its own container — slower than sharing, but each class
 sees a deterministic starting state.
 
-Four test classes today (37 tests):
+Six test classes today (55 tests):
 - `CatalogEndpointsTests` — 12 tests
 - `AuthEndpointsTests` — 9 tests
 - `AssetsEndpointsTests` — 8 tests (presign + finalize; uses `FakeObjectStorage`
   registered via `ConfigureTestServices`, so no live R2 credentials needed)
-- `ProjectsEndpointsTests` — 8 tests (CRUD, scene replace-all, version snapshot/restore, ownership 404)
+- `ProjectsEndpointsTests` — 13 tests (CRUD, scene replace-all, version snapshot/restore, ownership 404, thumbnail presign + attach)
+- `SharingEndpointsTests` — 8 tests (Phase 3: share CRUD, public token scene load, comment list/post in view vs comment mode)
+- `CustomizerTexturesTests` — 5 tests (Phase 4: catalog DTO from relational rows,
+  variant attributes no longer stash `textureSlots`, seeder library + slot rows,
+  cross-supplier trigger raises `PostgresException`)
 
 ## Troubleshooting
 

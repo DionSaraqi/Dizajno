@@ -67,7 +67,7 @@ Each entry: **what we chose** + **why** + **status**. Decisions are grouped them
 
 ### Customizer (materials & textures)
 
-- **Per-supplier texture library.** Each Supplier owns its own `SupplierTexture` rows; `ProductVariantTextureSlot` can only reference textures from the variant's product's supplier (enforced by trigger). **Why:** matches reality — each company has its own fabrics. *Planned for Phase 4. Phase 1 stuffs `textureSlots` into `ProductVariant.attributes` jsonb as a temporary fix; the migration to proper tables is destructive but contained.*
+- **Per-supplier texture library.** Each Supplier owns its own `SupplierTexture` rows; `ProductVariantTextureSlot` can only reference textures from the variant's product's supplier (enforced by a Postgres BEFORE INSERT/UPDATE trigger on `product_variant_texture_slots`). **Why:** matches reality — each company has its own fabrics. *Built in Phase 4 via migration `0006_CustomizerTextures`. Phase 1 stuffed `textureSlots` into `ProductVariant.attributes` jsonb as a placeholder; the seeder now creates a `SupplierTexture` (under the seed supplier) + an `Asset` per distinct texture URL, plus `ProductVariantTextureSlot` rows per (variant, slot, texture). The catalog DTO still emits `TextureSlots: Record<slotName, string[]>` with `""` prepended for the "None" option so the frontend is unchanged.*
 - **Material slots = named colors on the model.** `ProductVariant.materialDefaults` is `{slotName: hexColor}`. Per-placed-item overrides on `PlacedItem.materialColors`. **Why:** matches the existing frontend customizer UX. *Built in Phase 1.*
 - **Custom scaled sizes flow into the quote.** The designer lets users scale items 50–200%. `QuoteLine` carries `scaledWidth/Depth/Height` separately from the variant's stock dims. If they differ, the supplier sees a "custom size" badge and decides. **Why:** maximum flexibility, supplier owns the call. *Planned for Phase 5.*
 
@@ -222,7 +222,7 @@ product_variant_texture_slots
   -- trigger: variant.product.supplier_id MUST equal supplier_texture.supplier_id
 ```
 
-Phase 1 placeholder: texture options stored as JSON in `product_variants.attributes` (`{"textureSlots": {"Body": ["", "/textures/x.jpg"]}}`). Migration to proper tables is part of Phase 4.
+Built in Phase 4 (migration `0006_CustomizerTextures`). The previous Phase 1 placeholder — `{"textureSlots": ...}` stashed in `product_variants.attributes` — has been removed; the seeder now writes the relational rows directly. Cross-supplier slot inserts are blocked by trigger `trg_pv_texture_slot_supplier_match`.
 
 ### i18n (`✓ built`)
 
@@ -409,7 +409,7 @@ audit_log
 | 1.5 — Cloudflare R2 | ✓ Done | `IObjectStorage` + AWSSDK.S3 R2 client; admin presign + asset-create endpoints; integration tests with mocked storage. Bulk migration of seeded `/models/*.glb` URLs still pending an R2 bucket. |
 | 2 — Projects | ✓ Done | Backend: `projects`/`project_versions`/`walls`/`floors`/`openings`/`placed_items` tables (migration `0004_Projects`), full CRUD + scene replace-all + version snapshot/restore at `/api/projects/*`, thumbnail presign + attach endpoints. Frontend: auth store with HttpOnly-cookie refresh bootstrap, login + register pages, `/projects` list with create/delete, `/projects/[id]` designer that loads a scene and auto-saves on changes (1.5 s debounce), 800×600 canvas capture auto-uploaded to R2 throttled to one per 30 s. |
 | 3 — Sharing | ✓ Done (pin overlay deferred) | Backend: `project_shares` + `project_comments` (migration `0005_Sharing`), owner-side share CRUD + comment inbox under `/api/projects/{id}`, public token-scoped scene load + comment list/post under `/api/share/{token}`. Comment mode required for posts; anon posters supply `guestName`. Frontend: Share dialog in designer header (link + email modes), `/share/[token]` read-only viewer using the same R3F canvas in select mode, right-rail CommentsPanel that polls every 15 s and supports both signed-in + guest authors. Anchor JSON is round-tripped; rendering pins on the canvas is the only piece deferred. |
-| 4 — Customizer textures | pending | `SupplierTexture` + `ProductVariantTextureSlot`, move Phase 1's jsonb textureSlots into proper tables |
+| 4 — Customizer textures | ✓ Done | Backend: `supplier_textures` + `product_variant_texture_slots` (migration `0006_CustomizerTextures`) with a Postgres trigger enforcing variant.product.supplier ≡ supplier_texture.supplier. Seeder upserts one `SupplierTexture` (+ backing `Asset`) per distinct catalog texture URL under the `dizajno` supplier and writes `ProductVariantTextureSlot` rows per (variant, slot, url), marking the first non-empty url per slot as default. `CatalogController` joins the new tables and emits the same `TextureSlots: Record<slotName, string[]>` DTO shape (with `""` prepended for "None"), so the frontend keeps using `def.textureSlots` and `materialTextures` unchanged. |
 | 5 — Quoting | pending | `Quote` fan-out, `QuoteRequest`/`QuoteLine`/`QuoteResponse`, inbox UIs |
 | 6 — Fixtures & building materials | pending | `Opening.productVariantId`, paint/flooring quantity calc, lighting/appliance/building-material catalog data |
 | 7 — Admin tooling | pending | `AuditLog`, admin dashboard; `SupplierMember` portal for self-serve onboarding |
@@ -486,13 +486,21 @@ Frontend:
 - Shared-view route `/share/[token]` — read-only or comment-able
 - Comment overlay on the canvas (Figma-style pins) + thread sidebar
 
-### Phase 4 — Customizer textures
+### Phase 4 — Customizer textures ✓ Done
 
-**Goal:** suppliers maintain their own texture library; products opt in to specific textures per material slot.
+Branch: `feat/backend-foundation`. Built on top of Phase 3.
 
-New tables: `supplier_textures`, `product_variant_texture_slots`.
+Goal: suppliers maintain their own texture library; products opt in to specific textures per material slot.
 
-Migration: pull `textureSlots` JSON out of `product_variants.attributes` and into the relational tables. Backfill the Phase 1 seed (the corduroy texture on `colorable-sectional-sofa`).
+Built:
+
+- New entities `SupplierTexture` (`SupplierId`, `Name`, `AssetId`, `ThumbnailAssetId?`, `Tags text[]`, `RepeatU`/`RepeatV` defaulting to 4) and `ProductVariantTextureSlot` (`VariantId`, `SlotName`, `SupplierTextureId`, `IsDefault`) under `Dizajno.Domain.Entities`, with EF configurations + DbSets on `DizajnoDbContext`.
+- Migration `0006_CustomizerTextures` creates both tables and installs trigger `trg_pv_texture_slot_supplier_match` (BEFORE INSERT OR UPDATE) so the database itself rejects any `product_variant_texture_slot` whose variant's product belongs to a different supplier than the referenced `supplier_texture`.
+- `DataSeeder` no longer writes `{"textureSlots": ...}` into `ProductVariant.Attributes`. Instead it walks `CatalogSeedData.Items[*].TextureSlots`, upserts one `SupplierTexture` + backing `Asset` (`AssetKind.Image`) per distinct URL under the seed supplier, and creates one `ProductVariantTextureSlot` per (variant, slot, non-empty url). The first non-empty url per slot is marked `IsDefault`.
+- `CatalogController` reads texture options via a bulk join over `ProductVariantTextureSlot → SupplierTexture → Asset`, groups by `(variant, slot)`, sorts by `IsDefault DESC, Name`, and prepends `""` so the DTO shape (`TextureSlots: Record<slotName, string[]>`) matches Phase 1 — the frontend, `materialTextures` round-trip, and existing tests are unchanged.
+- Integration tests in `CustomizerTexturesTests`: catalog DTO exposes the seeded corduroy texture on Body + Pillows; products without slots return null; `ProductVariant.Attributes` no longer contains the `textureSlots` key; the seeder library + per-variant slot rows are present; the supplier-match trigger raises a `PostgresException` on cross-supplier inserts. Suite is **55 tests** across **6 classes**.
+
+Out of scope this phase (slots into Phase 7): admin/supplier CRUD for `SupplierTexture` and per-variant slot bindings, a dedicated `AssetKind.Texture`, and exposing `RepeatU/RepeatV`/`Tags` on the catalog DTO.
 
 ### Phase 5 — Quoting
 

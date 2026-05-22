@@ -29,6 +29,8 @@ public sealed class DizajnoDbContext : IdentityDbContext<ApplicationUser, Identi
     public DbSet<PlacedItem> PlacedItems => Set<PlacedItem>();
     public DbSet<ProjectShare> ProjectShares => Set<ProjectShare>();
     public DbSet<ProjectComment> ProjectComments => Set<ProjectComment>();
+    public DbSet<SupplierTexture> SupplierTextures => Set<SupplierTexture>();
+    public DbSet<ProductVariantTextureSlot> ProductVariantTextureSlots => Set<ProductVariantTextureSlot>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

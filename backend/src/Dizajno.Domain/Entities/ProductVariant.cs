@@ -35,4 +35,5 @@ public sealed class ProductVariant
     public Product Product { get; set; } = null!;
     public Asset? GlbAsset { get; set; }
     public Asset? SvgPreviewAsset { get; set; }
+    public ICollection<ProductVariantTextureSlot> TextureSlots { get; set; } = new List<ProductVariantTextureSlot>();
 }

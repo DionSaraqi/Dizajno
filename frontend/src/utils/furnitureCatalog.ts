@@ -13,7 +13,7 @@
  *      backend is seeded from this exact array (backend/src/Dizajno.Infrastructure/
  *      Persistence/Seed/CatalogSeedData.cs), so the lookup stays correct.
  *
- * When the backend grows products beyond this seed (supplier portal, Phase 4 of
+ * When the backend grows products beyond this seed (supplier portal, Phase 7 of
  * the master plan), `getFurnitureDef` will need to shift to a runtime cache
  * populated by the hook.
  */
