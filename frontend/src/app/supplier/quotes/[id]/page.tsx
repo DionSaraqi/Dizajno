@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Paperclip, Send, X } from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
+import { ConfirmDialog } from "@/components/ui";
 
 const POLL_MS = 30_000;
 
@@ -36,6 +37,8 @@ export default function SupplierQuoteDetailPage() {
   const [attachments, setAttachments] = useState<api.AssetSummary[]>([]);
   const [respondError, setRespondError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
 
   // Hydrate form from existing response so suppliers can edit-in-place.
   useEffect(() => {
@@ -60,6 +63,7 @@ export default function SupplierQuoteDetailPage() {
     );
   }, [quote.data?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Broad ["supplier"] invalidation refreshes both the detail and inbox lists.
   const respond = useMutation({
     mutationFn: () =>
       api.respondToSupplierQuote(requestId, {
@@ -70,8 +74,7 @@ export default function SupplierQuoteDetailPage() {
       }),
     onSuccess: () => {
       setRespondError(null);
-      queryClient.invalidateQueries({ queryKey: ["supplier", "quotes", requestId] });
-      queryClient.invalidateQueries({ queryKey: ["supplier", "quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["supplier"] });
     },
     onError: (err) =>
       setRespondError(err instanceof Error ? err.message : "Failed to send response."),
@@ -79,8 +82,11 @@ export default function SupplierQuoteDetailPage() {
 
   const decline = useMutation({
     mutationFn: (reason: string) => api.declineSupplierQuote(requestId, reason || null),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["supplier", "quotes", requestId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["supplier"] });
+      setDeclineOpen(false);
+      setDeclineReason("");
+    },
   });
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -304,14 +310,7 @@ export default function SupplierQuoteDetailPage() {
             </button>
             {data?.status !== "Declined" && (
               <button
-                onClick={() => {
-                  const reason = prompt("Reason for declining (optional)") ?? "";
-                  if (
-                    confirm("Decline this request? The customer will see your reason.")
-                  ) {
-                    decline.mutate(reason);
-                  }
-                }}
+                onClick={() => setDeclineOpen(true)}
                 disabled={locked || decline.isPending}
                 className="rounded border border-white/10 hover:bg-white/5 disabled:opacity-50 px-4 py-2.5 font-mono text-xs tracking-wider text-dizajno-muted hover:text-red-400 transition"
               >
@@ -321,6 +320,33 @@ export default function SupplierQuoteDetailPage() {
           </div>
         </div>
       </section>
+
+      <ConfirmDialog
+        open={declineOpen}
+        title="Decline request"
+        description="The customer sees your reason in their quote inbox. The request status becomes Declined."
+        confirmLabel="Decline request"
+        confirmTone="danger"
+        busy={decline.isPending}
+        onConfirm={() => decline.mutate(declineReason)}
+        onCancel={() => {
+          setDeclineOpen(false);
+          setDeclineReason("");
+        }}
+      >
+        <div>
+          <label className="block font-mono text-[10px] tracking-widest uppercase text-dizajno-muted mb-2">
+            Reason (optional)
+          </label>
+          <textarea
+            value={declineReason}
+            onChange={(e) => setDeclineReason(e.target.value)}
+            rows={3}
+            placeholder="Out of stock, custom size unavailable, lead time too long…"
+            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none"
+          />
+        </div>
+      </ConfirmDialog>
     </main>
   );
 }

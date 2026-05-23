@@ -265,12 +265,17 @@ public sealed class QuotesController : ControllerBase
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
 
+        // A supplier has "engaged" with the request once their status leaves Pending —
+        // Responded (priced) and Declined (said no) both count, since either way the
+        // requester now knows enough to close the conversation.
         var quote = await _db.Quotes
             .Where(q => q.Id == id && q.RequesterUserId == userId)
             .Select(q => new
             {
                 Quote = q,
-                AnyResponded = q.Requests.Any(r => r.Status == QuoteRequestStatus.Responded)
+                AnyEngaged = q.Requests.Any(r =>
+                    r.Status == QuoteRequestStatus.Responded ||
+                    r.Status == QuoteRequestStatus.Declined)
             })
             .FirstOrDefaultAsync(cancellationToken);
         if (quote is null) return NotFound();
@@ -281,10 +286,10 @@ public sealed class QuotesController : ControllerBase
                 $"Quote is already {quote.Quote.Status}.",
                 statusCode: StatusCodes.Status409Conflict);
         }
-        if (!quote.AnyResponded)
+        if (!quote.AnyEngaged)
         {
             return Problem(
-                "Cannot close before any supplier has responded.",
+                "Cannot close before any supplier has responded or declined.",
                 statusCode: StatusCodes.Status409Conflict);
         }
 

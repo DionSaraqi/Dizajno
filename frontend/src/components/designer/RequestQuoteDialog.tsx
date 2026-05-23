@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Send, X } from "lucide-react";
 import { useDesignerStore } from "@/store/useDesignerStore";
 import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
@@ -34,6 +34,7 @@ export function RequestQuoteDialog({
   onClose,
 }: RequestQuoteDialogProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const furniture = useDesignerStore((s) => s.furniture);
   const { items: catalog } = useFurnitureCatalog();
   const [message, setMessage] = useState("");
@@ -79,6 +80,10 @@ export function RequestQuoteDialog({
   const mutation = useMutation({
     mutationFn: () => api.createQuote(projectId, message.trim() || null),
     onSuccess: (detail) => {
+      // Mark every cached quote query stale so /quotes shows the new row on
+      // the next render — without this, navigating to the list briefly shows
+      // the pre-creation cache while a background refetch is in flight.
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
       onClose();
       router.push(`/quotes/${detail.id}`);
     },

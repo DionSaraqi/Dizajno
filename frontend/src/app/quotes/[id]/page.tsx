@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Paperclip, X, Check } from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
+import { ConfirmDialog } from "@/components/ui";
 
 const POLL_MS = 30_000;
 
@@ -17,6 +18,8 @@ export default function QuoteDetailPage() {
   const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -31,16 +34,24 @@ export default function QuoteDetailPage() {
     refetchInterval: POLL_MS,
   });
 
+  // Broad key invalidation so both the detail (["quotes", quoteId]) and the
+  // /quotes list cache (["quotes", "list"]) refresh after a state change.
   const cancelMutation = useMutation({
     mutationFn: () => api.cancelQuote(quoteId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["quotes", quoteId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      setCancelOpen(false);
+    },
     onError: (err) =>
       setActionError(err instanceof Error ? err.message : "Failed to cancel."),
   });
 
   const closeMutation = useMutation({
     mutationFn: () => api.closeQuote(quoteId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["quotes", quoteId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      setCloseOpen(false);
+    },
     onError: (err) =>
       setActionError(err instanceof Error ? err.message : "Failed to close."),
   });
@@ -77,18 +88,14 @@ export default function QuoteDetailPage() {
         {isOpen && (
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                if (confirm("Cancel this quote? Pending suppliers will be marked expired.")) {
-                  cancelMutation.mutate();
-                }
-              }}
+              onClick={() => setCancelOpen(true)}
               disabled={cancelMutation.isPending}
               className="flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 disabled:opacity-50 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-red-400 transition"
             >
               <X size={12} /> Cancel
             </button>
             <button
-              onClick={() => closeMutation.mutate()}
+              onClick={() => setCloseOpen(true)}
               disabled={closeMutation.isPending}
               className="flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 disabled:opacity-50 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-emerald-400 transition"
             >
@@ -97,6 +104,27 @@ export default function QuoteDetailPage() {
           </div>
         )}
       </header>
+
+      <ConfirmDialog
+        open={cancelOpen}
+        title="Cancel quote"
+        description="Suppliers with pending requests will be marked Expired and can no longer respond. Existing responses stay visible to you."
+        confirmLabel="Cancel quote"
+        cancelLabel="Keep open"
+        confirmTone="danger"
+        busy={cancelMutation.isPending}
+        onConfirm={() => cancelMutation.mutate()}
+        onCancel={() => setCancelOpen(false)}
+      />
+      <ConfirmDialog
+        open={closeOpen}
+        title="Close quote"
+        description="Marks the quote as Closed. Responses already received remain in your inbox; no further responses can be sent."
+        confirmLabel="Close quote"
+        busy={closeMutation.isPending}
+        onConfirm={() => closeMutation.mutate()}
+        onCancel={() => setCloseOpen(false)}
+      />
 
       <section className="max-w-4xl mx-auto px-8 py-10 space-y-8">
         {quote.isLoading && (

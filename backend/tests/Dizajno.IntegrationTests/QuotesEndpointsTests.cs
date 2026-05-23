@@ -224,6 +224,40 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
     }
 
     [Fact]
+    public async Task Close_AfterSupplierDeclined_Succeeds()
+    {
+        // Decline is a form of engagement: the supplier saw the request and said no.
+        // The requester should be able to close the quote once that has happened,
+        // even if no supplier has priced.
+        var (requester, _) = await NewAuthedClientAsync($"r-dc-{Guid.NewGuid():N}"[..18]);
+        var projectId = await CreateProjectWithPlacedItemAsync(requester, "Decline-then-close", "sofa");
+        var quote = (await (await requester.PostAsJsonAsync(
+            $"/api/projects/{projectId}/quotes", new CreateQuoteRequest(null)))
+            .Content.ReadFromJsonAsync<QuoteDetailDto>(JsonOpts))!;
+
+        // Bind a supplier user so they can decline.
+        var (supplier, supplierAuth) = await NewAuthedClientAsync($"s-dc-{Guid.NewGuid():N}"[..18]);
+        var dizajnoId = await GetDizajnoSupplierIdAsync();
+        var adminClient = NewClient();
+        adminClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", await LoginAsAdminAsync(adminClient));
+        await adminClient.PostAsJsonAsync("/api/admin/supplier-members",
+            new CreateSupplierMemberRequest(dizajnoId, supplierAuth.User.Id, SupplierMemberRole.Owner));
+
+        var decline = await supplier.PostAsJsonAsync(
+            $"/api/supplier/quotes/{quote.Requests[0].Id}/decline",
+            new SupplierDeclineRequest("Out of stock"));
+        decline.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var close = await requester.PostAsync($"/api/quotes/{quote.Id}/close", content: null);
+        close.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var refreshed = await requester.GetFromJsonAsync<QuoteDetailDto>(
+            $"/api/quotes/{quote.Id}", JsonOpts);
+        refreshed!.Status.Should().Be(QuoteStatus.Closed);
+    }
+
+    [Fact]
     public async Task IsCustomSize_FlipsTrueWhenScaledDifferFromStock()
     {
         var (client, _) = await NewAuthedClientAsync($"size-{Guid.NewGuid():N}"[..18]);
