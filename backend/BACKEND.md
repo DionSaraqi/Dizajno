@@ -324,7 +324,7 @@ then start the API host (which runs the seeder against the freshly migrated DB).
 Each test class gets its own container — slower than sharing, but each class
 sees a deterministic starting state.
 
-Seven test classes today (68 tests):
+Seven test classes today (69 tests):
 - `CatalogEndpointsTests` — 12 tests
 - `AuthEndpointsTests` — 10 tests (Phase 5: added `UserSummary.SupplierMemberships` empty-by-default assertion)
 - `AssetsEndpointsTests` — 8 tests (presign + finalize; uses `FakeObjectStorage`
@@ -334,10 +334,10 @@ Seven test classes today (68 tests):
 - `CustomizerTexturesTests` — 5 tests (Phase 4: catalog DTO from relational rows,
   variant attributes no longer stash `textureSlots`, seeder library + slot rows,
   cross-supplier trigger raises `PostgresException`)
-- `QuotesEndpointsTests` — 12 tests (Phase 5: fan-out per supplier, ownership 404s,
-  cancel propagates Expired, close-before-response 409, `IsCustomSize` flip,
-  supplier inbox member gating, respond happy path + idempotent upsert,
-  cross-supplier attachment 400, cancelled-quote response 409, admin-bind RBAC 403)
+- `QuotesEndpointsTests` — 13 tests (Phase 5: fan-out per supplier, ownership 404s,
+  cancel propagates Expired, close-before-response 409, close-after-decline succeeds,
+  `IsCustomSize` flip, supplier inbox member gating, respond happy path + idempotent
+  upsert, cross-supplier attachment 400, cancelled-quote response 409, admin-bind RBAC 403)
 
 ## Troubleshooting
 
