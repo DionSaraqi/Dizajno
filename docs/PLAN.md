@@ -502,22 +502,129 @@ Built:
 
 Out of scope this phase (slots into Phase 7): admin/supplier CRUD for `SupplierTexture` and per-variant slot bindings, a dedicated `AssetKind.Texture`, and exposing `RepeatU/RepeatV`/`Tags` on the catalog DTO.
 
-### Phase 5 — Quoting
+### Phase 5 — Quoting (planning locked, implementation pending)
 
-**Goal:** user clicks "Request quote on this room", suppliers respond independently, user sees all responses in one inbox.
+**Goal:** a user clicks "Request quote" in the designer, the backend fans the room out into one `QuoteRequest` per supplier whose products are in the scene, each supplier responds independently, and the requester sees all responses in a single inbox. Quote lines snapshot the variant + user choices at quote-time so historical records survive catalog churn.
 
-New tables: `quotes`, `quote_requests`, `quote_lines`, `quote_responses`.
+#### Decisions locked before implementation
 
-New endpoints:
-- `POST /api/projects/{id}/quotes` — fan out one `QuoteRequest` per supplier in the scene; returns the parent `Quote` id
-- `GET /api/quotes/{id}` — user's view (all responses)
-- `GET /api/supplier/quotes` — supplier's inbox of `QuoteRequest`s
-- `POST /api/supplier/quotes/{requestId}/respond` — submit price + body + attachments
+- **Supplier auth gate.** New `[Authorize(Policy = "SupplierMember")]` policy backed by a `SupplierMembershipService` that resolves `currentUser → IReadOnlyList<Guid> supplierIds` from `supplier_members`. `/api/supplier/*` endpoints check the target request's supplier is in that list. Admins are **not** implicitly suppliers. A Phase-5 stopgap endpoint `POST /api/admin/supplier-members` lets admins bind any user to a supplier so tests + Swagger smoke can drive both surfaces; the full member-management UI lands with the supplier portal in Phase 7.
+- **Frontend scope.** Full set this phase: "Request quote" CTA in the designer, `/quotes` list + `/quotes/[id]` detail for requesters, `/supplier/quotes` + `/supplier/quotes/[id]` for responders (visible iff the signed-in user has ≥1 `SupplierMember` row, surfaced via a new `supplierMemberships` field on `UserSummary`).
+- **Quote-line granularity.** One line per placed item; `quantity = 1` for furniture. Two same-variant placements with different scaled sizes or material overrides become two lines. The `quantity` column stays for Phase 6 area-sold products.
+- **Response edits.** Supplier can re-`POST /respond` to update price/body/attachments any time the parent quote is `Open`. Natural upsert on the unique `(quote_request_id)`. Immutable once parent is `Closed | Cancelled`.
 
-Frontend:
-- "Request quote" CTA in the designer
-- User quote inbox at `/quotes`
-- Supplier quote inbox (separate area, gated by supplier-member role)
+#### Schema (migration `0007_Quoting`)
+
+```
+quotes
+  id                uuid pk
+  project_id        uuid → projects (cascade)
+  requester_user_id uuid → AspNetUsers (restrict)
+  status            enum-as-string  Open | Closed | Cancelled
+  message           text (nullable)
+  created_at        timestamptz default now()
+  closed_at         timestamptz (nullable)
+  index (requester_user_id, created_at desc)
+
+quote_requests
+  id                uuid pk
+  quote_id          uuid → quotes (cascade)
+  supplier_id       uuid → suppliers (restrict)
+  status            enum-as-string  Pending | Responded | Declined | Expired
+  expires_at        timestamptz (nullable)
+  created_at        timestamptz default now()
+  unique (quote_id, supplier_id)
+  index (supplier_id, status, created_at desc)
+
+quote_lines
+  id                uuid pk
+  quote_request_id  uuid → quote_requests (cascade)
+  product_variant_id uuid → product_variants (restrict)
+  variant_snapshot  jsonb            -- frozen { variantId, sku, name, supplierId,
+                                     --          supplierName, productSlug, productName,
+                                     --          family, stockWidth, stockDepth, stockHeight,
+                                     --          currency, basePrice }
+  quantity          numeric(12,3)    default 1
+  quantity_unit     varchar(16)      default 'piece'  -- piece|m2|l|m|kg
+  material_overrides jsonb (nullable) -- { materialColors?, materialTextures? }
+  scaled_width      numeric(8,3) (nullable)
+  scaled_depth      numeric(8,3) (nullable)
+  scaled_height     numeric(8,3) (nullable)
+  is_custom_size    bool             -- server-set; true when scaled_* differ from
+                                     -- variant_snapshot.stock_* by > 0.001 m
+  suggested_price   numeric(12,2) (nullable)
+  currency          char(3)          default 'EUR'
+  index (quote_request_id)
+
+quote_responses
+  id                uuid pk
+  quote_request_id  uuid → quote_requests (cascade) unique
+  responded_by_user_id uuid → AspNetUsers (restrict)
+  total_price       numeric(14,2)
+  currency          char(3)
+  body              text (nullable)
+  responded_at      timestamptz default now()
+
+quote_response_assets
+  id                uuid pk
+  response_id       uuid → quote_responses (cascade)
+  asset_id          uuid → assets (restrict)
+  sort_order        int default 0
+  index (response_id, sort_order)
+```
+
+`variant_snapshot` is the canonical record of what the supplier sees; the FK to `product_variants` is `Restrict` so a variant can't be hard-deleted while quotes reference it (use `Product.Status = Removed` to retire instead).
+
+#### Endpoints
+
+User side:
+
+- `POST /api/projects/{id}/quotes` — `{ message? }` → 201 `QuoteDetailDto`. Loads placed items, groups by `variant.product.supplier_id`, creates one `Quote` + N `QuoteRequest` + M `QuoteLine` rows in one transaction. 400 on empty scene.
+- `GET /api/quotes?status=&skip=&take=` — caller's quotes, most-recent first; `QuoteSummaryDto[]` with per-supplier roll-up (`requested`, `responded`, `declined`).
+- `GET /api/quotes/{id}` → `QuoteDetailDto` — every QuoteRequest (supplier + status), lines, response + attachments URLs.
+- `POST /api/quotes/{id}/cancel` → 204; sets `status = Cancelled` and propagates `Expired` on still-`Pending` children.
+- `POST /api/quotes/{id}/close` → 204; allowed after ≥1 response is in.
+
+Supplier side (gated by `SupplierMember` policy):
+
+- `GET /api/supplier/quotes?status=&skip=&take=` — `QuoteRequest`s addressed to any supplier the caller is a member of; includes parent quote + line count + project name/thumbnail.
+- `GET /api/supplier/quotes/{requestId}` → `SupplierQuoteRequestDetailDto` — single request with lines + prior response. Does **not** expose sibling QuoteRequests' lines or prices.
+- `POST /api/supplier/quotes/{requestId}/respond` — `{ totalPrice, currency, body?, attachmentAssetIds: Guid[] }` → 200. Upserts response (insert or replace), sets `QuoteRequest.status = Responded`. Attachments validated as `Asset.owner_supplier_id = membership.supplier_id`.
+- `POST /api/supplier/quotes/{requestId}/decline` — `{ reason? }` → 204; status → `Declined`, reason stored as response body with `total_price = 0`.
+- `POST /api/supplier/assets/presign` + `POST /api/supplier/assets` — supplier-scoped wrappers around the existing R2 flow. New Asset rows get `owner_supplier_id = membership.supplier_id`. Reuses `Doc` / `Attachment` rules.
+
+Admin side (Phase-5 stopgap, to be folded into Phase 7's portal):
+
+- `POST /api/admin/supplier-members` — `{ supplierId, userId, role: Owner|Staff }` → 201.
+
+#### Frontend
+
+- `lib/api.ts`: quote + supplier-quote + supplier-asset clients matching the new endpoints. Adds `UserSummary.supplierMemberships: { supplierId, supplierName, role }[]` and threads it through the auth store.
+- `components/designer`: `RequestQuoteDialog` triggered from the header next to "Share". Groups the current scene's placed items by supplier (via a small catalog lookup that already knows each item's `variantId`), shows per-supplier line count + suggested subtotal, accepts an optional message. Submit posts and routes to `/quotes/{id}`. Disabled when scene has zero placed items.
+- New routes:
+  - `/quotes` — user list (card per quote with project thumbnail, status, supplier counts).
+  - `/quotes/[id]` — detail; per-supplier accordion with lines + response. Owner cancel/close actions.
+  - `/supplier/quotes` — supplier inbox, only rendered when `supplierMemberships.length > 0`.
+  - `/supplier/quotes/[id]` — request detail + response composer. Attachment dropzone uses the new supplier presign endpoint.
+- Both inbox routes poll every 30 s to match Phase 3 comments cadence.
+
+#### Tests
+
+New `QuotesEndpointsTests` (~12 tests):
+
+- User: empty-scene → 400; happy-path fan-out per supplier; foreign-project create → 404; list filters by status; cancel propagates Expired; quote detail hides sibling-supplier lines from the supplier view; close requires ≥1 response.
+- Supplier: list returns only memberships' requests; respond happy path + idempotent update (upsert); decline transitions to `Declined`; respond after Cancelled → 409; attachment ownership rejects foreign assets; non-member access → 403.
+- Snapshot/invariant: `variant_snapshot` populated on insert; `is_custom_size` flips when scale ≠ 1 (and at least one scaled dim differs).
+
+Plus small additions to `AuthEndpointsTests` for `UserSummary.supplierMemberships`.
+
+#### Out of scope (parked)
+
+- **Notifications** — no email or in-app push; suppliers poll the inbox at 30 s. (PLAN.md Open Questions #1.)
+- **Multi-currency** — `currency` column exists, FX/locale conversion does not.
+- **Paint/flooring quantity calculator from wall/floor geometry** — Phase 6.
+- **Full supplier portal** (self-serve products, member CRUD UI) — Phase 7. Phase 5 uses the admin binding endpoint as a stopgap.
+- **Quote PDF export / order workflow** — never on the roadmap; Dizajno is matchmaker, not seller.
 
 ### Phase 6 — Fixtures & building materials
 
