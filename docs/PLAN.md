@@ -529,17 +529,75 @@ Out of scope this phase (parked):
 - **Full supplier portal** (self-serve products, member CRUD UI) — Phase 7. Phase 5 ships the admin binding endpoint as a stopgap.
 - **Quote PDF export / order workflow** — never on the roadmap; Dizajno is matchmaker, not seller.
 
-### Phase 6 — Fixtures & building materials
+### Phase 6 — Fixtures & building materials (planning locked, implementation pending)
 
-**Goal:** the catalog grows beyond furniture; doors/windows become real products; paint/flooring quote lines auto-calc quantity from room geometry.
+**Goal:** the catalog gains its first non-furniture members. Doors and windows can carry a branded variant that shows up in quote responses. Paint and flooring can be requested with a quantity auto-calculated from room geometry (`floor m²`, `paintable wall m²`) and a per-product waste factor — user can override the suggested number before submit.
 
-Schema:
-- `Opening.product_variant_id` (nullable FK) — branded fixture filling the hole
-- No new tables; lighting/appliance/building-material rows just populate the existing `products`/`product_variants` with their family + jsonb attributes
+#### Decisions locked before implementation
 
-Frontend:
-- Quantity calculator: when adding flooring/paint to the cart, compute m² from room geometry × waste factor, suggest a number, let user override
-- Branded door/window picker in the opening sidebar
+- **Branded fixture render:** the variant's `color` overrides the hardcoded gold-brown frame color in `WallOpening.tsx`. No GLB-in-hole this phase (that would need new GLBs + a hole-cutter in the renderer, a project of its own).
+- **Picker location:** "Branded fixture (optional)" dropdown in the **Sidebar properties panel for a selected opening**. Filtered to `family === "Fixture"` items and further filtered by the opening's `type` (doors get door products, windows get window products). Matches the existing "select opening → edit dims" pattern.
+- **Material persistence:** dialog-only. The user picks paint/flooring each time they open the request-quote dialog; quantities are recomputed from current geometry. The resulting `quote_lines` are persisted (variant snapshot frozen, as Phase 5 already does for furniture). A `project_materials` persistence layer is parked as a possible Phase 6.5.
+- **Seed scope:** four products. Two fixtures (`solid-oak-door`, `pvc-window`) + two building materials (`interior-matt-paint` with `CoverageRate = 10 m²/L` and `WasteFactor = 0.10`; `oak-laminate-flooring` with `WasteFactor = 0.05`). Lighting + appliance entries deferred to a future phase that includes GLB models.
+
+#### What's already in place from earlier phases (no work)
+
+- `Opening.ProductVariantId` (nullable FK) shipped in `0004_Projects` with the EF config + DTO round-trip.
+- `ProductFamily` enum has all five values; `UnitOfSale` has `Piece | SquareMeter | Liter | LinearMeter | Kilogram`.
+- `Product.CoverageRate` (m²/L) + `Product.WasteFactor` columns + `QuoteLine.Quantity` + `QuoteLine.QuantityUnit` already exist.
+
+Phase 6 is **migration-free**. The work is catalog data + UI + a small extension to the quote fan-out.
+
+#### Backend
+
+- **`CatalogSeedData.cs` gains four products** under new categories `Doors`, `Windows`, `Paint`, `Flooring` (all under family Furniture currently; needs a family field added to `ItemSeed` so the seeder writes the right `ProductFamily`):
+  - `solid-oak-door` — Fixture, Piece, 0.90 × 0.05 × 2.10 m
+  - `pvc-window` — Fixture, Piece, 1.20 × 0.05 × 1.20 m
+  - `interior-matt-paint` — BuildingMaterial, Liter, `CoverageRate = 10`, `WasteFactor = 0.10`
+  - `oak-laminate-flooring` — BuildingMaterial, SquareMeter, `WasteFactor = 0.05`
+- **`FurnitureItemDto` grows four fields** — `Family`, `UnitOfSale`, `CoverageRate?` (nullable numeric), `WasteFactor` (numeric). Furniture rows default to `Family = "Furniture"`, `UnitOfSale = "Piece"`, `CoverageRate = null`, `WasteFactor = 0` — additive change, no frontend break. (Renaming the DTO to `CatalogItemDto` is noted as a future cleanup; deferred to keep the diff small.)
+- **`POST /api/projects/{id}/quotes` extended**:
+  - Body grows an optional `manualLines: [{ productVariantId, quantity, quantityUnit }]` array.
+  - Fan-out now walks **both** `placed_items` **and** `openings WHERE product_variant_id IS NOT NULL`, then appends `manualLines`. Each becomes a `QuoteLine` snapshotted exactly like furniture, grouped by `variant.product.supplier_id`. Openings get `quantity = 1, quantityUnit = "piece"`; manual lines pass through whatever unit + quantity the frontend computed.
+  - `is_custom_size` stays `false` for openings and manual lines.
+  - Validation: manual-line `productVariantId` must exist and be `Published`; bad ids return 400.
+
+#### Frontend
+
+- `FurnitureCatalogItem` grows `family`, `unitOfSale`, `coverageRate`, `wasteFactor` — optional on the bundled fallback for backward compatibility.
+- **Sidebar opening properties** (`components/designer/Sidebar.tsx`): below the existing dim sliders, a "Branded fixture (optional)" `<select>` listing every catalog item matching the opening type. Selecting a product calls `updateOpening(id, { productVariantId })`; the existing replace-all `PUT /api/projects/{id}/scene` already persists `productVariantId`. Clearing the selection (None) sets it back to null.
+- **`WallOpening.tsx`** reads `productVariantId` off the opening, looks the variant's `color` up in the catalog cache, and uses it for the frame instead of the hardcoded `FRAME_COLOR`. Generic (unbranded) openings render identically to today.
+- **`RequestQuoteDialog`** grows a second collapsible section "Materials & finishes":
+  - New helper `frontend/src/utils/areaCalc.ts` exports `computeRoomAreas(scene) → { floorAreaM2, paintableWallM2 }`. Floor area via shoelace per polygon; paintable wall = `Σ(wall.length × wall.height) − Σ(opening.width × opening.height)`.
+  - Section lists every catalog item with `family === "BuildingMaterial"`, each row showing the computed suggestion: paint = `ceil(paintableWallM2 / coverageRate × (1 + wasteFactor))` L; flooring = `(floorAreaM2 × (1 + wasteFactor)).toFixed(1)` m². Checkbox to include + editable number to override.
+  - Selected materials become `manualLines` on submit. Openings with branded variants already show up automatically once fan-out includes them (no extra client bookkeeping).
+
+#### Tests
+
+Extend `QuotesEndpointsTests`:
+
+- `Create_WithBrandedOpening_IncludesItInFanOut` — set up a project with one Wall + one Opening pointing at the seeded `solid-oak-door` variant; assert the resulting quote has a line whose `variant_snapshot.productSlug == "solid-oak-door"`.
+- `Create_WithManualMaterialLines_AppendsThemToFanOut` — POST with `manualLines` for paint at 15 L; assert one line with `quantityUnit = "L"` and `quantity = 15`.
+- `Create_RejectsManualLineWithUnknownVariant` — random Guid → 400.
+
+Extend `CatalogEndpointsTests`:
+
+- `GetProducts_ExposesFamilyAndUnitOfSale` — assert the seeded paint row reports `family = "BuildingMaterial"`, `unitOfSale = "Liter"`, `coverageRate = 10`, `wasteFactor = 0.10`.
+
+Optional small unit test on `areaCalc.ts` if a Vitest harness lands; otherwise skip — no JS test setup currently in the repo.
+
+#### Docs
+
+- `PLAN.md` — flip Phase 6 row + per-phase block to ✓ Done with a "Built" block once landed; note no migration was needed.
+- `BACKEND.md` — catalog DTO grew four fields; quote fan-out now also walks branded openings + manualLines; bump test count.
+- `CLAUDE.md` — short note that branded openings render with variant color (no GLB-in-hole yet).
+
+#### Out of scope (parked)
+
+- **Lighting & Appliance seed data** — these need GLB models which are a per-item project. Easy follow-up commit when models exist.
+- **`project_materials` persistence** — selections would survive page reload but adds a migration + endpoint surface not in PLAN.md. Possible Phase 6.5.
+- **GLB-in-hole branded doors** — real door panels with handles + a hole-cutter in the renderer. Defer.
+- **LinearMeter products (skirting, trim)** — schema supports it via wall-perimeter calc; no seeded examples this phase.
 
 ### Phase 7 — Admin tooling & supplier portal
 
