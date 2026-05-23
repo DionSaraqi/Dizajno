@@ -83,13 +83,12 @@ function PropertiesSection() {
   const setFurnitureMaterialColors = useDesignerStore((s) => s.setFurnitureMaterialColors);
   const setFurnitureMaterialTextures = useDesignerStore((s) => s.setFurnitureMaterialTextures);
   const updateWall = useDesignerStore((s) => s.updateWall);
+  const floors = useDesignerStore((s) => s.floors);
+  const updateFloor = useDesignerStore((s) => s.updateFloor);
   const { items: liveCatalog } = useFurnitureCatalog();
 
   if (selectedIds.length !== 1) return null;
   const selectedId = selectedIds[0];
-
-  const floors = useDesignerStore((s) => s.floors);
-  const updateFloor = useDesignerStore((s) => s.updateFloor);
 
   const selectedFurniture = furniture.find((f) => f.id === selectedId);
   const selectedWall = walls.find((w) => w.id === selectedId);
