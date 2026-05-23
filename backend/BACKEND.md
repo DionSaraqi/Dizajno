@@ -182,9 +182,10 @@ DTO shape mirrors `frontend/src/types/designer.ts` `FurnitureCatalogItem` so the
 frontend can deserialize without renaming. Phase 6 added four fields:
 
 - `family` — `Furniture | Lighting | Appliance | BuildingMaterial | Fixture`. Frontend uses this to filter the place-furniture sidebar (Furniture only) and the branded-fixture picker (Fixture only) and the materials section (BuildingMaterial only).
-- `unitOfSale` — `Piece | SquareMeter | Liter | LinearMeter | Kilogram`. Drives the materials-section quantity calculation + the `quantityUnit` token sent on manual quote lines.
+- `unitOfSale` — `Piece | SquareMeter | Liter | LinearMeter | Kilogram`. Drives the materials-section quantity calculation + the `quantityUnit` token sent on aggregated material quote lines.
 - `coverageRate` — nullable numeric, m² per Liter; only set for paint/sealant rows. Used to suggest paint quantity from paintable wall area.
-- `wasteFactor` — numeric overage suggestion (e.g. `0.10` = +10%). Applied to the auto-suggested material quantity in the request-quote dialog.
+- `wasteFactor` — numeric overage suggestion (e.g. `0.10` = +10%). Applied to the auto-suggested material quantity at quote time.
+- `textureUrl` — nullable varchar (Phase 6.5). Tileable image URL the `FloorMesh` / `WallMesh` renderer loads via `THREE.TextureLoader` with `RepeatWrapping`. When null or the file is missing, the renderer falls back to the variant's solid `color`. Today the URLs point at `frontend/public/textures/{slug}.jpg`; the JPG files are user-provided.
 
 Current Phase 6 catalog rows (priced in EUR):
 
@@ -219,6 +220,11 @@ Scene shape:
   walls/floors/openings/placedItems are deleted, the new set is inserted. There
   is no PATCH today; small edits should debounce on the client and resend the
   whole scene.
+- Phase 6.5: `WallDto.paintProductVariantId` and `FloorDto.flooringProductVariantId`
+  are optional nullable FKs to a Paint / Flooring variant. When set, the renderer
+  skins the surface with the variant's texture (see "Catalog" above) and the
+  quote-fan-out picks the assignment up as an aggregated material line. The
+  scene endpoint round-trips them via `PUT /scene` like any other field.
 
 ### Admin assets (`/api/admin/assets`)
 

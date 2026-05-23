@@ -163,6 +163,7 @@ products
   name              varchar(200)
   description       text
   preview_svg       text            -- inline SVG markup; moves to Asset rows once CAD conversion ships
+  texture_url       varchar(500)    -- nullable; tileable image for FloorMesh/WallMesh skinning (Phase 6.5)
   attributes        jsonb           -- family-specific: {"icon": "sofa"}, future: lumen, energyClass, ...
   created_at, updated_at
   index (status, family, category_id)
@@ -279,11 +280,13 @@ walls
   project_id        uuid → projects
   start_x, start_z, end_x, end_z   numeric(10,4)
   thickness, height                 numeric(6,3)
+  paint_product_variant_id uuid → product_variants (nullable, SetNull)  -- Phase 6.5
 
 floors
   id                uuid pk
   project_id        uuid → projects
   vertices          jsonb                 -- [[x,z], [x,z], ...]
+  flooring_product_variant_id uuid → product_variants (nullable, SetNull)  -- Phase 6.5
 
 openings
   id                uuid pk
