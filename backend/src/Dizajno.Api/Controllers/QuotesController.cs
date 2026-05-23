@@ -48,49 +48,159 @@ public sealed class QuotesController : ControllerBase
             .FirstOrDefaultAsync(cancellationToken);
         if (project is null) return NotFound();
 
-        // Pull every placed item joined with its variant + product + supplier so the
-        // snapshot is one fast query rather than N round-trips.
-        var placed = await _db.PlacedItems
+        // Anonymous-typed projection of the fields needed to build a variant_snapshot.
+        // Kept as a local because EF can't translate a method call inside .Select().
+        // Materialised rows are translated to VariantSnapshotSource in-memory below.
+        var placedRaw = await _db.PlacedItems
             .AsNoTracking()
             .Where(p => p.ProjectId == projectId)
             .Select(p => new
             {
-                p.Id,
-                p.ProductVariantId,
-                p.Scale,
                 p.ScaledWidth,
                 p.ScaledDepth,
                 p.ScaledHeight,
                 p.MaterialColors,
                 p.MaterialTextures,
-                Variant = new
-                {
-                    p.ProductVariant.Id,
-                    p.ProductVariant.Sku,
-                    p.ProductVariant.Name,
-                    p.ProductVariant.Width,
-                    p.ProductVariant.Depth,
-                    p.ProductVariant.Height,
-                    p.ProductVariant.Currency,
-                    p.ProductVariant.BasePrice,
-                    Product = new
-                    {
-                        p.ProductVariant.Product.Id,
-                        p.ProductVariant.Product.Slug,
-                        p.ProductVariant.Product.Name,
-                        p.ProductVariant.Product.Family,
-                        p.ProductVariant.Product.SupplierId,
-                        SupplierSlug = p.ProductVariant.Product.Supplier.Slug,
-                        SupplierName = p.ProductVariant.Product.Supplier.Name
-                    }
-                }
+                VariantId = p.ProductVariant.Id,
+                p.ProductVariant.Sku,
+                VariantName = p.ProductVariant.Name,
+                p.ProductVariant.Width,
+                p.ProductVariant.Depth,
+                p.ProductVariant.Height,
+                p.ProductVariant.Currency,
+                p.ProductVariant.BasePrice,
+                ProductId = p.ProductVariant.Product.Id,
+                ProductSlug = p.ProductVariant.Product.Slug,
+                ProductName = p.ProductVariant.Product.Name,
+                Family = p.ProductVariant.Product.Family,
+                SupplierId = p.ProductVariant.Product.SupplierId,
+                SupplierSlug = p.ProductVariant.Product.Supplier.Slug,
+                SupplierName = p.ProductVariant.Product.Supplier.Name
             })
             .ToListAsync(cancellationToken);
 
-        if (placed.Count == 0)
+        var placed = placedRaw.Select(p => new
+        {
+            p.ScaledWidth,
+            p.ScaledDepth,
+            p.ScaledHeight,
+            p.MaterialColors,
+            p.MaterialTextures,
+            Variant = new VariantSnapshotSource(
+                p.VariantId, p.Sku, p.VariantName, p.Width, p.Depth, p.Height,
+                p.Currency, p.BasePrice, p.ProductId, p.ProductSlug, p.ProductName,
+                p.Family, p.SupplierId, p.SupplierSlug, p.SupplierName)
+        }).ToList();
+
+        // Phase 6: openings that point at a branded fixture variant become quote lines
+        // alongside placed items. Generic openings (no FK) are skipped.
+        var brandedOpeningsRaw = await _db.Openings
+            .AsNoTracking()
+            .Where(o => o.ProjectId == projectId && o.ProductVariantId != null)
+            .Select(o => new
+            {
+                o.Width,
+                OpeningHeight = o.Height,
+                o.MaterialOverrides,
+                VariantId = o.ProductVariant!.Id,
+                o.ProductVariant!.Sku,
+                VariantName = o.ProductVariant!.Name,
+                VariantWidth = o.ProductVariant!.Width,
+                VariantDepth = o.ProductVariant!.Depth,
+                VariantHeight = o.ProductVariant!.Height,
+                o.ProductVariant!.Currency,
+                o.ProductVariant!.BasePrice,
+                ProductId = o.ProductVariant!.Product.Id,
+                ProductSlug = o.ProductVariant!.Product.Slug,
+                ProductName = o.ProductVariant!.Product.Name,
+                Family = o.ProductVariant!.Product.Family,
+                SupplierId = o.ProductVariant!.Product.SupplierId,
+                SupplierSlug = o.ProductVariant!.Product.Supplier.Slug,
+                SupplierName = o.ProductVariant!.Product.Supplier.Name
+            })
+            .ToListAsync(cancellationToken);
+
+        var brandedOpenings = brandedOpeningsRaw.Select(o => new
+        {
+            o.Width,
+            o.OpeningHeight,
+            o.MaterialOverrides,
+            Variant = new VariantSnapshotSource(
+                o.VariantId, o.Sku, o.VariantName,
+                o.VariantWidth, o.VariantDepth, o.VariantHeight,
+                o.Currency, o.BasePrice, o.ProductId, o.ProductSlug, o.ProductName,
+                o.Family, o.SupplierId, o.SupplierSlug, o.SupplierName)
+        }).ToList();
+
+        // Phase 6: manual lines (paint, flooring, etc.) submitted by the client. Each
+        // must reference a Published variant before being inserted; bad ids return 400.
+        var manualLines = request.ManualLines ?? Array.Empty<ManualQuoteLineRequest>();
+        var manualVariants = new Dictionary<Guid, VariantSnapshotSource>();
+        if (manualLines.Count > 0)
+        {
+            foreach (var line in manualLines)
+            {
+                if (line.Quantity <= 0)
+                {
+                    return Problem(
+                        $"Manual line quantity must be positive (variant {line.ProductVariantId}).",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+                if (string.IsNullOrWhiteSpace(line.QuantityUnit))
+                {
+                    return Problem(
+                        $"Manual line quantity unit is required (variant {line.ProductVariantId}).",
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+            }
+
+            var ids = manualLines.Select(l => l.ProductVariantId).Distinct().ToList();
+            var loadedRaw = await _db.ProductVariants
+                .AsNoTracking()
+                .Where(v => ids.Contains(v.Id) && v.Product.Status == ProductStatus.Published)
+                .Select(v => new
+                {
+                    VariantId = v.Id,
+                    v.Sku,
+                    VariantName = v.Name,
+                    v.Width,
+                    v.Depth,
+                    v.Height,
+                    v.Currency,
+                    v.BasePrice,
+                    ProductId = v.Product.Id,
+                    ProductSlug = v.Product.Slug,
+                    ProductName = v.Product.Name,
+                    Family = v.Product.Family,
+                    SupplierId = v.Product.SupplierId,
+                    SupplierSlug = v.Product.Supplier.Slug,
+                    SupplierName = v.Product.Supplier.Name
+                })
+                .ToListAsync(cancellationToken);
+
+            var loadedIds = loadedRaw.Select(l => l.VariantId).ToHashSet();
+            var missing = ids.Where(i => !loadedIds.Contains(i)).ToList();
+            if (missing.Count > 0)
+            {
+                return Problem(
+                    $"Manual line variant(s) not found or unpublished: {string.Join(", ", missing)}",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            foreach (var row in loadedRaw)
+            {
+                manualVariants[row.VariantId] = new VariantSnapshotSource(
+                    row.VariantId, row.Sku, row.VariantName,
+                    row.Width, row.Depth, row.Height,
+                    row.Currency, row.BasePrice, row.ProductId, row.ProductSlug, row.ProductName,
+                    row.Family, row.SupplierId, row.SupplierSlug, row.SupplierName);
+            }
+        }
+
+        if (placed.Count == 0 && brandedOpenings.Count == 0 && manualLines.Count == 0)
         {
             return Problem(
-                "Project has no placed items to quote.",
+                "Quote must include at least one placed item, branded opening, or manual line.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
@@ -108,7 +218,55 @@ public sealed class QuotesController : ControllerBase
 
         await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
 
-        foreach (var supplierGroup in placed.GroupBy(p => p.Variant.Product.SupplierId))
+        // Fold every source (placed items, branded openings, manual lines) into a
+        // single stream of pending lines, then group by supplier for the fan-out.
+        var pendingLines = new List<PendingLine>(placed.Count + brandedOpenings.Count + manualLines.Count);
+
+        foreach (var item in placed)
+        {
+            var isCustom = IsCustomSize(
+                item.Variant.Width, item.Variant.Depth, item.Variant.Height,
+                item.ScaledWidth, item.ScaledDepth, item.ScaledHeight);
+
+            pendingLines.Add(new PendingLine(
+                Variant: item.Variant,
+                Quantity: 1m,
+                QuantityUnit: "piece",
+                MaterialOverrides: BuildMaterialOverrides(item.MaterialColors, item.MaterialTextures),
+                ScaledWidth: item.ScaledWidth,
+                ScaledDepth: item.ScaledDepth,
+                ScaledHeight: item.ScaledHeight,
+                IsCustomSize: isCustom));
+        }
+
+        foreach (var opening in brandedOpenings)
+        {
+            pendingLines.Add(new PendingLine(
+                Variant: opening.Variant,
+                Quantity: 1m,
+                QuantityUnit: "piece",
+                MaterialOverrides: opening.MaterialOverrides,
+                ScaledWidth: opening.Width,
+                ScaledDepth: null,
+                ScaledHeight: opening.OpeningHeight,
+                IsCustomSize: false));
+        }
+
+        foreach (var line in manualLines)
+        {
+            var variant = manualVariants[line.ProductVariantId];
+            pendingLines.Add(new PendingLine(
+                Variant: variant,
+                Quantity: line.Quantity,
+                QuantityUnit: line.QuantityUnit.Trim(),
+                MaterialOverrides: null,
+                ScaledWidth: null,
+                ScaledDepth: null,
+                ScaledHeight: null,
+                IsCustomSize: false));
+        }
+
+        foreach (var supplierGroup in pendingLines.GroupBy(l => l.Variant.SupplierId))
         {
             var quoteRequest = new QuoteRequest
             {
@@ -120,44 +278,23 @@ public sealed class QuotesController : ControllerBase
             };
             _db.QuoteRequests.Add(quoteRequest);
 
-            foreach (var item in supplierGroup)
+            foreach (var line in supplierGroup)
             {
-                var snapshot = new
-                {
-                    variantId = item.Variant.Id,
-                    sku = item.Variant.Sku,
-                    name = item.Variant.Name,
-                    supplierId = item.Variant.Product.SupplierId,
-                    supplierSlug = item.Variant.Product.SupplierSlug,
-                    supplierName = item.Variant.Product.SupplierName,
-                    productSlug = item.Variant.Product.Slug,
-                    productName = item.Variant.Product.Name,
-                    family = item.Variant.Product.Family.ToString(),
-                    stockWidth = item.Variant.Width,
-                    stockDepth = item.Variant.Depth,
-                    stockHeight = item.Variant.Height,
-                    currency = item.Variant.Currency,
-                    basePrice = item.Variant.BasePrice
-                };
-
-                var isCustom = IsCustomSize(item.Variant.Width, item.Variant.Depth, item.Variant.Height,
-                    item.ScaledWidth, item.ScaledDepth, item.ScaledHeight);
-
                 _db.QuoteLines.Add(new QuoteLine
                 {
                     Id = Guid.NewGuid(),
                     QuoteRequestId = quoteRequest.Id,
-                    ProductVariantId = item.Variant.Id,
-                    VariantSnapshot = JsonSerializer.Serialize(snapshot, JsonOpts),
-                    Quantity = 1m,
-                    QuantityUnit = "piece",
-                    MaterialOverrides = BuildMaterialOverrides(item.MaterialColors, item.MaterialTextures),
-                    ScaledWidth = item.ScaledWidth,
-                    ScaledDepth = item.ScaledDepth,
-                    ScaledHeight = item.ScaledHeight,
-                    IsCustomSize = isCustom,
-                    SuggestedPrice = item.Variant.BasePrice,
-                    Currency = string.IsNullOrWhiteSpace(item.Variant.Currency) ? "EUR" : item.Variant.Currency
+                    ProductVariantId = line.Variant.Id,
+                    VariantSnapshot = JsonSerializer.Serialize(line.Variant.ToSnapshot(), JsonOpts),
+                    Quantity = line.Quantity,
+                    QuantityUnit = line.QuantityUnit,
+                    MaterialOverrides = line.MaterialOverrides,
+                    ScaledWidth = line.ScaledWidth,
+                    ScaledDepth = line.ScaledDepth,
+                    ScaledHeight = line.ScaledHeight,
+                    IsCustomSize = line.IsCustomSize,
+                    SuggestedPrice = line.Variant.BasePrice,
+                    Currency = string.IsNullOrWhiteSpace(line.Variant.Currency) ? "EUR" : line.Variant.Currency
                 });
             }
         }
@@ -169,6 +306,58 @@ public sealed class QuotesController : ControllerBase
             await BuildDetailAsync(quote.Id, userId, cancellationToken)
             ?? throw new InvalidOperationException("Quote disappeared after insert."));
     }
+
+    /// <summary>
+    /// Captures every variant + product + supplier field that the variant_snapshot
+    /// jsonb needs, regardless of which scene source (placed item, branded opening,
+    /// manual line) produced the line. Each query materialises plain anonymous types
+    /// to keep EF happy, then projects into this record in-memory before fan-out.
+    /// </summary>
+    private sealed record VariantSnapshotSource(
+        Guid Id,
+        string Sku,
+        string Name,
+        decimal Width,
+        decimal Depth,
+        decimal Height,
+        string Currency,
+        decimal? BasePrice,
+        Guid ProductId,
+        string ProductSlug,
+        string ProductName,
+        ProductFamily Family,
+        Guid SupplierId,
+        string SupplierSlug,
+        string SupplierName)
+    {
+        public object ToSnapshot() => new
+        {
+            variantId = Id,
+            sku = Sku,
+            name = Name,
+            supplierId = SupplierId,
+            supplierSlug = SupplierSlug,
+            supplierName = SupplierName,
+            productSlug = ProductSlug,
+            productName = ProductName,
+            family = Family.ToString(),
+            stockWidth = Width,
+            stockDepth = Depth,
+            stockHeight = Height,
+            currency = Currency,
+            basePrice = BasePrice
+        };
+    }
+
+    private sealed record PendingLine(
+        VariantSnapshotSource Variant,
+        decimal Quantity,
+        string QuantityUnit,
+        string? MaterialOverrides,
+        decimal? ScaledWidth,
+        decimal? ScaledDepth,
+        decimal? ScaledHeight,
+        bool IsCustomSize);
 
     // ── GET /api/quotes ────────────────────────────────────────────────────
 

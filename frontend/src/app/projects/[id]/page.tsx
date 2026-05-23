@@ -97,7 +97,14 @@ export default function ProjectDesignerPage() {
   const [hydrated, setHydrated] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
+  // Enable the Quote button as soon as the user has anything in the scene —
+  // furniture, walls (so paint/flooring can be computed), or openings (branded
+  // doors/windows are quoteable on their own). The dialog handles its own
+  // empty-case copy once it's open.
   const placedCount = useDesignerStore((s) => s.furniture.length);
+  const wallCount = useDesignerStore((s) => s.walls.length);
+  const openingCount = useDesignerStore((s) => s.openings.length);
+  const sceneHasContent = placedCount + wallCount + openingCount > 0;
 
   // We use refs for things the debounced effect needs without re-triggering it.
   const lookupRef = useRef(lookup);
@@ -266,8 +273,8 @@ export default function ProjectDesignerPage() {
           <SaveBadge status={saveStatus} />
           <button
             onClick={() => setQuoteOpen(true)}
-            disabled={placedCount === 0}
-            title={placedCount === 0 ? "Add furniture before requesting a quote" : undefined}
+            disabled={!sceneHasContent}
+            title={!sceneHasContent ? "Add furniture, walls, or openings before requesting a quote" : undefined}
             className="ml-2 flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
           >
             <FileText size={12} /> Quote

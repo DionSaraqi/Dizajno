@@ -77,7 +77,7 @@ export function mapStoreToApiScene(
     width: o.width,
     height: o.height,
     sillHeight: o.sillHeight,
-    productVariantId: null,
+    productVariantId: o.productVariantId ?? null,
     materialOverrides: null,
   }));
 
@@ -144,6 +144,7 @@ export function mapApiSceneToStore(
     width: o.width,
     height: o.height,
     sillHeight: o.sillHeight,
+    productVariantId: o.productVariantId ?? null,
   }));
 
   const furniture: FurnitureData[] = [];

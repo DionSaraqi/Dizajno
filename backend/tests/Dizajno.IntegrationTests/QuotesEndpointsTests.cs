@@ -431,4 +431,114 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
+
+    // ── Phase 6 ────────────────────────────────────────────────────────────
+
+    private async Task<Guid> GetVariantIdBySlugAsync(string slug)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DizajnoDbContext>();
+        return await db.Products
+            .Where(p => p.Slug == slug)
+            .SelectMany(p => p.Variants)
+            .Select(v => v.Id)
+            .FirstAsync();
+    }
+
+    [Fact]
+    public async Task Create_WithBrandedOpening_IncludesItInFanOut()
+    {
+        var (client, _) = await NewAuthedClientAsync($"open-{Guid.NewGuid():N}"[..18]);
+        var doorVariantId = await GetVariantIdBySlugAsync("solid-oak-door");
+
+        // Create a project with one wall + one branded door — no placed items.
+        var create = await client.PostAsJsonAsync("/api/projects",
+            new CreateProjectRequest("Branded door"), JsonOpts);
+        var project = (await create.Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
+
+        var wallId = Guid.NewGuid();
+        var scene = new SceneDto(
+            new[] { new WallDto(wallId, 0m, 0m, 4m, 0m, 0.1m, 2.5m) },
+            Array.Empty<FloorDto>(),
+            new[] { new OpeningDto(
+                Id: Guid.NewGuid(),
+                WallId: wallId,
+                Type: Domain.Enums.OpeningType.Door,
+                OffsetFromStart: 1m, Width: 0.9m, Height: 2.1m, SillHeight: 0m,
+                ProductVariantId: doorVariantId,
+                MaterialOverrides: null) },
+            Array.Empty<PlacedItemDto>());
+
+        var sceneResponse = await client.PutAsJsonAsync(
+            $"/api/projects/{project.Id}/scene",
+            new ReplaceSceneRequest(scene), JsonOpts);
+        sceneResponse.EnsureSuccessStatusCode();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/projects/{project.Id}/quotes",
+            new CreateQuoteRequest(Message: null));
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var detail = (await response.Content.ReadFromJsonAsync<QuoteDetailDto>(JsonOpts))!;
+
+        detail.Requests.Should().ContainSingle();
+        var lines = detail.Requests[0].Lines;
+        lines.Should().ContainSingle()
+            .Which.VariantSnapshot.GetProperty("productSlug").GetString()
+            .Should().Be("solid-oak-door");
+        lines[0].QuantityUnit.Should().Be("piece");
+    }
+
+    [Fact]
+    public async Task Create_WithManualMaterialLines_AppendsThemToFanOut()
+    {
+        var (client, _) = await NewAuthedClientAsync($"mat-{Guid.NewGuid():N}"[..18]);
+        var projectId = await CreateProjectWithPlacedItemAsync(client, "Living room", "sofa");
+        var paintVariantId = await GetVariantIdBySlugAsync("interior-matt-paint");
+        var flooringVariantId = await GetVariantIdBySlugAsync("oak-laminate-flooring");
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/projects/{projectId}/quotes",
+            new CreateQuoteRequest(
+                Message: "Plus paint and flooring please.",
+                ManualLines: new[]
+                {
+                    new ManualQuoteLineRequest(paintVariantId, 15m, "L"),
+                    new ManualQuoteLineRequest(flooringVariantId, 24.5m, "m2"),
+                }));
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var detail = (await response.Content.ReadFromJsonAsync<QuoteDetailDto>(JsonOpts))!;
+
+        // Single supplier (dizajno) — sofa + paint + flooring should all land in the
+        // same QuoteRequest.
+        detail.Requests.Should().ContainSingle();
+        var lines = detail.Requests[0].Lines;
+        lines.Should().HaveCount(3);
+
+        var paint = lines.Single(l => l.VariantSnapshot.GetProperty("productSlug").GetString() == "interior-matt-paint");
+        paint.Quantity.Should().Be(15m);
+        paint.QuantityUnit.Should().Be("L");
+        paint.IsCustomSize.Should().BeFalse();
+
+        var flooring = lines.Single(l => l.VariantSnapshot.GetProperty("productSlug").GetString() == "oak-laminate-flooring");
+        flooring.Quantity.Should().Be(24.5m);
+        flooring.QuantityUnit.Should().Be("m2");
+    }
+
+    [Fact]
+    public async Task Create_RejectsManualLineWithUnknownVariant()
+    {
+        var (client, _) = await NewAuthedClientAsync($"bad-{Guid.NewGuid():N}"[..18]);
+        var projectId = await CreateProjectWithPlacedItemAsync(client, "Bad lines", "sofa");
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/projects/{projectId}/quotes",
+            new CreateQuoteRequest(
+                Message: null,
+                ManualLines: new[]
+                {
+                    new ManualQuoteLineRequest(Guid.NewGuid(), 10m, "L"),
+                }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }

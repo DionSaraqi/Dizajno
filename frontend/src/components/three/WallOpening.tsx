@@ -3,6 +3,7 @@
 import React from "react";
 import * as THREE from "three";
 import { Edges } from "@react-three/drei";
+import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
 import type { OpeningData } from "@/types/designer";
 
 interface WallOpeningProps {
@@ -20,7 +21,7 @@ interface WallOpeningProps {
   onPointerOut?: (e: any) => void;
 }
 
-const FRAME_COLOR = "#C8A96E";
+const DEFAULT_FRAME_COLOR = "#C8A96E";
 const FRAME_WIDTH = 0.05;
 
 export default function WallOpening({
@@ -37,6 +38,16 @@ export default function WallOpening({
   onPointerOver,
   onPointerOut,
 }: WallOpeningProps) {
+  // Phase 6: if the opening references a branded fixture variant, look up its
+  // color in the live catalog and tint the frame with it. Falls back to the
+  // default gold-brown otherwise. Reads via the same TanStack Query cache the
+  // rest of the designer uses, so the lookup is free after first render.
+  const { items: catalog } = useFurnitureCatalog();
+  const variantColor = opening.productVariantId
+    ? catalog.find((item) => item.variantId === opening.productVariantId)?.color
+    : undefined;
+  const frameColor = variantColor ?? DEFAULT_FRAME_COLOR;
+
   const startVec = new THREE.Vector3(wallStart[0], 0, wallStart[1]);
   const endVec = new THREE.Vector3(wallEnd[0], 0, wallEnd[1]);
   const direction = new THREE.Vector3().subVectors(endVec, startVec);
@@ -139,21 +150,21 @@ export default function WallOpening({
       {/* Left jamb */}
       <mesh position={[-(width / 2) - FRAME_WIDTH / 2, sillHeight + height / 2, 0]}>
         <boxGeometry args={[FRAME_WIDTH, height + FRAME_WIDTH * 2, frameDepth]} />
-        <meshStandardMaterial color={FRAME_COLOR} />
+        <meshStandardMaterial color={frameColor} />
         {edgeColor && <Edges threshold={1} color={edgeColor} />}
       </mesh>
 
       {/* Right jamb */}
       <mesh position={[width / 2 + FRAME_WIDTH / 2, sillHeight + height / 2, 0]}>
         <boxGeometry args={[FRAME_WIDTH, height + FRAME_WIDTH * 2, frameDepth]} />
-        <meshStandardMaterial color={FRAME_COLOR} />
+        <meshStandardMaterial color={frameColor} />
         {edgeColor && <Edges threshold={1} color={edgeColor} />}
       </mesh>
 
       {/* Lintel (top) */}
       <mesh position={[0, sillHeight + height + FRAME_WIDTH / 2, 0]}>
         <boxGeometry args={[width + FRAME_WIDTH * 2, FRAME_WIDTH, frameDepth]} />
-        <meshStandardMaterial color={FRAME_COLOR} />
+        <meshStandardMaterial color={frameColor} />
         {edgeColor && <Edges threshold={1} color={edgeColor} />}
       </mesh>
 
@@ -161,7 +172,7 @@ export default function WallOpening({
       {type === "window" && sillHeight > 0.001 && (
         <mesh position={[0, sillHeight - FRAME_WIDTH / 2, 0]}>
           <boxGeometry args={[width + FRAME_WIDTH * 2, FRAME_WIDTH, frameDepth]} />
-          <meshStandardMaterial color={FRAME_COLOR} />
+          <meshStandardMaterial color={frameColor} />
           {edgeColor && <Edges threshold={1} color={edgeColor} />}
         </mesh>
       )}

@@ -157,6 +157,12 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 - The frontend conditionally surfaces the `/supplier/quotes` nav by reading `useAuthStore().user?.supplierMemberships` — empty list → no nav, no inbox.
 - The full supplier portal (self-serve product upload, member-management UI) lands in Phase 7 and will replace the admin binding endpoint with proper UX.
 
+### Catalog families & branded fixtures (Phase 6)
+- The catalog covers five families (`Furniture`, `Lighting`, `Appliance`, `BuildingMaterial`, `Fixture`). Today the seed ships 12 furniture rows + 2 fixtures + 2 building materials; lighting and appliance entries are deferred until GLB models exist.
+- `FurnitureItemDto` (frontend `FurnitureCatalogItem`) carries `family`, `unitOfSale`, `coverageRate`, `wasteFactor`. The frontend uses these to (1) hide non-furniture items from the place-furniture sidebar tabs, (2) populate the branded-fixture picker on a selected opening, and (3) drive the auto-quantity suggestion in the request-quote materials section.
+- A branded opening (`OpeningData.productVariantId` non-null) renders with the variant's `color` overriding the default frame color in `WallOpening.tsx`. No GLB-in-hole rendering yet — that's a future increment.
+- The request-quote dialog can submit `manualLines` for materials that aren't placed on the canvas (paint, flooring). Quantities are computed from room geometry via `frontend/src/utils/areaCalc.ts` and the user can override them before submit.
+
 ### State Management
 All designer state lives in `src/store/useDesignerStore.ts` (Zustand). Undo/redo is provided by Zundo's `temporal` middleware. The store manages walls, floors, furniture, selections, modes, and UI settings.
 

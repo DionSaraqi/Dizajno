@@ -123,41 +123,54 @@ public sealed class DataSeeder : IDataSeeder
         return supplier;
     }
 
-    private async Task<Dictionary<string, Category>> SeedCategoriesAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Upserts every <see cref="CatalogSeedData.Categories"/> row. Categories are
+    /// scoped per <see cref="ProductFamily"/> so the same name can legitimately exist
+    /// in multiple families if needed; the returned dictionary is keyed on the
+    /// combined (Family, Name) tuple to disambiguate during product seeding.
+    /// </summary>
+    private async Task<Dictionary<(ProductFamily Family, string Name), Category>> SeedCategoriesAsync(
+        CancellationToken cancellationToken)
     {
         var existing = await _db.Categories
-            .Where(c => c.Family == ProductFamily.Furniture)
-            .ToDictionaryAsync(c => c.Name, cancellationToken);
+            .ToDictionaryAsync(c => (c.Family, c.Name), cancellationToken);
 
-        foreach (var name in CatalogSeedData.Categories)
+        var added = 0;
+        foreach (var seed in CatalogSeedData.Categories)
         {
-            if (existing.ContainsKey(name))
+            var key = (seed.Family, seed.Name);
+            if (existing.ContainsKey(key))
             {
                 continue;
             }
 
-            var slug = name.ToLowerInvariant();
+            var slug = seed.Name.ToLowerInvariant().Replace(' ', '-');
+            var family = seed.Family;
             var category = new Category
             {
                 Id = Guid.NewGuid(),
-                Family = ProductFamily.Furniture,
+                Family = family,
                 Slug = slug,
-                Name = name,
-                Path = $"/{slug}/",
+                Name = seed.Name,
+                Path = $"/{family.ToString().ToLowerInvariant()}/{slug}/",
                 SortOrder = 0
             };
             _db.Categories.Add(category);
-            existing[name] = category;
+            existing[key] = category;
+            added++;
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
-        _log.LogInformation("Seeded {Count} furniture categories", existing.Count);
+        if (added > 0)
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            _log.LogInformation("Seeded {Count} catalog categories", added);
+        }
         return existing;
     }
 
     private async Task SeedProductsAsync(
         Supplier supplier,
-        Dictionary<string, Category> categoriesByName,
+        Dictionary<(ProductFamily Family, string Name), Category> categoriesByKey,
         CancellationToken cancellationToken)
     {
         var existingSlugs = await _db.Products
@@ -173,10 +186,11 @@ public sealed class DataSeeder : IDataSeeder
                 continue;
             }
 
-            if (!categoriesByName.TryGetValue(seed.Category, out var category))
+            if (!categoriesByKey.TryGetValue((seed.Family, seed.Category), out var category))
             {
                 throw new InvalidOperationException(
-                    $"Seed product '{seed.Type}' references unknown category '{seed.Category}'.");
+                    $"Seed product '{seed.Type}' references unknown category " +
+                    $"'{seed.Category}' under family {seed.Family}.");
             }
 
             var productId = Guid.NewGuid();
@@ -186,12 +200,13 @@ public sealed class DataSeeder : IDataSeeder
             {
                 Id = productId,
                 SupplierId = supplier.Id,
-                Family = ProductFamily.Furniture,
+                Family = seed.Family,
                 CategoryId = category.Id,
                 Slug = seed.Type,
                 Status = ProductStatus.Published,
-                UnitOfSale = UnitOfSale.Piece,
-                WasteFactor = 0,
+                UnitOfSale = seed.UnitOfSale,
+                CoverageRate = seed.CoverageRate,
+                WasteFactor = seed.WasteFactor,
                 Name = seed.Label,
                 PreviewSvg = seed.SvgPreview,
                 Attributes = JsonSerializer.Serialize(new { icon = seed.Icon }, JsonOpts),

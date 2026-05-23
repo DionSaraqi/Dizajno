@@ -179,7 +179,14 @@ All GET, no auth required in Phase 1.
 - `GET /suppliers` → `SupplierDto[]`
 
 DTO shape mirrors `frontend/src/types/designer.ts` `FurnitureCatalogItem` so the
-frontend can deserialize without renaming.
+frontend can deserialize without renaming. Phase 6 added four fields:
+
+- `family` — `Furniture | Lighting | Appliance | BuildingMaterial | Fixture`. Frontend uses this to filter the place-furniture sidebar (Furniture only) and the branded-fixture picker (Fixture only) and the materials section (BuildingMaterial only).
+- `unitOfSale` — `Piece | SquareMeter | Liter | LinearMeter | Kilogram`. Drives the materials-section quantity calculation + the `quantityUnit` token sent on manual quote lines.
+- `coverageRate` — nullable numeric, m² per Liter; only set for paint/sealant rows. Used to suggest paint quantity from paintable wall area.
+- `wasteFactor` — numeric overage suggestion (e.g. `0.10` = +10%). Applied to the auto-suggested material quantity in the request-quote dialog.
+
+Current Phase 6 catalog rows: `solid-oak-door` and `pvc-window` (Fixture, Piece); `interior-matt-paint` (BuildingMaterial, Liter, coverage 10 m²/L, waste 10%); `oak-laminate-flooring` (BuildingMaterial, SquareMeter, waste 5%). The 12 Phase-1 furniture rows default to `family = "Furniture"`, `unitOfSale = "Piece"`, `coverageRate = null`, `wasteFactor = 0`.
 
 ### Projects (`/api/projects`)
 
@@ -232,11 +239,18 @@ Upload flow:
 Requester side — all endpoints require a bearer token, ownership 404s on foreign
 ids. See [QuotesController.cs](src/Dizajno.Api/Controllers/QuotesController.cs).
 
-- `POST /api/projects/{id}/quotes` — `{ message? }` → 201 `QuoteDetailDto`. Loads
-  the project's `placed_items`, groups by `variant.product.supplier_id`, inserts
-  one `Quote` parent + N `QuoteRequest` rows + M `QuoteLine` rows in one
+- `POST /api/projects/{id}/quotes` — `{ message?, manualLines? }` → 201 `QuoteDetailDto`.
+  Folds three sources into a single line stream and groups by `variant.product.supplier_id`:
+  - the project's `placed_items` (Phase 5)
+  - `openings WHERE product_variant_id IS NOT NULL` (Phase 6 branded fixtures)
+  - the optional `manualLines: [{ productVariantId, quantity, quantityUnit }]` array
+    (Phase 6 — paint, flooring, anything not placed in the scene)
+
+  Inserts one `Quote` parent + N `QuoteRequest` rows + M `QuoteLine` rows in one
   transaction. Each line gets a frozen `variant_snapshot` jsonb so the supplier
-  view stays meaningful even if the catalog changes. 400 on empty scene.
+  view stays meaningful even if the catalog changes. 400 if **all three** sources
+  are empty. 400 if any manual-line `productVariantId` is missing or its product
+  isn't `Published`.
 - `GET /api/quotes?status=&skip=&take=` — paginated list of the caller's quotes
   with per-status supplier roll-up counts.
 - `GET /api/quotes/{id}` → `QuoteDetailDto` — every QuoteRequest (supplier name +
@@ -324,8 +338,10 @@ then start the API host (which runs the seeder against the freshly migrated DB).
 Each test class gets its own container — slower than sharing, but each class
 sees a deterministic starting state.
 
-Seven test classes today (69 tests):
-- `CatalogEndpointsTests` — 12 tests
+Seven test classes today (75 tests):
+- `CatalogEndpointsTests` — 15 tests (Phase 6: filter-by-family Fixture/BuildingMaterial,
+  unfiltered categories returns 8 across 3 families, paint exposes coverage + waste,
+  flooring exposes m² unit)
 - `AuthEndpointsTests` — 10 tests (Phase 5: added `UserSummary.SupplierMemberships` empty-by-default assertion)
 - `AssetsEndpointsTests` — 8 tests (presign + finalize; uses `FakeObjectStorage`
   registered via `ConfigureTestServices`, so no live R2 credentials needed)
@@ -334,10 +350,11 @@ Seven test classes today (69 tests):
 - `CustomizerTexturesTests` — 5 tests (Phase 4: catalog DTO from relational rows,
   variant attributes no longer stash `textureSlots`, seeder library + slot rows,
   cross-supplier trigger raises `PostgresException`)
-- `QuotesEndpointsTests` — 13 tests (Phase 5: fan-out per supplier, ownership 404s,
+- `QuotesEndpointsTests` — 16 tests (Phase 5: fan-out per supplier, ownership 404s,
   cancel propagates Expired, close-before-response 409, close-after-decline succeeds,
   `IsCustomSize` flip, supplier inbox member gating, respond happy path + idempotent
-  upsert, cross-supplier attachment 400, cancelled-quote response 409, admin-bind RBAC 403)
+  upsert, cross-supplier attachment 400, cancelled-quote response 409, admin-bind RBAC 403;
+  Phase 6: branded opening in fan-out, manual material lines accepted, unknown variant 400)
 
 ## Troubleshooting
 

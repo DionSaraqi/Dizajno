@@ -22,7 +22,16 @@ public sealed record FurnitureItemDto(
     Guid SupplierId,
     string SupplierName,
     decimal? BasePrice,
-    string Currency);
+    string Currency,
+    // ── Phase 6 additions ───────────────────────────────────────────────
+    // Family lets the frontend filter "place-on-canvas" furniture from
+    // building materials (paint/flooring) that flow through the materials
+    // section in RequestQuoteDialog. UnitOfSale + CoverageRate + WasteFactor
+    // drive the auto-calculated quantity suggestion for those items.
+    string Family,
+    string UnitOfSale,
+    decimal? CoverageRate,
+    decimal WasteFactor);
 
 public sealed record CollisionBoxDto(
     decimal OffsetX,

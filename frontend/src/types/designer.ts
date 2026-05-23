@@ -81,8 +81,13 @@ export interface FurnitureCatalogItem {
   color: string;
   /** Lucide icon name — kept for fallback rendering */
   icon: string;
-  /** Grouping category for sidebar display */
-  category: FurnitureCategory;
+  /**
+   * Grouping category for sidebar display. Phase 1 furniture uses the four
+   * `FurnitureCategory` values; Phase 6 added "Doors", "Windows", "Paint",
+   * "Flooring". Typed as a free-form string to keep the place-furniture sidebar
+   * narrow while letting the rest of the UI handle the new categories.
+   */
+  category: string;
   /**
    * Inline SVG string for the top-down 2D floor-plan thumbnail shown in the sidebar.
    * Future: will be auto-generated from CAD files by the backend.
@@ -122,6 +127,26 @@ export interface FurnitureCatalogItem {
   basePrice?: number | null;
   /** ISO 4217 currency code matching `basePrice` (defaults to EUR). */
   currency?: string;
+  /**
+   * Product family — drives whether the item is placed on the canvas (Furniture,
+   * Fixture, Lighting, Appliance) or flows through the materials section in the
+   * request-quote dialog (BuildingMaterial). Phase 6 addition.
+   */
+  family?:
+    | "Furniture"
+    | "Lighting"
+    | "Appliance"
+    | "BuildingMaterial"
+    | "Fixture";
+  /**
+   * Unit the supplier sells the product in. Phase 6 paint = "Liter",
+   * flooring = "SquareMeter". Furniture is "Piece" by default.
+   */
+  unitOfSale?: "Piece" | "SquareMeter" | "Liter" | "LinearMeter" | "Kilogram";
+  /** m² per Liter — only set for paint/sealant. */
+  coverageRate?: number | null;
+  /** Suggested overage factor for area/volume materials (e.g. 0.10 = 10%). */
+  wasteFactor?: number;
 }
 
 export type OpeningType = "door" | "window";
@@ -138,6 +163,13 @@ export interface OpeningData {
   height: number;
   /** Distance from floor to bottom of opening — 0 for doors, ~0.9 for windows */
   sillHeight: number;
+  /**
+   * Phase 6: optional FK to a branded fixture variant (catalog item with
+   * `family === "Fixture"`). When set, `WallOpening` renders the frame in
+   * the variant's color and the opening becomes a quote-line at fan-out time.
+   * Null/undefined = generic door/window (default).
+   */
+  productVariantId?: string | null;
 }
 
 export type DesignerMode = "draw" | "select" | "furniture" | "opening";

@@ -411,7 +411,7 @@ audit_log
 | 3 — Sharing | ✓ Done (pin overlay deferred) | Backend: `project_shares` + `project_comments` (migration `0005_Sharing`), owner-side share CRUD + comment inbox under `/api/projects/{id}`, public token-scoped scene load + comment list/post under `/api/share/{token}`. Comment mode required for posts; anon posters supply `guestName`. Frontend: Share dialog in designer header (link + email modes), `/share/[token]` read-only viewer using the same R3F canvas in select mode, right-rail CommentsPanel that polls every 15 s and supports both signed-in + guest authors. Anchor JSON is round-tripped; rendering pins on the canvas is the only piece deferred. |
 | 4 — Customizer textures | ✓ Done | Backend: `supplier_textures` + `product_variant_texture_slots` (migration `0006_CustomizerTextures`) with a Postgres trigger enforcing variant.product.supplier ≡ supplier_texture.supplier. Seeder upserts one `SupplierTexture` (+ backing `Asset`) per distinct catalog texture URL under the `dizajno` supplier and writes `ProductVariantTextureSlot` rows per (variant, slot, url), marking the first non-empty url per slot as default. `CatalogController` joins the new tables and emits the same `TextureSlots: Record<slotName, string[]>` DTO shape (with `""` prepended for "None"), so the frontend keeps using `def.textureSlots` and `materialTextures` unchanged. |
 | 5 — Quoting | ✓ Done | Backend: `quotes`/`quote_requests`/`quote_lines`/`quote_responses`/`quote_response_assets` (migration `0007_Quoting`); `ISupplierMembershipResolver` gating `/api/supplier/*`; user controller (create/list/detail/cancel/close) + supplier controller (inbox/detail/respond-upsert/decline) + supplier-scoped asset uploads. Phase-5 admin stopgap `POST /api/admin/supplier-members` until the Phase 7 portal lands. `UserSummary.supplierMemberships` drives frontend nav. Frontend: `RequestQuoteDialog` in the designer header (grouped per-supplier preview + subtotals), `/quotes` + `/quotes/[id]` for requesters, `/supplier/quotes` + `/supplier/quotes/[id]` for responders with response composer + attachment dropzone. 30 s polling on inbox routes. |
-| 6 — Fixtures & building materials | pending | `Opening.productVariantId`, paint/flooring quantity calc, lighting/appliance/building-material catalog data |
+| 6 — Fixtures & building materials | ✓ Done (lighting/appliance seed deferred) | Catalog seed grew Family/UnitOfSale/CoverageRate/WasteFactor; 4 new products + 4 new categories under Fixture + BuildingMaterial families. `FurnitureItemDto` exposes those four fields. `POST /api/projects/{id}/quotes` now fans out branded openings + an optional `manualLines` array alongside placed items. Sidebar opening properties gain a "Branded fixture (optional)" picker filtered by family + door-vs-window; `WallOpening.tsx` reads the picked variant's color. `RequestQuoteDialog` grows a "Materials & finishes" section driven by `frontend/src/utils/areaCalc.ts` (shoelace floor area, paintable wall = Σ(wall × height) − Σ(opening areas)). Lighting + appliance entries deferred until GLB models exist. |
 | 7 — Admin tooling | pending | `AuditLog`, admin dashboard; `SupplierMember` portal for self-serve onboarding |
 
 ### Phase 1 — Foundation ✓ Done
@@ -529,75 +529,42 @@ Out of scope this phase (parked):
 - **Full supplier portal** (self-serve products, member CRUD UI) — Phase 7. Phase 5 ships the admin binding endpoint as a stopgap.
 - **Quote PDF export / order workflow** — never on the roadmap; Dizajno is matchmaker, not seller.
 
-### Phase 6 — Fixtures & building materials (planning locked, implementation pending)
+### Phase 6 — Fixtures & building materials ✓ Done
 
-**Goal:** the catalog gains its first non-furniture members. Doors and windows can carry a branded variant that shows up in quote responses. Paint and flooring can be requested with a quantity auto-calculated from room geometry (`floor m²`, `paintable wall m²`) and a per-product waste factor — user can override the suggested number before submit.
+Branch: `feat/backend-foundation`. Built on top of Phase 5.
 
-#### Decisions locked before implementation
+**Goal:** the catalog gained its first non-furniture members. Doors and windows can carry a branded variant that shows up in quote responses. Paint and flooring can be requested with a quantity auto-calculated from room geometry (`floor m²`, `paintable wall m²`) and a per-product waste factor — user can override the suggested number before submit.
 
-- **Branded fixture render:** the variant's `color` overrides the hardcoded gold-brown frame color in `WallOpening.tsx`. No GLB-in-hole this phase (that would need new GLBs + a hole-cutter in the renderer, a project of its own).
-- **Picker location:** "Branded fixture (optional)" dropdown in the **Sidebar properties panel for a selected opening**. Filtered to `family === "Fixture"` items and further filtered by the opening's `type` (doors get door products, windows get window products). Matches the existing "select opening → edit dims" pattern.
-- **Material persistence:** dialog-only. The user picks paint/flooring each time they open the request-quote dialog; quantities are recomputed from current geometry. The resulting `quote_lines` are persisted (variant snapshot frozen, as Phase 5 already does for furniture). A `project_materials` persistence layer is parked as a possible Phase 6.5.
-- **Seed scope:** four products. Two fixtures (`solid-oak-door`, `pvc-window`) + two building materials (`interior-matt-paint` with `CoverageRate = 10 m²/L` and `WasteFactor = 0.10`; `oak-laminate-flooring` with `WasteFactor = 0.05`). Lighting + appliance entries deferred to a future phase that includes GLB models.
+Built:
 
-#### What's already in place from earlier phases (no work)
+- **Migration-free phase.** All required columns (`Opening.ProductVariantId`, `Product.CoverageRate`, `Product.WasteFactor`, `QuoteLine.QuantityUnit`) and the `ProductFamily` / `UnitOfSale` enums were already shipped in earlier phases.
+- **Catalog seed.** `ItemSeed` grew `Family`, `UnitOfSale`, `CoverageRate?`, `WasteFactor` fields (default to Furniture / Piece / null / 0 — additive for existing rows). `CatalogSeedData.Categories` flipped from `string[]` to `IReadOnlyList<CategorySeed>` so categories carry their `ProductFamily`. Four new products: `solid-oak-door` and `pvc-window` (Fixture, Piece), `interior-matt-paint` (BuildingMaterial, Liter, coverage 10 m²/L, waste 10%), `oak-laminate-flooring` (BuildingMaterial, SquareMeter, waste 5%). Four new categories: Doors, Windows, Paint, Flooring.
+- **`DataSeeder`** keys categories on `(Family, Name)` instead of just Name; category paths are now `"/{family}/{slug}/"`. Product seeding writes `seed.Family`, `seed.UnitOfSale`, `seed.CoverageRate`, `seed.WasteFactor` rather than hardcoding furniture defaults.
+- **`FurnitureItemDto`** grew four fields: `Family`, `UnitOfSale`, `CoverageRate?`, `WasteFactor`. Existing furniture rows return `Family = "Furniture"`, `UnitOfSale = "Piece"`, `CoverageRate = null`, `WasteFactor = 0` so the change is invisible to the existing place-furniture sidebar.
+- **`POST /api/projects/{id}/quotes` extended.** Body grew an optional `manualLines: [{ productVariantId, quantity, quantityUnit }]` array. The fan-out now folds three sources into a single line stream:
+  - `placed_items` (Phase 5 behaviour, unchanged)
+  - `openings WHERE product_variant_id IS NOT NULL` (Phase 6 branded fixtures — `quantity = 1, quantityUnit = "piece"`, `scaledWidth/Height` reflect the wall cut-out)
+  - `manualLines` (paint, flooring — `IsCustomSize = false`)
+  Each source flows through a shared `VariantSnapshotSource` projection so `variant_snapshot.productSlug` etc. land identically regardless of where the line came from. Empty-scene check now requires zero from *all three* sources to 400. Manual lines that reference an unknown or unpublished variant return 400.
+- **Frontend types.** `FurnitureCatalogItem` grew the four catalog fields; `OpeningData` grew `productVariantId?: string | null`; `sceneMapper` round-trips it through `PUT /scene`.
+- **Sidebar opening properties.** New "Branded fixture (optional)" `<select>` between the sill-height slider and the Delete button. Populated from the live catalog filtered to `family === "Fixture"` AND `category === (opening.type === "door" ? "Doors" : "Windows")`. Picking a row calls `updateOpening(id, { productVariantId })`; clearing it sets the field back to null.
+- **`WallOpening.tsx`** reads `productVariantId`, looks the variant's `color` up in the TanStack Query catalog cache, and tints the frame with it. Generic openings render identically to before.
+- **`RequestQuoteDialog`** grew a "Materials & finishes" section. New helper `frontend/src/utils/areaCalc.ts` exports `computeRoomAreas(scene) → { floorAreaM2, paintableWallM2, openingAreaM2 }` (shoelace per floor polygon, `Σ(wall × height) − Σ(opening areas)` for walls), `suggestMaterialQuantity(unitOfSale, coverageRate, wasteFactor, areas)`, plus `unitLabel`/`quantityUnitToken` for display + API serialisation. Materials are checkbox-selected; selected ones submit as `manualLines`. Quote button on the project header re-enables based on `placedCount + wallCount + openingCount > 0` so users with walls but no furniture can still request paint/flooring.
+- **Tests.** `CatalogEndpointsTests` grew 3: `GetProducts_FiltersByFamily_FixtureReturnsDoorAndWindow`, `GetProducts_FiltersByFamily_BuildingMaterialExposesUnitAndCoverage`, `GetCategories_Unfiltered_IncludesPhase6Families`. The "all twelve" + "four furniture categories" assertions were updated to reflect the new totals (16 products; 4 furniture-filtered categories vs 8 unfiltered). `QuotesEndpointsTests` grew 3: `Create_WithBrandedOpening_IncludesItInFanOut`, `Create_WithManualMaterialLines_AppendsThemToFanOut`, `Create_RejectsManualLineWithUnknownVariant`. Suite is now **75 tests** across **7 classes**.
 
-- `Opening.ProductVariantId` (nullable FK) shipped in `0004_Projects` with the EF config + DTO round-trip.
-- `ProductFamily` enum has all five values; `UnitOfSale` has `Piece | SquareMeter | Liter | LinearMeter | Kilogram`.
-- `Product.CoverageRate` (m²/L) + `Product.WasteFactor` columns + `QuoteLine.Quantity` + `QuoteLine.QuantityUnit` already exist.
+Out of scope this phase (parked):
 
-Phase 6 is **migration-free**. The work is catalog data + UI + a small extension to the quote fan-out.
-
-#### Backend
-
-- **`CatalogSeedData.cs` gains four products** under new categories `Doors`, `Windows`, `Paint`, `Flooring` (all under family Furniture currently; needs a family field added to `ItemSeed` so the seeder writes the right `ProductFamily`):
-  - `solid-oak-door` — Fixture, Piece, 0.90 × 0.05 × 2.10 m
-  - `pvc-window` — Fixture, Piece, 1.20 × 0.05 × 1.20 m
-  - `interior-matt-paint` — BuildingMaterial, Liter, `CoverageRate = 10`, `WasteFactor = 0.10`
-  - `oak-laminate-flooring` — BuildingMaterial, SquareMeter, `WasteFactor = 0.05`
-- **`FurnitureItemDto` grows four fields** — `Family`, `UnitOfSale`, `CoverageRate?` (nullable numeric), `WasteFactor` (numeric). Furniture rows default to `Family = "Furniture"`, `UnitOfSale = "Piece"`, `CoverageRate = null`, `WasteFactor = 0` — additive change, no frontend break. (Renaming the DTO to `CatalogItemDto` is noted as a future cleanup; deferred to keep the diff small.)
-- **`POST /api/projects/{id}/quotes` extended**:
-  - Body grows an optional `manualLines: [{ productVariantId, quantity, quantityUnit }]` array.
-  - Fan-out now walks **both** `placed_items` **and** `openings WHERE product_variant_id IS NOT NULL`, then appends `manualLines`. Each becomes a `QuoteLine` snapshotted exactly like furniture, grouped by `variant.product.supplier_id`. Openings get `quantity = 1, quantityUnit = "piece"`; manual lines pass through whatever unit + quantity the frontend computed.
-  - `is_custom_size` stays `false` for openings and manual lines.
-  - Validation: manual-line `productVariantId` must exist and be `Published`; bad ids return 400.
-
-#### Frontend
-
-- `FurnitureCatalogItem` grows `family`, `unitOfSale`, `coverageRate`, `wasteFactor` — optional on the bundled fallback for backward compatibility.
-- **Sidebar opening properties** (`components/designer/Sidebar.tsx`): below the existing dim sliders, a "Branded fixture (optional)" `<select>` listing every catalog item matching the opening type. Selecting a product calls `updateOpening(id, { productVariantId })`; the existing replace-all `PUT /api/projects/{id}/scene` already persists `productVariantId`. Clearing the selection (None) sets it back to null.
-- **`WallOpening.tsx`** reads `productVariantId` off the opening, looks the variant's `color` up in the catalog cache, and uses it for the frame instead of the hardcoded `FRAME_COLOR`. Generic (unbranded) openings render identically to today.
-- **`RequestQuoteDialog`** grows a second collapsible section "Materials & finishes":
-  - New helper `frontend/src/utils/areaCalc.ts` exports `computeRoomAreas(scene) → { floorAreaM2, paintableWallM2 }`. Floor area via shoelace per polygon; paintable wall = `Σ(wall.length × wall.height) − Σ(opening.width × opening.height)`.
-  - Section lists every catalog item with `family === "BuildingMaterial"`, each row showing the computed suggestion: paint = `ceil(paintableWallM2 / coverageRate × (1 + wasteFactor))` L; flooring = `(floorAreaM2 × (1 + wasteFactor)).toFixed(1)` m². Checkbox to include + editable number to override.
-  - Selected materials become `manualLines` on submit. Openings with branded variants already show up automatically once fan-out includes them (no extra client bookkeeping).
-
-#### Tests
-
-Extend `QuotesEndpointsTests`:
-
-- `Create_WithBrandedOpening_IncludesItInFanOut` — set up a project with one Wall + one Opening pointing at the seeded `solid-oak-door` variant; assert the resulting quote has a line whose `variant_snapshot.productSlug == "solid-oak-door"`.
-- `Create_WithManualMaterialLines_AppendsThemToFanOut` — POST with `manualLines` for paint at 15 L; assert one line with `quantityUnit = "L"` and `quantity = 15`.
-- `Create_RejectsManualLineWithUnknownVariant` — random Guid → 400.
-
-Extend `CatalogEndpointsTests`:
-
-- `GetProducts_ExposesFamilyAndUnitOfSale` — assert the seeded paint row reports `family = "BuildingMaterial"`, `unitOfSale = "Liter"`, `coverageRate = 10`, `wasteFactor = 0.10`.
-
-Optional small unit test on `areaCalc.ts` if a Vitest harness lands; otherwise skip — no JS test setup currently in the repo.
-
-#### Docs
-
-- `PLAN.md` — flip Phase 6 row + per-phase block to ✓ Done with a "Built" block once landed; note no migration was needed.
-- `BACKEND.md` — catalog DTO grew four fields; quote fan-out now also walks branded openings + manualLines; bump test count.
-- `CLAUDE.md` — short note that branded openings render with variant color (no GLB-in-hole yet).
-
-#### Out of scope (parked)
-
-- **Lighting & Appliance seed data** — these need GLB models which are a per-item project. Easy follow-up commit when models exist.
+- **Lighting & Appliance seed data** — these need GLB models which are a per-item project. Easy follow-up when models exist.
 - **`project_materials` persistence** — selections would survive page reload but adds a migration + endpoint surface not in PLAN.md. Possible Phase 6.5.
 - **GLB-in-hole branded doors** — real door panels with handles + a hole-cutter in the renderer. Defer.
 - **LinearMeter products (skirting, trim)** — schema supports it via wall-perimeter calc; no seeded examples this phase.
+
+#### Decisions made during planning
+
+- **Branded fixture render:** the variant's `color` overrides the hardcoded gold-brown frame color in `WallOpening.tsx`. No GLB-in-hole this phase (that would need new GLBs + a hole-cutter in the renderer, a project of its own).
+- **Picker location:** "Branded fixture (optional)" dropdown in the **Sidebar properties panel for a selected opening**, filtered to `family === "Fixture"` AND `category` matching `door` vs `window`.
+- **Material persistence:** dialog-only. The user picks paint/flooring each time they open the request-quote dialog; quantities are recomputed from current geometry. The resulting `quote_lines` are persisted via the existing variant-snapshot freeze. A `project_materials` persistence layer is parked as a possible Phase 6.5.
+- **Seed scope:** 4 products. Lighting + appliance entries deferred until GLB models exist.
 
 ### Phase 7 — Admin tooling & supplier portal
 

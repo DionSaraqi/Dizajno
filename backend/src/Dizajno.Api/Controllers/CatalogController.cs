@@ -219,7 +219,11 @@ public sealed class CatalogController : ControllerBase
             SupplierId: row.Supplier.Id,
             SupplierName: row.Supplier.Name,
             BasePrice: row.Variant.BasePrice,
-            Currency: string.IsNullOrWhiteSpace(row.Variant.Currency) ? "EUR" : row.Variant.Currency);
+            Currency: string.IsNullOrWhiteSpace(row.Variant.Currency) ? "EUR" : row.Variant.Currency,
+            Family: row.Product.Family.ToString(),
+            UnitOfSale: row.Product.UnitOfSale.ToString(),
+            CoverageRate: row.Product.CoverageRate,
+            WasteFactor: row.Product.WasteFactor);
     }
 
     private static T? ReadAttribute<T>(string? json, string key)

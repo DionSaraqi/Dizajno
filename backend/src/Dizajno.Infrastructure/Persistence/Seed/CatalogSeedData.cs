@@ -1,16 +1,23 @@
+using Dizajno.Domain.Enums;
+
 namespace Dizajno.Infrastructure.Persistence.Seed;
 
 /// <summary>
 /// Initial catalog data mirroring frontend/src/utils/furnitureCatalog.ts.
 /// Kept here as code (not JSON) so the SVG strings stay diff-friendly and reviewable.
 /// Phase 7 (admin tooling + supplier portal) will deprecate this file in favor of
-/// admin-uploaded products. Phase 4 already promoted TextureSlots from a jsonb stash
+/// admin-uploaded products. Phase 4 promoted TextureSlots from a jsonb stash
 /// on ProductVariant.Attributes to relational SupplierTexture + ProductVariantTextureSlot
-/// rows; the dictionary here is still the source of truth for what the seeder creates.
+/// rows. Phase 6 introduced the Family/UnitOfSale/CoverageRate/WasteFactor fields so
+/// fixtures (doors/windows) and building materials (paint/flooring) can be seeded
+/// alongside furniture; the dictionary here is still the source of truth for what
+/// the seeder creates.
 /// </summary>
 public static class CatalogSeedData
 {
     public sealed record CollisionBoxSeed(decimal OffsetX, decimal OffsetZ, decimal Width, decimal Depth);
+
+    public sealed record CategorySeed(string Name, ProductFamily Family);
 
     public sealed record ItemSeed(
         string Type,
@@ -22,12 +29,26 @@ public static class CatalogSeedData
         string Icon,
         string Category,
         string SvgPreview,
+        ProductFamily Family = ProductFamily.Furniture,
+        UnitOfSale UnitOfSale = UnitOfSale.Piece,
+        decimal? CoverageRate = null,
+        decimal WasteFactor = 0m,
         string? ModelUrl = null,
         IReadOnlyList<CollisionBoxSeed>? CollisionBoxes = null,
         IReadOnlyDictionary<string, string>? MaterialSlots = null,
         IReadOnlyDictionary<string, IReadOnlyList<string>>? TextureSlots = null);
 
-    public static readonly string[] Categories = ["Seating", "Tables", "Bedroom", "Storage"];
+    public static readonly IReadOnlyList<CategorySeed> Categories =
+    [
+        new("Seating", ProductFamily.Furniture),
+        new("Tables", ProductFamily.Furniture),
+        new("Bedroom", ProductFamily.Furniture),
+        new("Storage", ProductFamily.Furniture),
+        new("Doors", ProductFamily.Fixture),
+        new("Windows", ProductFamily.Fixture),
+        new("Paint", ProductFamily.BuildingMaterial),
+        new("Flooring", ProductFamily.BuildingMaterial),
+    ];
 
     public static readonly IReadOnlyList<ItemSeed> Items =
     [
@@ -172,6 +193,57 @@ public static class CatalogSeedData
             Icon: "book-open",
             Category: "Storage",
             SvgPreview: BookshelfSvg),
+
+        // ── Fixtures (Phase 6) ──────────────────────────────────────────────
+        new ItemSeed(
+            Type: "solid-oak-door",
+            Label: "Solid Oak Door",
+            // Width and Height match the cut-out in the wall; Depth is the
+            // frame thickness so the variant fits standard 5 cm wall jambs.
+            Width: 0.90m, Depth: 0.05m, Height: 2.10m,
+            Color: "#7A5230",
+            Icon: "door-open",
+            Category: "Doors",
+            SvgPreview: DoorSvg,
+            Family: ProductFamily.Fixture),
+
+        new ItemSeed(
+            Type: "pvc-window",
+            Label: "PVC Window",
+            Width: 1.20m, Depth: 0.05m, Height: 1.20m,
+            Color: "#E8E4DC",
+            Icon: "square",
+            Category: "Windows",
+            SvgPreview: WindowSvg,
+            Family: ProductFamily.Fixture),
+
+        // ── Building materials (Phase 6) ────────────────────────────────────
+        new ItemSeed(
+            Type: "interior-matt-paint",
+            Label: "Interior Matt Paint",
+            // Dimensions are placeholder (1 L can footprint); not placed in the scene.
+            Width: 0.18m, Depth: 0.18m, Height: 0.20m,
+            Color: "#F4F0E8",
+            Icon: "paint-bucket",
+            Category: "Paint",
+            SvgPreview: PaintSvg,
+            Family: ProductFamily.BuildingMaterial,
+            UnitOfSale: UnitOfSale.Liter,
+            CoverageRate: 10m,
+            WasteFactor: 0.10m),
+
+        new ItemSeed(
+            Type: "oak-laminate-flooring",
+            Label: "Oak Laminate Flooring",
+            // Dimensions describe a single plank for reference only.
+            Width: 1.20m, Depth: 0.20m, Height: 0.008m,
+            Color: "#A0784A",
+            Icon: "square",
+            Category: "Flooring",
+            SvgPreview: FlooringSvg,
+            Family: ProductFamily.BuildingMaterial,
+            UnitOfSale: UnitOfSale.SquareMeter,
+            WasteFactor: 0.05m),
     ];
 
     // ── SVG previews (verbatim from frontend/src/utils/furnitureCatalog.ts) ─
@@ -311,6 +383,50 @@ public static class CatalogSeedData
             <rect x="34" y="45" width="7" height="12" rx="1" fill="#c05030" opacity="0.6"/>
             <rect x="43" y="45" width="6" height="12" rx="1" fill="#9030a0" opacity="0.6"/>
             <rect x="51" y="45" width="7" height="12" rx="1" fill="#c09020" opacity="0.6"/>
+        </svg>
+        """;
+
+    // ── Phase 6 SVG previews ─────────────────────────────────────────────
+
+    private const string DoorSvg = """
+        <svg viewBox="0 0 60 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <rect x="4" y="4" width="52" height="92" rx="2" fill="#7A5230" stroke="currentColor" stroke-width="2"/>
+            <rect x="10" y="10" width="40" height="38" rx="1" fill="#8B6340" stroke="currentColor" stroke-width="1"/>
+            <rect x="10" y="54" width="40" height="38" rx="1" fill="#8B6340" stroke="currentColor" stroke-width="1"/>
+            <circle cx="48" cy="54" r="1.6" fill="currentColor"/>
+        </svg>
+        """;
+
+    private const string WindowSvg = """
+        <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <rect x="4" y="4" width="72" height="72" rx="2" fill="#E8E4DC" stroke="currentColor" stroke-width="2"/>
+            <line x1="40" y1="4" x2="40" y2="76" stroke="currentColor" stroke-width="2"/>
+            <line x1="4" y1="40" x2="76" y2="40" stroke="currentColor" stroke-width="2"/>
+            <rect x="8" y="8" width="28" height="28" fill="#cce4ee" opacity="0.5"/>
+            <rect x="44" y="8" width="28" height="28" fill="#cce4ee" opacity="0.5"/>
+            <rect x="8" y="44" width="28" height="28" fill="#cce4ee" opacity="0.5"/>
+            <rect x="44" y="44" width="28" height="28" fill="#cce4ee" opacity="0.5"/>
+        </svg>
+        """;
+
+    private const string PaintSvg = """
+        <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <path d="M14 24 L66 24 L60 72 L20 72 Z" fill="#F4F0E8" stroke="currentColor" stroke-width="2"/>
+            <ellipse cx="40" cy="24" rx="26" ry="6" fill="#dcd5c4" stroke="currentColor" stroke-width="2"/>
+            <path d="M22 18 Q40 8 58 18" stroke="currentColor" stroke-width="2" fill="none"/>
+            <rect x="34" y="44" width="12" height="14" rx="2" fill="currentColor" opacity="0.25"/>
+        </svg>
+        """;
+
+    private const string FlooringSvg = """
+        <svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <rect x="4" y="4" width="92" height="72" rx="2" fill="#A0784A" stroke="currentColor" stroke-width="2"/>
+            <rect x="6" y="6" width="42" height="20" fill="#B0885A" stroke="currentColor" stroke-width="0.8"/>
+            <rect x="52" y="6" width="42" height="20" fill="#9A7244" stroke="currentColor" stroke-width="0.8"/>
+            <rect x="6" y="30" width="42" height="20" fill="#9A7244" stroke="currentColor" stroke-width="0.8"/>
+            <rect x="52" y="30" width="42" height="20" fill="#B0885A" stroke="currentColor" stroke-width="0.8"/>
+            <rect x="6" y="54" width="42" height="20" fill="#B0885A" stroke="currentColor" stroke-width="0.8"/>
+            <rect x="52" y="54" width="42" height="20" fill="#9A7244" stroke="currentColor" stroke-width="0.8"/>
         </svg>
         """;
 }

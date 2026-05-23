@@ -30,6 +30,7 @@ import {
   furnitureCatalog,
   getFurnitureDef,
 } from "@/utils/furnitureCatalog";
+import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
 import type { FurnitureCatalogItem } from "@/types/designer";
 import Button from "@/components/ui/Button";
 
@@ -81,6 +82,7 @@ function PropertiesSection() {
   const setFurnitureMaterialColors = useDesignerStore((s) => s.setFurnitureMaterialColors);
   const setFurnitureMaterialTextures = useDesignerStore((s) => s.setFurnitureMaterialTextures);
   const updateWall = useDesignerStore((s) => s.updateWall);
+  const { items: liveCatalog } = useFurnitureCatalog();
 
   if (selectedIds.length !== 1) return null;
   const selectedId = selectedIds[0];
@@ -92,6 +94,18 @@ function PropertiesSection() {
   if (!selectedFurniture && !selectedWall && !selectedOpening) return null;
 
   const def = selectedFurniture ? getFurnitureDef(selectedFurniture.type) : null;
+
+  // Phase 6: branded fixtures the user can attach to a selected opening. Filter
+  // the live catalog to Fixture-family items whose category matches the opening
+  // type (door → Doors, window → Windows). Falls back to an empty list while the
+  // hook is still loading.
+  const fixtureOptions: FurnitureCatalogItem[] = selectedOpening
+    ? liveCatalog.filter(
+        (item) =>
+          item.family === "Fixture" &&
+          item.category === (selectedOpening.type === "door" ? "Doors" : "Windows")
+      )
+    : [];
 
   function handleSetRotation(radians: number) {
     if (!selectedFurniture) return;
@@ -446,6 +460,36 @@ function PropertiesSection() {
                     onChange={(e) => updateOpening(selectedOpening.id, { sillHeight: parseFloat(e.target.value) })}
                     className="w-full slider-input"
                   />
+                </div>
+              )}
+
+              {/* Phase 6: branded fixture picker. Selecting a variant tints the
+                  frame color in the 3D view and adds the variant as a quote line
+                  when the user requests a quote. */}
+              {fixtureOptions.length > 0 && (
+                <div className="px-4 py-2 border-t border-dizajno-border">
+                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                    Branded fixture (optional)
+                  </h4>
+                  <select
+                    value={selectedOpening.productVariantId ?? ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      updateOpening(selectedOpening.id, {
+                        productVariantId: value ? value : null,
+                      });
+                    }}
+                    className="w-full text-xs bg-dizajno-elevated border border-dizajno-border rounded px-2 py-1 text-dizajno-text cursor-pointer focus:outline-none focus:border-dizajno-accent"
+                  >
+                    <option value="">None (generic)</option>
+                    {fixtureOptions.map((option) =>
+                      option.variantId ? (
+                        <option key={option.variantId} value={option.variantId}>
+                          {option.label}
+                        </option>
+                      ) : null
+                    )}
+                  </select>
                 </div>
               )}
 

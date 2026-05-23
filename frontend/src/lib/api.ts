@@ -687,14 +687,27 @@ export interface QuoteDetail {
   requests: QuoteRequestDto[];
 }
 
+/** Phase 6: manual material lines (paint, flooring, …) added alongside the
+ *  project's placed items and branded openings. The dialog computes a suggested
+ *  quantity from room geometry × waste factor; the user can edit and submit. */
+export interface ManualQuoteLineInput {
+  productVariantId: string;
+  quantity: number;
+  quantityUnit: string;
+}
+
 export function createQuote(
   projectId: string,
-  message: string | null
+  message: string | null,
+  manualLines: ManualQuoteLineInput[] = []
 ): Promise<QuoteDetail> {
   return apiFetch<QuoteDetail>(`/api/projects/${projectId}/quotes`, {
     method: "POST",
     auth: true,
-    jsonBody: { message },
+    jsonBody: {
+      message,
+      manualLines: manualLines.length > 0 ? manualLines : null,
+    },
   });
 }
 

@@ -19,14 +19,18 @@ public sealed class CatalogEndpointsTests : IClassFixture<DizajnoApiFactory>
     }
 
     [Fact]
-    public async Task GetProducts_ReturnsAllTwelveSeededItems()
+    public async Task GetProducts_ReturnsAllSeededItems()
     {
         var products = await _client.GetFromJsonAsync<List<FurnitureItemDto>>(
             "/api/catalog/products", JsonOpts);
 
         products.Should().NotBeNull();
-        products!.Should().HaveCount(12);
-        products!.Select(p => p.Type).Should().Contain(["bed", "sofa", "armchair", "colorable-sectional-sofa"]);
+        // Phase 1 seeded 12 furniture items; Phase 6 added 2 fixtures + 2 building materials.
+        products!.Should().HaveCount(16);
+        products!.Select(p => p.Type).Should().Contain([
+            "bed", "sofa", "armchair", "colorable-sectional-sofa",
+            "solid-oak-door", "pvc-window", "interior-matt-paint", "oak-laminate-flooring"
+        ]);
     }
 
     [Theory]
@@ -59,7 +63,40 @@ public sealed class CatalogEndpointsTests : IClassFixture<DizajnoApiFactory>
         var products = await _client.GetFromJsonAsync<List<FurnitureItemDto>>(
             "/api/catalog/products?family=FURNITURE", JsonOpts);
 
+        // Filter narrows to the 12 Phase-1 furniture items; the Phase-6 fixtures and
+        // building materials are excluded.
         products!.Should().HaveCount(12);
+    }
+
+    [Fact]
+    public async Task GetProducts_FiltersByFamily_FixtureReturnsDoorAndWindow()
+    {
+        var products = await _client.GetFromJsonAsync<List<FurnitureItemDto>>(
+            "/api/catalog/products?family=fixture", JsonOpts);
+
+        products!.Should().HaveCount(2);
+        products!.Select(p => p.Type).Should().BeEquivalentTo(
+            new[] { "solid-oak-door", "pvc-window" });
+        products!.Should().OnlyContain(p => p.Family == "Fixture");
+    }
+
+    [Fact]
+    public async Task GetProducts_FiltersByFamily_BuildingMaterialExposesUnitAndCoverage()
+    {
+        var products = await _client.GetFromJsonAsync<List<FurnitureItemDto>>(
+            "/api/catalog/products?family=buildingmaterial", JsonOpts);
+
+        products!.Should().HaveCount(2);
+        var paint = products!.Single(p => p.Type == "interior-matt-paint");
+        paint.Family.Should().Be("BuildingMaterial");
+        paint.UnitOfSale.Should().Be("Liter");
+        paint.CoverageRate.Should().Be(10m);
+        paint.WasteFactor.Should().Be(0.10m);
+
+        var flooring = products!.Single(p => p.Type == "oak-laminate-flooring");
+        flooring.UnitOfSale.Should().Be("SquareMeter");
+        flooring.WasteFactor.Should().Be(0.05m);
+        flooring.CoverageRate.Should().BeNull();
     }
 
     [Fact]
@@ -88,15 +125,27 @@ public sealed class CatalogEndpointsTests : IClassFixture<DizajnoApiFactory>
     }
 
     [Fact]
-    public async Task GetCategories_ReturnsFourFurnitureCategories()
+    public async Task GetCategories_FilteredByFurniture_ReturnsFourRows()
     {
         var categories = await _client.GetFromJsonAsync<List<CategoryDto>>(
-            "/api/catalog/categories", JsonOpts);
+            "/api/catalog/categories?family=furniture", JsonOpts);
 
         categories!.Should().HaveCount(4);
         categories!.Select(c => c.Name).Should().BeEquivalentTo(
             new[] { "Bedroom", "Seating", "Storage", "Tables" });
         categories!.Should().OnlyContain(c => c.Family == "Furniture");
+    }
+
+    [Fact]
+    public async Task GetCategories_Unfiltered_IncludesPhase6Families()
+    {
+        var categories = await _client.GetFromJsonAsync<List<CategoryDto>>(
+            "/api/catalog/categories", JsonOpts);
+
+        // 4 furniture + 2 fixture (Doors/Windows) + 2 building material (Paint/Flooring).
+        categories!.Should().HaveCount(8);
+        categories!.Select(c => c.Family).Distinct().Should().BeEquivalentTo(
+            new[] { "Furniture", "Fixture", "BuildingMaterial" });
     }
 
     [Fact]
