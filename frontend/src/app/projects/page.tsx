@@ -9,6 +9,8 @@ import {
   Trash2,
   LogOut,
   ArrowLeft,
+  FileText,
+  Briefcase,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -97,12 +99,28 @@ export default function ProjectsPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 px-3 py-1.5 rounded border border-white/10 hover:bg-white/5 text-dizajno-muted hover:text-dizajno-text font-mono text-xs tracking-wider transition"
-        >
-          <LogOut size={14} /> Sign out
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/quotes"
+            className="flex items-center gap-2 px-3 py-1.5 rounded border border-white/10 hover:bg-white/5 text-dizajno-muted hover:text-dizajno-text font-mono text-xs tracking-wider transition"
+          >
+            <FileText size={14} /> Quotes
+          </Link>
+          {(user?.supplierMemberships?.length ?? 0) > 0 && (
+            <Link
+              href="/supplier/quotes"
+              className="flex items-center gap-2 px-3 py-1.5 rounded border border-white/10 hover:bg-white/5 text-dizajno-muted hover:text-dizajno-text font-mono text-xs tracking-wider transition"
+            >
+              <Briefcase size={14} /> Inbox
+            </Link>
+          )}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 py-1.5 rounded border border-white/10 hover:bg-white/5 text-dizajno-muted hover:text-dizajno-text font-mono text-xs tracking-wider transition"
+          >
+            <LogOut size={14} /> Sign out
+          </button>
+        </div>
       </header>
 
       <section className="max-w-5xl mx-auto px-8 py-10">

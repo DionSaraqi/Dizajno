@@ -31,6 +31,11 @@ public sealed class DizajnoDbContext : IdentityDbContext<ApplicationUser, Identi
     public DbSet<ProjectComment> ProjectComments => Set<ProjectComment>();
     public DbSet<SupplierTexture> SupplierTextures => Set<SupplierTexture>();
     public DbSet<ProductVariantTextureSlot> ProductVariantTextureSlots => Set<ProductVariantTextureSlot>();
+    public DbSet<Quote> Quotes => Set<Quote>();
+    public DbSet<QuoteRequest> QuoteRequests => Set<QuoteRequest>();
+    public DbSet<QuoteLine> QuoteLines => Set<QuoteLine>();
+    public DbSet<QuoteResponse> QuoteResponses => Set<QuoteResponse>();
+    public DbSet<QuoteResponseAsset> QuoteResponseAssets => Set<QuoteResponseAsset>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

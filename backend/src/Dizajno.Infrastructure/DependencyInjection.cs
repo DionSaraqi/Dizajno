@@ -1,11 +1,13 @@
 using Dizajno.Application.Auth;
 using Dizajno.Application.Seed;
 using Dizajno.Application.Storage;
+using Dizajno.Application.Suppliers;
 using Dizajno.Infrastructure.Auth;
 using Dizajno.Infrastructure.Identity;
 using Dizajno.Infrastructure.Persistence;
 using Dizajno.Infrastructure.Persistence.Seed;
 using Dizajno.Infrastructure.Storage;
+using Dizajno.Infrastructure.Suppliers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -48,6 +50,7 @@ public static class DependencyInjection
 
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IDataSeeder, DataSeeder>();
+        services.AddScoped<ISupplierMembershipResolver, SupplierMembershipResolver>();
         services.AddSingleton<IObjectStorage, S3ObjectStorage>();
 
         return services;

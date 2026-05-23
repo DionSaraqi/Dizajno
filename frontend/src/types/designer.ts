@@ -111,6 +111,17 @@ export interface FurnitureCatalogItem {
    * The first entry is the default texture (or empty string for no texture).
    */
   textureSlots?: Record<string, string[]>;
+  /**
+   * Owning supplier id (uuid). Used to group items by supplier in the Phase 5
+   * request-quote flow. Optional on the bundled fallback (filled by the API).
+   */
+  supplierId?: string;
+  /** Owning supplier display name. */
+  supplierName?: string;
+  /** Catalog suggested price, used as the per-line suggestion at quote time. */
+  basePrice?: number | null;
+  /** ISO 4217 currency code matching `basePrice` (defaults to EUR). */
+  currency?: string;
 }
 
 export type OpeningType = "door" | "window";

@@ -130,7 +130,7 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 │   │       │   ├── DizajnoDbContext.cs
 │   │       │   ├── Configurations/        # IEntityTypeConfiguration<T> per entity
 │   │       │   └── Seed/                  # DataSeeder + CatalogSeedData (source of truth for seeded items)
-│   │       └── Migrations/                # 0001_Foundation, 0002_RefreshTokens, 0003_ProductPreviewSvg
+│   │       └── Migrations/                # 0001_Foundation, …, 0007_Quoting
 │   └── tests/Dizajno.IntegrationTests/    # xUnit + Testcontainers + WebApplicationFactory<Program>
 │
 ├── docs/
@@ -150,7 +150,12 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 - API client lives in `lib/api.ts` — base URL from `NEXT_PUBLIC_API_URL` (default `http://localhost:5000`).
 - DTOs returned by the API map 1:1 onto `FurnitureCatalogItem` in `types/designer.ts` — no transformation needed.
 - `utils/furnitureCatalog.ts` is a **fallback baseline** used during the initial fetch and when the backend is offline. `getFurnitureDef(type)` (synchronous, called by collision and store mutations) reads from this fallback.
-- The seeded backend rows are sourced from `backend/src/Dizajno.Infrastructure/Persistence/Seed/CatalogSeedData.cs`, which mirrors the frontend fallback file. Keep both in sync until the supplier portal ships (Phase 4 of the master plan).
+- The seeded backend rows are sourced from `backend/src/Dizajno.Infrastructure/Persistence/Seed/CatalogSeedData.cs`, which mirrors the frontend fallback file. Keep both in sync until the supplier portal ships (Phase 7 of the master plan).
+
+### Supplier-side endpoints (Phase 5)
+- `/api/supplier/*` endpoints are gated by `ISupplierMembershipResolver` (Application layer) — every controller action loads the caller's `supplier_members` rows and checks the target supplier id is in the list. Admins are **not** implicit suppliers; they must be bound via the Phase-5 stopgap `POST /api/admin/supplier-members` endpoint.
+- The frontend conditionally surfaces the `/supplier/quotes` nav by reading `useAuthStore().user?.supplierMemberships` — empty list → no nav, no inbox.
+- The full supplier portal (self-serve product upload, member-management UI) lands in Phase 7 and will replace the admin binding endpoint with proper UX.
 
 ### State Management
 All designer state lives in `src/store/useDesignerStore.ts` (Zustand). Undo/redo is provided by Zundo's `temporal` middleware. The store manages walls, floors, furniture, selections, modes, and UI settings.

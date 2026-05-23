@@ -4,13 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Cloud, CloudOff, Save, Share2 } from "lucide-react";
+import { ArrowLeft, Cloud, CloudOff, FileText, Save, Share2 } from "lucide-react";
 import Sidebar from "@/components/designer/Sidebar";
 import Toolbar from "@/components/designer/Toolbar";
 import StatusBar from "@/components/designer/StatusBar";
 import CanvasDropZone from "@/components/designer/CanvasDropZone";
 import { DesignerProvider } from "@/components/designer/DesignerProvider";
 import { ShareDialog } from "@/components/designer/ShareDialog";
+import { RequestQuoteDialog } from "@/components/designer/RequestQuoteDialog";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useDesignerStore } from "@/store/useDesignerStore";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -95,6 +96,8 @@ export default function ProjectDesignerPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [hydrated, setHydrated] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const placedCount = useDesignerStore((s) => s.furniture.length);
 
   // We use refs for things the debounced effect needs without re-triggering it.
   const lookupRef = useRef(lookup);
@@ -262,8 +265,16 @@ export default function ProjectDesignerPage() {
           </div>
           <SaveBadge status={saveStatus} />
           <button
+            onClick={() => setQuoteOpen(true)}
+            disabled={placedCount === 0}
+            title={placedCount === 0 ? "Add furniture before requesting a quote" : undefined}
+            className="ml-2 flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
+          >
+            <FileText size={12} /> Quote
+          </button>
+          <button
             onClick={() => setShareOpen(true)}
-            className="ml-2 flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
+            className="flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
           >
             <Share2 size={12} /> Share
           </button>
@@ -272,6 +283,11 @@ export default function ProjectDesignerPage() {
           projectId={projectId}
           open={shareOpen}
           onClose={() => setShareOpen(false)}
+        />
+        <RequestQuoteDialog
+          projectId={projectId}
+          open={quoteOpen}
+          onClose={() => setQuoteOpen(false)}
         />
         <Toolbar />
         <div className="flex flex-1 overflow-hidden">

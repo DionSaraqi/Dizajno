@@ -51,7 +51,7 @@ backend/
 │   │   │   ├── DizajnoDbContext.cs
 │   │   │   ├── Configurations/
 │   │   │   └── Seed/               DataSeeder + CatalogSeedData
-│   │   └── Migrations/             0001_Foundation, 0002_RefreshTokens, 0003_ProductPreviewSvg, 0004_Projects, 0005_Sharing, 0006_CustomizerTextures
+│   │   └── Migrations/             0001_Foundation, 0002_RefreshTokens, 0003_ProductPreviewSvg, 0004_Projects, 0005_Sharing, 0006_CustomizerTextures, 0007_Quoting
 │   └── Dizajno.Api/                ASP.NET Core host
 │       ├── Program.cs              wiring (Swagger, CORS, JWT, seeder invocation)
 │       ├── Controllers/            AuthController, CatalogController
@@ -227,6 +227,67 @@ Upload flow:
 3. Once the PUT returns 200, client `POST /` with the same `key` to persist
    the `Asset` row.
 
+### Quotes (`/api/quotes`, `/api/projects/{id}/quotes`)
+
+Requester side — all endpoints require a bearer token, ownership 404s on foreign
+ids. See [QuotesController.cs](src/Dizajno.Api/Controllers/QuotesController.cs).
+
+- `POST /api/projects/{id}/quotes` — `{ message? }` → 201 `QuoteDetailDto`. Loads
+  the project's `placed_items`, groups by `variant.product.supplier_id`, inserts
+  one `Quote` parent + N `QuoteRequest` rows + M `QuoteLine` rows in one
+  transaction. Each line gets a frozen `variant_snapshot` jsonb so the supplier
+  view stays meaningful even if the catalog changes. 400 on empty scene.
+- `GET /api/quotes?status=&skip=&take=` — paginated list of the caller's quotes
+  with per-status supplier roll-up counts.
+- `GET /api/quotes/{id}` → `QuoteDetailDto` — every QuoteRequest (supplier name +
+  status), lines, response + attachment URLs.
+- `POST /api/quotes/{id}/cancel` → 204; sets `status = Cancelled` and propagates
+  `Expired` to still-`Pending` children so suppliers see the request is gone.
+- `POST /api/quotes/{id}/close` → 204; requires ≥1 response. 409 otherwise.
+
+### Supplier quotes (`/api/supplier/quotes`)
+
+Gated by `ISupplierMembershipResolver` — endpoints 403 the caller if they have
+no `supplier_members` rows. Admins are **not** implicit suppliers (they must be
+bound explicitly).
+
+- `GET /api/supplier/quotes?status=&skip=&take=` → `SupplierQuoteRequestSummaryDto[]`.
+  Returns only `QuoteRequest`s whose supplier the caller is a member of.
+- `GET /api/supplier/quotes/{requestId}` → `SupplierQuoteRequestDetailDto`. Lines
+  + prior response. Does **not** expose sibling-supplier lines or prices.
+- `POST /api/supplier/quotes/{requestId}/respond` —
+  `{ totalPrice, currency, body?, attachmentAssetIds }` → 200 `QuoteResponseDto`.
+  Upserts on the unique `(quote_request_id)` so the same endpoint also serves as
+  the edit path. Attachments must be assets with `owner_supplier_id == membership.supplier_id`;
+  foreign asset ids return 400. 409 if the parent quote is `Closed | Cancelled`.
+- `POST /api/supplier/quotes/{requestId}/decline` — `{ reason? }` → 204; status
+  flips to `Declined` and a zero-priced response captures the reason for the
+  requester's inbox.
+
+### Supplier assets (`/api/supplier/assets`)
+
+Supplier-scoped wrapper around the R2 presign + finalize flow. Used by quote
+responses today; Phase 7 will reuse it for product uploads from the portal.
+
+- `POST /api/supplier/assets/presign` —
+  `{ supplierId, kind, contentType, sizeBytes, originalFileName?, checksumSha256? }`
+  → `PresignAssetUploadResponse`. Caller must be a member of `supplierId`;
+  `kind` is restricted to `Image | Doc | Attachment`. Keys live under
+  `suppliers/{supplierId}/{kind}/…`.
+- `POST /api/supplier/assets` —
+  `{ supplierId, key, kind, mimeType, sizeBytes, checksumSha256? }` → 201 `AssetDto`.
+  Persists with `owner_supplier_id = supplierId` once the R2 PUT has completed.
+
+### Admin supplier members (`/api/admin/supplier-members`)
+
+Phase-5 stopgap. The Phase 7 portal will replace this with self-serve member
+management.
+
+- `GET /api/admin/supplier-members?supplierId=&userId=` → `SupplierMemberDto[]`.
+- `POST /api/admin/supplier-members` — `{ supplierId, userId, role: Owner|Staff }`
+  → 201 (or 200 on idempotent re-bind, updating the role).
+- `DELETE /api/admin/supplier-members/{id}` → 204.
+
 ### Migrating the Phase 1 seed assets to R2
 
 The Phase 1 seeder stores frontend-relative URLs (e.g. `/models/sofa.glb`) on
@@ -263,9 +324,9 @@ then start the API host (which runs the seeder against the freshly migrated DB).
 Each test class gets its own container — slower than sharing, but each class
 sees a deterministic starting state.
 
-Six test classes today (55 tests):
+Seven test classes today (68 tests):
 - `CatalogEndpointsTests` — 12 tests
-- `AuthEndpointsTests` — 9 tests
+- `AuthEndpointsTests` — 10 tests (Phase 5: added `UserSummary.SupplierMemberships` empty-by-default assertion)
 - `AssetsEndpointsTests` — 8 tests (presign + finalize; uses `FakeObjectStorage`
   registered via `ConfigureTestServices`, so no live R2 credentials needed)
 - `ProjectsEndpointsTests` — 13 tests (CRUD, scene replace-all, version snapshot/restore, ownership 404, thumbnail presign + attach)
@@ -273,6 +334,10 @@ Six test classes today (55 tests):
 - `CustomizerTexturesTests` — 5 tests (Phase 4: catalog DTO from relational rows,
   variant attributes no longer stash `textureSlots`, seeder library + slot rows,
   cross-supplier trigger raises `PostgresException`)
+- `QuotesEndpointsTests` — 12 tests (Phase 5: fan-out per supplier, ownership 404s,
+  cancel propagates Expired, close-before-response 409, `IsCustomSize` flip,
+  supplier inbox member gating, respond happy path + idempotent upsert,
+  cross-supplier attachment 400, cancelled-quote response 409, admin-bind RBAC 403)
 
 ## Troubleshooting
 

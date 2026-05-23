@@ -46,6 +46,7 @@ public sealed class CatalogController : ControllerBase
             {
                 Product = p,
                 Category = p.Category,
+                Supplier = p.Supplier,
                 Variant = p.Variants.OrderBy(v => v.SortOrder).First(),
                 GlbAssetUrl = p.Variants
                     .OrderBy(v => v.SortOrder)
@@ -73,6 +74,7 @@ public sealed class CatalogController : ControllerBase
             {
                 Product = p,
                 Category = p.Category,
+                Supplier = p.Supplier,
                 Variant = p.Variants.OrderBy(v => v.SortOrder).First(),
                 GlbAssetUrl = p.Variants
                     .OrderBy(v => v.SortOrder)
@@ -213,7 +215,11 @@ public sealed class CatalogController : ControllerBase
             CollisionBoxes: collisionBoxes,
             MaterialSlots: materialSlots,
             TextureSlots: textureSlots,
-            VariantId: row.Variant.Id);
+            VariantId: row.Variant.Id,
+            SupplierId: row.Supplier.Id,
+            SupplierName: row.Supplier.Name,
+            BasePrice: row.Variant.BasePrice,
+            Currency: string.IsNullOrWhiteSpace(row.Variant.Currency) ? "EUR" : row.Variant.Currency);
     }
 
     private static T? ReadAttribute<T>(string? json, string key)
@@ -236,6 +242,7 @@ public sealed class CatalogController : ControllerBase
     {
         public required Product Product { get; init; }
         public required Category Category { get; init; }
+        public required Supplier Supplier { get; init; }
         public required ProductVariant Variant { get; init; }
         public string? GlbAssetUrl { get; init; }
     }

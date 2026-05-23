@@ -150,12 +150,22 @@ export async function listSuppliers(): Promise<SupplierDto[]> {
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
+export type SupplierMemberRole = "Owner" | "Staff";
+
+export interface SupplierMembership {
+  supplierId: string;
+  supplierSlug: string;
+  supplierName: string;
+  role: SupplierMemberRole;
+}
+
 export interface UserSummary {
   id: string;
   email: string;
   displayName: string | null;
   locale: string;
   roles: string[];
+  supplierMemberships: SupplierMembership[];
 }
 
 export interface AuthResponse {
@@ -572,6 +582,307 @@ export function presignAsset(
 
 export function registerAsset(input: CreateAssetRequest): Promise<AssetSummary> {
   return apiFetch<AssetSummary>("/api/admin/assets", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+// ── Quotes (requester side) ────────────────────────────────────────────────
+
+export type QuoteStatus = "Open" | "Closed" | "Cancelled";
+export type QuoteRequestStatus = "Pending" | "Responded" | "Declined" | "Expired";
+
+export interface QuoteSummary {
+  id: string;
+  projectId: string;
+  projectName: string;
+  projectThumbnailUrl: string | null;
+  status: QuoteStatus;
+  message: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  supplierCount: number;
+  respondedCount: number;
+  declinedCount: number;
+}
+
+export interface QuoteResponseAttachment {
+  id: string;
+  assetId: string;
+  url: string;
+  mimeType: string;
+  sizeBytes: number;
+  sortOrder: number;
+}
+
+export interface QuoteResponseDto {
+  id: string;
+  respondedByUserId: string;
+  totalPrice: number;
+  currency: string;
+  body: string | null;
+  respondedAt: string;
+  attachments: QuoteResponseAttachment[];
+}
+
+export interface QuoteLine {
+  id: string;
+  productVariantId: string;
+  /**
+   * Frozen catalog data at quote-creation time. Shape:
+   * `{ variantId, sku, name, supplierId, supplierSlug, supplierName,
+   *    productSlug, productName, family, stockWidth, stockDepth, stockHeight,
+   *    currency, basePrice }`.
+   */
+  variantSnapshot: {
+    variantId: string;
+    sku: string;
+    name: string;
+    supplierId: string;
+    supplierSlug: string;
+    supplierName: string;
+    productSlug: string;
+    productName: string;
+    family: string;
+    stockWidth: number;
+    stockDepth: number;
+    stockHeight: number;
+    currency: string;
+    basePrice: number | null;
+  };
+  quantity: number;
+  quantityUnit: string;
+  materialOverrides: Record<string, unknown> | null;
+  scaledWidth: number | null;
+  scaledDepth: number | null;
+  scaledHeight: number | null;
+  isCustomSize: boolean;
+  suggestedPrice: number | null;
+  currency: string;
+}
+
+export interface QuoteRequestDto {
+  id: string;
+  supplierId: string;
+  supplierSlug: string;
+  supplierName: string;
+  status: QuoteRequestStatus;
+  expiresAt: string | null;
+  createdAt: string;
+  lines: QuoteLine[];
+  response: QuoteResponseDto | null;
+}
+
+export interface QuoteDetail {
+  id: string;
+  projectId: string;
+  projectName: string;
+  projectThumbnailUrl: string | null;
+  requesterUserId: string;
+  status: QuoteStatus;
+  message: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  requests: QuoteRequestDto[];
+}
+
+export function createQuote(
+  projectId: string,
+  message: string | null
+): Promise<QuoteDetail> {
+  return apiFetch<QuoteDetail>(`/api/projects/${projectId}/quotes`, {
+    method: "POST",
+    auth: true,
+    jsonBody: { message },
+  });
+}
+
+export function listQuotes(status?: QuoteStatus): Promise<QuoteSummary[]> {
+  const path = status
+    ? `/api/quotes?status=${encodeURIComponent(status)}`
+    : "/api/quotes";
+  return apiFetch<QuoteSummary[]>(path, { auth: true });
+}
+
+export function getQuote(id: string): Promise<QuoteDetail> {
+  return apiFetch<QuoteDetail>(`/api/quotes/${id}`, { auth: true });
+}
+
+export function cancelQuote(id: string): Promise<void> {
+  return apiFetch<void>(`/api/quotes/${id}/cancel`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export function closeQuote(id: string): Promise<void> {
+  return apiFetch<void>(`/api/quotes/${id}/close`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+// ── Supplier-side quotes ──────────────────────────────────────────────────
+
+export interface SupplierQuoteRequestSummary {
+  id: string;
+  quoteId: string;
+  supplierId: string;
+  supplierName: string;
+  status: QuoteRequestStatus;
+  createdAt: string;
+  expiresAt: string | null;
+  projectId: string;
+  projectName: string;
+  projectThumbnailUrl: string | null;
+  requesterDisplayName: string;
+  lineCount: number;
+  hasResponse: boolean;
+}
+
+export interface SupplierQuoteRequestDetail {
+  id: string;
+  quoteId: string;
+  supplierId: string;
+  supplierName: string;
+  status: QuoteRequestStatus;
+  quoteStatus: QuoteStatus;
+  createdAt: string;
+  expiresAt: string | null;
+  projectId: string;
+  projectName: string;
+  projectThumbnailUrl: string | null;
+  requesterDisplayName: string;
+  message: string | null;
+  lines: QuoteLine[];
+  response: QuoteResponseDto | null;
+}
+
+export interface SupplierRespondInput {
+  totalPrice: number;
+  currency: string;
+  body: string | null;
+  attachmentAssetIds: string[] | null;
+}
+
+export function listSupplierQuotes(
+  status?: QuoteRequestStatus
+): Promise<SupplierQuoteRequestSummary[]> {
+  const path = status
+    ? `/api/supplier/quotes?status=${encodeURIComponent(status)}`
+    : "/api/supplier/quotes";
+  return apiFetch<SupplierQuoteRequestSummary[]>(path, { auth: true });
+}
+
+export function getSupplierQuote(
+  id: string
+): Promise<SupplierQuoteRequestDetail> {
+  return apiFetch<SupplierQuoteRequestDetail>(`/api/supplier/quotes/${id}`, {
+    auth: true,
+  });
+}
+
+export function respondToSupplierQuote(
+  id: string,
+  input: SupplierRespondInput
+): Promise<QuoteResponseDto> {
+  return apiFetch<QuoteResponseDto>(`/api/supplier/quotes/${id}/respond`, {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function declineSupplierQuote(
+  id: string,
+  reason: string | null
+): Promise<void> {
+  return apiFetch<void>(`/api/supplier/quotes/${id}/decline`, {
+    method: "POST",
+    auth: true,
+    jsonBody: { reason },
+  });
+}
+
+// ── Supplier-scoped asset uploads (for response attachments) ──────────────
+
+export interface PresignSupplierAssetInput {
+  supplierId: string;
+  kind: "Image" | "Doc" | "Attachment";
+  contentType: string;
+  sizeBytes: number;
+  originalFileName?: string | null;
+  checksumSha256?: string | null;
+}
+
+export interface CreateSupplierAssetInput {
+  supplierId: string;
+  key: string;
+  kind: "Image" | "Doc" | "Attachment";
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256?: string | null;
+}
+
+export function presignSupplierAsset(
+  input: PresignSupplierAssetInput
+): Promise<PresignAssetResponse> {
+  return apiFetch<PresignAssetResponse>("/api/supplier/assets/presign", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function createSupplierAsset(
+  input: CreateSupplierAssetInput
+): Promise<AssetSummary> {
+  return apiFetch<AssetSummary>("/api/supplier/assets", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+// ── Admin (Phase 5 stopgap for member binding) ────────────────────────────
+
+export interface AdminSupplierMember {
+  id: string;
+  supplierId: string;
+  supplierSlug: string;
+  supplierName: string;
+  userId: string;
+  userEmail: string;
+  userDisplayName: string | null;
+  role: SupplierMemberRole;
+  createdAt: string;
+}
+
+export interface CreateSupplierMemberInput {
+  supplierId: string;
+  userId: string;
+  role: SupplierMemberRole;
+}
+
+export function listSupplierMembers(filters: {
+  supplierId?: string;
+  userId?: string;
+} = {}): Promise<AdminSupplierMember[]> {
+  const search = new URLSearchParams();
+  if (filters.supplierId) search.set("supplierId", filters.supplierId);
+  if (filters.userId) search.set("userId", filters.userId);
+  const query = search.toString();
+  return apiFetch<AdminSupplierMember[]>(
+    `/api/admin/supplier-members${query ? `?${query}` : ""}`,
+    { auth: true }
+  );
+}
+
+export function bindSupplierMember(
+  input: CreateSupplierMemberInput
+): Promise<AdminSupplierMember> {
+  return apiFetch<AdminSupplierMember>("/api/admin/supplier-members", {
     method: "POST",
     auth: true,
     jsonBody: input,

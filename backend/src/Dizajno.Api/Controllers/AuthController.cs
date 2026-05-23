@@ -1,5 +1,6 @@
 using Dizajno.Api.Contracts;
 using Dizajno.Application.Auth;
+using Dizajno.Application.Suppliers;
 using Dizajno.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -16,17 +17,20 @@ public sealed class AuthController : ControllerBase
 
     private readonly UserManager<ApplicationUser> _users;
     private readonly IJwtTokenService _tokens;
+    private readonly ISupplierMembershipResolver _memberships;
     private readonly JwtOptions _jwt;
     private readonly IWebHostEnvironment _env;
 
     public AuthController(
         UserManager<ApplicationUser> users,
         IJwtTokenService tokens,
+        ISupplierMembershipResolver memberships,
         IOptions<JwtOptions> jwt,
         IWebHostEnvironment env)
     {
         _users = users;
         _tokens = tokens;
+        _memberships = memberships;
         _jwt = jwt.Value;
         _env = env;
     }
@@ -109,7 +113,7 @@ public sealed class AuthController : ControllerBase
         var accessExpires = DateTime.UtcNow.AddMinutes(_jwt.AccessTokenLifetimeMinutes);
 
         SetRefreshCookie(newRefresh.RawToken, newRefresh.ExpiresAt);
-        return Ok(new AuthResponse(accessToken, accessExpires, ToSummary(user, roles)));
+        return Ok(new AuthResponse(accessToken, accessExpires, await ToSummaryAsync(user, roles, cancellationToken)));
     }
 
     [HttpPost("logout")]
@@ -131,7 +135,7 @@ public sealed class AuthController : ControllerBase
 
     [HttpGet("me")]
     [Authorize]
-    public async Task<ActionResult<UserSummary>> Me()
+    public async Task<ActionResult<UserSummary>> Me(CancellationToken cancellationToken)
     {
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
             ?? User.FindFirst("sub")?.Value;
@@ -147,7 +151,7 @@ public sealed class AuthController : ControllerBase
         }
 
         var roles = await _users.GetRolesAsync(user);
-        return Ok(ToSummary(user, roles));
+        return Ok(await ToSummaryAsync(user, roles, cancellationToken));
     }
 
     private async Task<AuthResponse> IssueTokensAsync(
@@ -161,7 +165,7 @@ public sealed class AuthController : ControllerBase
         var refresh = await _tokens.IssueRefreshTokenAsync(user.Id, GetClientIp(), cancellationToken);
         SetRefreshCookie(refresh.RawToken, refresh.ExpiresAt);
 
-        return new AuthResponse(accessToken, accessExpires, ToSummary(user, roles));
+        return new AuthResponse(accessToken, accessExpires, await ToSummaryAsync(user, roles, cancellationToken));
     }
 
     private void SetRefreshCookie(string rawToken, DateTime expiresAt)
@@ -190,8 +194,20 @@ public sealed class AuthController : ControllerBase
     private string? GetClientIp() =>
         HttpContext.Connection.RemoteIpAddress?.ToString();
 
-    private static UserSummary ToSummary(ApplicationUser user, IList<string> roles) =>
-        new(user.Id, user.Email ?? string.Empty, user.DisplayName, user.Locale, roles.ToList());
+    private async Task<UserSummary> ToSummaryAsync(
+        ApplicationUser user,
+        IList<string> roles,
+        CancellationToken cancellationToken)
+    {
+        var memberships = await _memberships.GetMembershipsAsync(user.Id, cancellationToken);
+        var membershipDtos = memberships
+            .Select(m => new SupplierMembershipDto(
+                m.SupplierId, m.SupplierSlug, m.SupplierName, m.Role))
+            .ToList();
+        return new UserSummary(
+            user.Id, user.Email ?? string.Empty, user.DisplayName, user.Locale,
+            roles.ToList(), membershipDtos);
+    }
 
     private static string NormalizeLocale(string? locale) =>
         string.IsNullOrWhiteSpace(locale) ? "sq" : locale.Trim().ToLowerInvariant();

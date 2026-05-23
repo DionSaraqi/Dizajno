@@ -148,4 +148,16 @@ public sealed class AuthEndpointsTests : IClassFixture<DizajnoApiFactory>
         var response = await client.PostAsync("/api/auth/refresh", content: null);
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
+
+    [Fact]
+    public async Task UserSummary_NewUser_HasEmptySupplierMemberships()
+    {
+        var client = NewClient();
+        var register = await client.PostAsJsonAsync(
+            "/api/auth/register",
+            NewRegister($"sm-{Guid.NewGuid():N}"[..12]));
+        var auth = await register.Content.ReadFromJsonAsync<AuthResponse>(JsonOpts);
+
+        auth!.User.SupplierMemberships.Should().NotBeNull().And.BeEmpty();
+    }
 }

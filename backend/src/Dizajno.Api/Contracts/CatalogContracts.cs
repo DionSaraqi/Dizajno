@@ -18,7 +18,11 @@ public sealed record FurnitureItemDto(
     IReadOnlyList<CollisionBoxDto>? CollisionBoxes,
     IReadOnlyDictionary<string, string>? MaterialSlots,
     IReadOnlyDictionary<string, IReadOnlyList<string>>? TextureSlots,
-    Guid VariantId);
+    Guid VariantId,
+    Guid SupplierId,
+    string SupplierName,
+    decimal? BasePrice,
+    string Currency);
 
 public sealed record CollisionBoxDto(
     decimal OffsetX,

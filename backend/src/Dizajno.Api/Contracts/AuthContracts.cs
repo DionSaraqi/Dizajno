@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Dizajno.Domain.Enums;
 
 namespace Dizajno.Api.Contracts;
 
@@ -22,4 +23,16 @@ public sealed record UserSummary(
     string Email,
     string? DisplayName,
     string Locale,
-    IReadOnlyList<string> Roles);
+    IReadOnlyList<string> Roles,
+    IReadOnlyList<SupplierMembershipDto> SupplierMemberships);
+
+/// <summary>
+/// Surfaces which suppliers the signed-in user can act on behalf of. Phase 5
+/// uses this to decide whether to render the <c>/supplier/*</c> navigation in
+/// the frontend.
+/// </summary>
+public sealed record SupplierMembershipDto(
+    Guid SupplierId,
+    string SupplierSlug,
+    string SupplierName,
+    SupplierMemberRole Role);
