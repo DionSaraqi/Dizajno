@@ -100,7 +100,9 @@ public sealed class CatalogController : ControllerBase
         CancellationToken cancellationToken,
         [FromQuery] string? family = null)
     {
-        var query = _db.Categories.AsQueryable();
+        var query = _db.Categories
+            .AsQueryable()
+            .Where(c => c.Status == CategoryStatus.Approved);
 
         if (!string.IsNullOrWhiteSpace(family) &&
             Enum.TryParse<ProductFamily>(family, ignoreCase: true, out var parsedFamily))
@@ -122,16 +124,22 @@ public sealed class CatalogController : ControllerBase
         CancellationToken cancellationToken)
     {
         var list = await _db.Suppliers
+            .Where(s => s.SuspendedAt == null)
             .OrderBy(s => s.Name)
             .Select(s => new SupplierDto(s.Slug, s.Name, s.LogoAsset!.Url))
             .ToListAsync(cancellationToken);
         return Ok(list);
     }
 
+    // Public catalog hides products whose supplier is suspended and whose
+    // category isn't approved (admin suspended/unmoderated rows shouldn't
+    // surface in the designer or anywhere else outside the admin tooling).
     private IQueryable<Product> BuildPublishedProductQuery() =>
         _db.Products
             .AsNoTracking()
-            .Where(p => p.Status == ProductStatus.Published);
+            .Where(p => p.Status == ProductStatus.Published)
+            .Where(p => p.Supplier.SuspendedAt == null)
+            .Where(p => p.Category.Status == CategoryStatus.Approved);
 
     /// <summary>
     /// Fetches every <see cref="Domain.Entities.ProductVariantTextureSlot"/> row for

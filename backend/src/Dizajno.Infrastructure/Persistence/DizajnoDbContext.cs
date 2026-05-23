@@ -36,6 +36,8 @@ public sealed class DizajnoDbContext : IdentityDbContext<ApplicationUser, Identi
     public DbSet<QuoteLine> QuoteLines => Set<QuoteLine>();
     public DbSet<QuoteResponse> QuoteResponses => Set<QuoteResponse>();
     public DbSet<QuoteResponseAsset> QuoteResponseAssets => Set<QuoteResponseAsset>();
+    public DbSet<SupplierInvite> SupplierInvites => Set<SupplierInvite>();
+    public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

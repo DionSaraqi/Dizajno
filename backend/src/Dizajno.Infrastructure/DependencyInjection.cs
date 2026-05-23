@@ -1,7 +1,9 @@
+using Dizajno.Application.Audit;
 using Dizajno.Application.Auth;
 using Dizajno.Application.Seed;
 using Dizajno.Application.Storage;
 using Dizajno.Application.Suppliers;
+using Dizajno.Infrastructure.Audit;
 using Dizajno.Infrastructure.Auth;
 using Dizajno.Infrastructure.Identity;
 using Dizajno.Infrastructure.Persistence;
@@ -48,9 +50,11 @@ public static class DependencyInjection
             .AddEntityFrameworkStores<DizajnoDbContext>()
             .AddDefaultTokenProviders();
 
+        services.AddHttpContextAccessor();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IDataSeeder, DataSeeder>();
         services.AddScoped<ISupplierMembershipResolver, SupplierMembershipResolver>();
+        services.AddScoped<IAuditLogger, AuditLogger>();
         services.AddSingleton<IObjectStorage, S3ObjectStorage>();
 
         return services;

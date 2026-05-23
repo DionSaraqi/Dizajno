@@ -11,6 +11,7 @@ public sealed class QuoteRequestConfiguration : IEntityTypeConfiguration<QuoteRe
         b.HasKey(x => x.Id);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
         b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+        b.Property(x => x.CancellationReason).HasMaxLength(64);
 
         b.HasIndex(x => new { x.QuoteId, x.SupplierId }).IsUnique();
         b.HasIndex(x => new { x.SupplierId, x.Status, x.CreatedAt })

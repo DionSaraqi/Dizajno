@@ -124,15 +124,32 @@ suppliers
   website_url       varchar(500)
   contact_email     varchar(320)
   contact_phone     varchar(50)
+  is_trusted        bool default false       -- Phase 7a; flips per-supplier moderation
+  suspended_at      timestamptz nullable     -- Phase 7a; non-null = admin-suspended
   created_at        timestamptz default now()
+  index (suspended_at)
 
-supplier_members           (empty in MVP; seeds future portal)
+supplier_members
   id                uuid pk
   supplier_id       uuid → suppliers (cascade)
   user_id           uuid → AspNetUsers
   role              enum-as-string  Owner | Staff
   created_at        timestamptz default now()
   unique (supplier_id, user_id)
+
+supplier_invites                                   -- Phase 7a
+  id                uuid pk
+  supplier_id       uuid → suppliers (cascade)
+  role              enum-as-string  Owner | Staff
+  invited_email     varchar(320)             -- label only; no SMTP delivery
+  token_hash        varchar(128) unique      -- SHA-256(raw token), base64
+  expires_at        timestamptz
+  accepted_at       timestamptz nullable
+  accepted_by_user_id uuid nullable
+  revoked_at        timestamptz nullable
+  created_by_user_id uuid
+  created_at        timestamptz default now()
+  index (supplier_id, accepted_at, revoked_at)
 ```
 
 ### Catalog (`✓ built` for furniture)
@@ -146,8 +163,12 @@ categories
   name              varchar(200)
   path              varchar(500)    -- materialized: '/furniture/seating/sofas/'
   sort_order        int
+  status            enum-as-string  Pending | Approved   -- Phase 7a; admin/seed = Approved
+  suggested_by_supplier_id uuid → suppliers (set null)   -- Phase 7a; null = admin/seed
   unique (family, slug)
   index path
+  index status
+  index suggested_by_supplier_id
 
 products
   id                uuid pk
@@ -155,7 +176,7 @@ products
   family            enum-as-string
   category_id       uuid → categories (restrict)
   slug              varchar(160) unique
-  status            enum-as-string  Draft | Published | Hidden | Removed
+  status            enum-as-string  Draft | Published | Hidden | Removed | Pending   -- Pending added Phase 7a
   unit_of_sale      enum-as-string  Piece | SquareMeter | Liter | LinearMeter | Kilogram
   coverage_rate     numeric(10,3)   -- paint/sealant m² per L
   waste_factor      numeric(5,3)    -- 0.10 = 10% overage default for area products
@@ -385,22 +406,29 @@ quote_responses
   -- attachments tracked via Asset rows joined by a quote_response_assets table
 ```
 
-### Cross-cutting (`planned` — Phase 7)
+### Cross-cutting (`✓ built` — Phase 7a)
 
 ```
 audit_log
   id                uuid pk
-  actor_user_id     uuid → AspNetUsers (nullable)   -- null = system action
-  action            varchar                          -- 'product.publish', 'user.role_grant', ...
-  entity_type       varchar
+  actor_user_id     uuid (nullable)                  -- null = system action; pulled from JWT claims at write time
+  action            varchar(64)                      -- 'supplier.suspend', 'product.approve', 'supplier_invite.accept', ...
+  entity_type       varchar(64)
   entity_id         uuid
-  diff              jsonb (nullable)                 -- before/after for sensitive fields
-  ip_address        inet (nullable)
-  user_agent        text (nullable)
-  created_at        timestamptz
+  diff              jsonb (nullable)                 -- before/after or context payload, camelCase JSON
+  ip_address        varchar(64) (nullable)           -- HttpContext.Connection.RemoteIpAddress
+  user_agent        text (nullable)                  -- truncated to 1024 chars
+  created_at        timestamptz default now()
   index (entity_type, entity_id, created_at desc)
   index (actor_user_id, created_at desc)
+  index (action, created_at desc)
 ```
+
+Phase 7a scope: supplier lifecycle (`supplier.{create,update,suspend,restore,trust,untrust}`), role / membership changes (`supplier_invite.{create,revoke,accept}`), product status transitions (`product.{approve,reject}` plus future supplier-initiated transitions in 7b), category lifecycle (`category.{approve,reject}`). Phase 7a deliberately does **not** capture every QuoteResponse upsert — noisy, low signal-per-row. Add if dispute volume grows.
+
+### `QuoteRequest` (Phase 7a addition)
+
+`QuoteRequest.cancellation_reason varchar(64)` was added so the supplier-suspension flow can record `supplier_suspended` when it auto-expires still-Pending requests. Frontend can render this differently from "expired by timeout" once the inbox supports the distinction.
 
 ---
 
@@ -415,7 +443,9 @@ audit_log
 | 4 — Customizer textures | ✓ Done | Backend: `supplier_textures` + `product_variant_texture_slots` (migration `0006_CustomizerTextures`) with a Postgres trigger enforcing variant.product.supplier ≡ supplier_texture.supplier. Seeder upserts one `SupplierTexture` (+ backing `Asset`) per distinct catalog texture URL under the `dizajno` supplier and writes `ProductVariantTextureSlot` rows per (variant, slot, url), marking the first non-empty url per slot as default. `CatalogController` joins the new tables and emits the same `TextureSlots: Record<slotName, string[]>` DTO shape (with `""` prepended for "None"), so the frontend keeps using `def.textureSlots` and `materialTextures` unchanged. |
 | 5 — Quoting | ✓ Done | Backend: `quotes`/`quote_requests`/`quote_lines`/`quote_responses`/`quote_response_assets` (migration `0007_Quoting`); `ISupplierMembershipResolver` gating `/api/supplier/*`; user controller (create/list/detail/cancel/close) + supplier controller (inbox/detail/respond-upsert/decline) + supplier-scoped asset uploads. Phase-5 admin stopgap `POST /api/admin/supplier-members` until the Phase 7 portal lands. `UserSummary.supplierMemberships` drives frontend nav. Frontend: `RequestQuoteDialog` in the designer header (grouped per-supplier preview + subtotals), `/quotes` + `/quotes/[id]` for requesters, `/supplier/quotes` + `/supplier/quotes/[id]` for responders with response composer + attachment dropzone. 30 s polling on inbox routes. |
 | 6 — Fixtures & building materials | ✓ Done (lighting/appliance seed deferred) | Catalog seed grew Family/UnitOfSale/CoverageRate/WasteFactor/BasePrice; 7 new products + 4 new categories under Fixture + BuildingMaterial families (2 fixtures, 3 paints with 8/10/12 m²/L coverage, 3 flooring tiers €11/18/45 m²). All 20 seeded rows now carry BasePrice so the request-quote dialog renders real subtotals; `BackfillVariantPricesAsync` upgrades existing dev DBs without a wipe. `FurnitureItemDto` exposes Family/UnitOfSale/CoverageRate/WasteFactor. `POST /api/projects/{id}/quotes` fans out branded openings + an optional `manualLines` array alongside placed items. Sidebar opening properties gain a "Branded fixture (optional)" picker filtered by family + door-vs-window; `WallOpening.tsx` reads the picked variant's color. `RequestQuoteDialog` "Materials & finishes" section shows per-unit price, line subtotal, and a materials subtotal footer; selections fold into the per-supplier subtotal preview. Lighting + appliance entries deferred until GLB models exist. |
-| 7 — Admin tooling | pending | `AuditLog`, admin dashboard; `SupplierMember` portal for self-serve onboarding |
+| 7a — Admin tooling | ✓ Done | Migration `0009_AdminAndPortal` adds `audit_log`, `supplier_invites`, `Supplier.isTrusted`, `Supplier.suspendedAt`, `Category.status`, `Category.suggestedBySupplierId`, `QuoteRequest.cancellationReason`, `ProductStatus.Pending`. `IAuditLogger` writes per-action rows with actor/IP/UA pulled from `IHttpContextAccessor`. Admin endpoints under `/api/admin/{suppliers,invites,moderation,audit-log}` for supplier suspend/restore/trust/untrust, tokenized member invites (SHA-256 hash at rest; raw + acceptUrl returned exactly once), product + category moderation queues, paginated audit-log search. Public invite preview + accept at `/api/invites/{token}` (preview anonymous, accept signed-in). Suspension side-effects wired: catalog filter hides suspended suppliers + pending categories, supplier-portal endpoints reject memberships where `isSuspended`, pending QuoteRequests auto-expire with `cancellation_reason='supplier_suspended'`. `UserSummary.supplierMemberships[].isSuspended` flag added so the frontend can grey out portal entries. `DataSeeder` writes `isTrusted=true` on the dizajno seed supplier (also backfilled by migration SQL). Frontend `/admin/{suppliers,suppliers/[id],moderation,audit-log}` + `/invite/[token]` accept page + Admin nav entry for users with the Admin role. 20 new integration tests (99 total green). |
+| 7b — Supplier portal | pending | Self-serve supplier portal at `/supplier/[supplierId]/{products,textures,members,profile}`: full product + variant CRUD (incl. GLB upload via R2 presign), `SupplierTexture` library CRUD with per-variant slot pickers, Owner-only member management (last-Owner protection), supplier-suggested categories. Untrusted suppliers' new products go to `Pending`; admin queue from Phase 7a picks them up. |
+| 7c — Designer-applicable materials | pending | Wall paints + floor finishes via supplier-uploaded `BuildingMaterial` products with `TextureUrl`; furniture-slot textures via `SupplierTexture` + `ProductVariantTextureSlot` rows (DB trigger already enforces cross-supplier isolation). All five families (Furniture/Lighting/Appliance/BuildingMaterial/Fixture) accept supplier-uploaded products with appropriate per-family editor UIs. |
 
 ### Phase 1 — Foundation ✓ Done
 
@@ -580,14 +610,34 @@ Out of scope this phase (parked):
 - **Material persistence:** dialog-only. The user picks paint/flooring each time they open the request-quote dialog; quantities are recomputed from current geometry. The resulting `quote_lines` are persisted via the existing variant-snapshot freeze. A `project_materials` persistence layer is parked as a possible Phase 6.5.
 - **Seed scope:** 4 products. Lighting + appliance entries deferred until GLB models exist.
 
-### Phase 7 — Admin tooling & supplier portal
+### Phase 7a — Admin tooling ✓ Done
 
-New table: `audit_log`.
+Branch: `feat/backend-foundation`. Built on top of Phase 6.5.
 
-New features:
-- Admin dashboard (web UI): supplier list, product moderation queue, audit log search
-- Supplier portal: each `supplier_members.role = Owner` user can add/edit their products self-serve
-- `Product.status = Pending` becomes a real state once the portal exists (admin must approve before publish)
+**Goal:** the platform is now a real marketplace. Admin can curate suppliers (suspend bad actors, flip trust), moderate the products + categories that suppliers will soon create (Phase 7b), and audit every sensitive action. The Phase-5 stopgap `POST /api/admin/supplier-members` stays for direct binding, but the actual onboarding flow now runs through tokenized invites.
+
+Built:
+
+- **Migration `0009_AdminAndPortal`** adds `audit_log`, `supplier_invites`, `Supplier.isTrusted` (default false, dizajno seed supplier backfilled to true), `Supplier.suspendedAt` (nullable), `Category.status` (Pending|Approved, default Approved) + `Category.suggestedBySupplierId`, `QuoteRequest.cancellationReason`. `ProductStatus.Pending = 4` added without renumbering existing values. `Category.Status` uses `HasSentinel(Approved)` so EF actually persists Pending rows (CLR default `0` = Pending would otherwise collide with "use the DB default").
+- **`IAuditLogger`** (Application) + `AuditLogger` (Infrastructure). Pulls actor user id from JWT claims, plus IP + (truncated) User-Agent via `IHttpContextAccessor`. Diff payload is serialised camelCase JSON; null = no diff. Indexes on `(entity_type, entity_id, created_at desc)`, `(actor_user_id, created_at desc)`, `(action, created_at desc)`.
+- **`/api/admin/suppliers`** — list (search by name/slug, filter by `suspended`/`trusted`), get-by-id, create (409 on duplicate slug), update profile, `/suspend`, `/restore`, `/trust`, `/untrust`. All actions write an `audit_log` row.
+- **`/api/admin/invites`** — `POST` issues a 32-byte base64url token, persists only `SHA-256(token)` in `supplier_invites.token_hash`, returns the raw token + a built `AcceptUrl` derived from `InviteOptions.AcceptUrlTemplate` (`http://localhost:3000/invite/{token}` by default). List + `DELETE /{id}` (revoke). `email` is a label only — no SMTP wiring.
+- **`/api/invites/{token}`** (public) — anonymous `GET` returns `InvitePreviewDto` so the accept page can render supplier name + role before forcing login. `POST /accept` requires `[Authorize]`, binds the caller as a `SupplierMember` with the invite's role (promotes role on existing memberships), idempotent on re-accept by the same user, 409 on conflict with a different accepter, 410 on revoked/expired.
+- **`/api/admin/moderation`** — `GET /products` lists `ProductStatus.Pending` rows, `POST /{id}/approve` flips to `Published`, `POST /{id}/reject` flips to `Hidden` (both 409 if the product isn't actually Pending). Same shape for categories; reject deletes the row but 409s if any product is still attached.
+- **`/api/admin/audit-log`** — paginated search filterable by actor, action, entity-type, entity-id, date range. Page size capped at 200.
+- **Suspension side-effects.** `CatalogController` filters out products from suspended suppliers and products whose category is still `Pending`; `GET /api/catalog/suppliers` also hides suspended ones. Supplier-portal endpoints (`SupplierQuotesController`, `SupplierAssetsController`) use the new `SupplierMembershipExtensions.ActiveSupplierIds()` helper that drops memberships flagged `IsSuspended`. On suspend, every still-`Pending` `QuoteRequest` for that supplier flips to `Expired` with `cancellation_reason = 'supplier_suspended'` so requesters see a clear reason in their inbox.
+- **`SupplierMembership.IsSuspended`** flag added to the Application record + propagated through `UserSummary.SupplierMemberships`. The frontend uses it to grey out portal entries for suspended suppliers without removing them entirely.
+- **`InviteOptions`** registered from the `Invites` config section. Template + default lifetime (14 days, clamped 1–90).
+- **Frontend.** `lib/api.ts` grew the full admin client surface (suppliers, invites, moderation, audit-log) + public invite preview/accept. New routes: `/admin` (redirects to suppliers), `/admin/suppliers` (list + create modal + per-row trust/suspend buttons), `/admin/suppliers/[id]` (member list + invite list + create-invite modal that shows the raw token + AcceptUrl once with a clipboard-copy button), `/admin/moderation` (tabbed pending products + pending categories with approve/reject), `/admin/audit-log` (filterable + paginated). `/invite/[token]` is a standalone (no admin layout) accept page that handles 4 visual states: invalid, expired/revoked, already-accepted, ready-to-accept (logged in vs logged out). Register page now honours `?redirect=` so invite → register → auto-redirect-to-invite works. Projects page shows an "Admin" nav button to users with the `Admin` role; supplier nav already conditionally renders from `supplierMemberships`.
+- **`DataSeeder`** marks the dizajno seed supplier `IsTrusted = true` (idempotent — also backfilled to existing dev DBs by the migration SQL).
+- **Tests.** `AdminAndPortalTests`: 20 new integration tests covering admin RBAC, supplier CRUD, suspend hides catalog rows, suspend auto-expires pending QuoteRequests, suspend blocks the suspended supplier's members from `/api/supplier/*`, invite create returns token once / list never includes plaintext token, invite preview returns public metadata, accept binds caller + is idempotent, second-user-accept after first 409s, revoked accept 410s, pending-product approve → Published + reject → Hidden, approve on non-Pending 409s, pending-category approve → Approved + reject-with-attached-products 409s, audit-log records supplier lifecycle and is searchable, audit-log requires Admin role, `UserSummary.SupplierMemberships[].IsSuspended` flips on suspend. Full suite is **99 tests** across **8 classes**.
+
+Out of scope this phase (lands in 7b/7c):
+
+- **Supplier portal UI** — `/supplier/[supplierId]/{products,textures,members,profile}` self-serve CRUD. Phase 7b.
+- **Product / variant / texture creation endpoints** — Phase 7b. The moderation queue from 7a will start receiving real rows once suppliers can submit products.
+- **Wall paints / floor finishes / furniture-slot textures via supplier** — Phase 7c. Schema is ready (`Product.TextureUrl`, `SupplierTexture`, `ProductVariantTextureSlot` + cross-supplier-blocking trigger).
+- **Visual collision-box editor** — see [Open Questions #10](#open-questions-parked). Plain numeric inputs are good enough for v1.
 
 ---
 
@@ -604,3 +654,4 @@ These don't block any current phase but should be revisited:
 7. **GDPR data export / right-to-be-forgotten** — `UserDeletionRequest` workflow + admin tooling, when needed.
 8. **Production database hosting** — currently deferred. Options when ready: Supabase, Neon, Azure DB for Postgres, RDS, self-hosted. Schema is portable.
 9. **CI pipeline** — no `.github/workflows` yet. Suggested: GitHub Actions running `dotnet test` + `pnpm build` on PRs.
+10. **Visual collision-box editor for the supplier portal.** The Phase 7 supplier portal ships with plain numeric inputs for `ProductVariant.collisionBoxes` (rows of `{offsetX, offsetZ, width, depth}`). 90%+ of furniture is rectangular and uses the auto-generated single AABB from `width × depth`, so the numeric form is only painful for L-shapes / curved geometry. The richer UX is a Three.js mini-editor embedded in the variant page: render the supplier's uploaded GLB in a preview canvas, let the supplier drag/resize colored rectangles on top of the model's XZ footprint, and write the result back as `collisionBoxes` JSON. Worth ~1 week of focused work and would significantly improve the editor for sectionals, corner desks, modular shelving, etc. Pick this up after Phase 7 lands and once we have real supplier feedback on the numeric form.

@@ -311,13 +311,73 @@ responses today; Phase 7 will reuse it for product uploads from the portal.
 
 ### Admin supplier members (`/api/admin/supplier-members`)
 
-Phase-5 stopgap. The Phase 7 portal will replace this with self-serve member
-management.
+Phase-5 stopgap. Phase 7a ships the proper tokenized invite flow alongside;
+this endpoint is still useful for direct binding from tests + Swagger.
 
 - `GET /api/admin/supplier-members?supplierId=&userId=` → `SupplierMemberDto[]`.
 - `POST /api/admin/supplier-members` — `{ supplierId, userId, role: Owner|Staff }`
   → 201 (or 200 on idempotent re-bind, updating the role).
 - `DELETE /api/admin/supplier-members/{id}` → 204.
+
+### Admin suppliers (`/api/admin/suppliers`) — Phase 7a
+
+All endpoints require the `Admin` role. Every state-changing action writes an
+`audit_log` row via `IAuditLogger`.
+
+- `GET /` — list (filters: `search`, `suspended`, `trusted`). Returns
+  `AdminSupplierDto[]` with `memberCount` + `productCount`.
+- `GET /{id}` — detail row.
+- `POST /` — `{ slug, name, description?, websiteUrl?, contactEmail?, contactPhone? }`.
+  Returns 201 + `AdminSupplierDto`; 409 on duplicate slug.
+- `PUT /{id}` — update profile (name, description, contact info). Slug is immutable.
+- `POST /{id}/suspend` — sets `suspended_at = now()`. Side-effects: catalog
+  filter drops the supplier's products, supplier-portal endpoints reject
+  members, every still-`Pending` `QuoteRequest` flips to `Expired` with
+  `cancellation_reason = 'supplier_suspended'`. Idempotent.
+- `POST /{id}/restore` — clears `suspended_at`. Idempotent.
+- `POST /{id}/trust` — `is_trusted = true`. Untrusted suppliers' new products
+  go to `Pending`; trusted suppliers auto-publish.
+- `POST /{id}/untrust` — `is_trusted = false`.
+
+### Admin invites (`/api/admin/invites`) — Phase 7a
+
+Tokenized supplier-member invites. The raw token + `acceptUrl` are returned
+**exactly once** on create — only `SHA-256(token)` is persisted.
+
+- `POST /` — `{ supplierId, email, role: Owner|Staff, expiresInDays?: 1–90 }`.
+  Returns 201 + `SupplierInviteDto` with `token` + `acceptUrl` populated. The
+  email is a label only (no SMTP delivery).
+- `GET /?supplierId=&includeRevoked=&includeAccepted=` — lists invites without
+  the plaintext token.
+- `DELETE /{id}` — sets `revoked_at`. Idempotent.
+
+`InviteOptions` (bound from the `Invites` config section) controls
+`AcceptUrlTemplate` (default `http://localhost:3000/invite/{token}`) and
+`DefaultLifetimeDays` (14, clamped 1–90 per call).
+
+### Public invite (`/api/invites/{token}`) — Phase 7a
+
+- `GET /{token}` — anonymous. Returns `InvitePreviewDto` (supplier name + role
+  + expiry status) so the accept page can render before forcing login.
+- `POST /{token}/accept` — `[Authorize]`. Binds the caller as a
+  `SupplierMember`. Idempotent on re-accept by the same user (NoContent).
+  Returns 409 if a different user already accepted, 410 if revoked/expired.
+
+### Admin moderation (`/api/admin/moderation`) — Phase 7a
+
+- `GET /products` — `PendingProductDto[]` (every product with `status = Pending`).
+- `POST /products/{id}/approve` → `Status.Published` (409 if not Pending).
+- `POST /products/{id}/reject` → `Status.Hidden` (409 if not Pending).
+- `GET /categories` — `PendingCategoryDto[]` with `suggestedBySupplierName` joined.
+- `POST /categories/{id}/approve` → `CategoryStatus.Approved`.
+- `POST /categories/{id}/reject` — deletes the row; 409 if any product still
+  references the category.
+
+### Admin audit-log (`/api/admin/audit-log`) — Phase 7a
+
+- `GET /?actorUserId=&action=&entityType=&entityId=&from=&to=&page=&pageSize=`
+  → `AuditLogPageDto`. Page size capped at 200; actor email is joined from
+  Identity in a single second trip.
 
 ### Migrating the Phase 1 seed assets to R2
 

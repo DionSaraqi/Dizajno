@@ -14,9 +14,11 @@ public sealed class SupplierConfiguration : IEntityTypeConfiguration<Supplier>
         b.Property(x => x.WebsiteUrl).HasMaxLength(500);
         b.Property(x => x.ContactEmail).HasMaxLength(320);
         b.Property(x => x.ContactPhone).HasMaxLength(50);
+        b.Property(x => x.IsTrusted).HasDefaultValue(false);
         b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
 
         b.HasIndex(x => x.Slug).IsUnique();
+        b.HasIndex(x => x.SuspendedAt);
 
         b.HasOne(x => x.LogoAsset)
             .WithMany()

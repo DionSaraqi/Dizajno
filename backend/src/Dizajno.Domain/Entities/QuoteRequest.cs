@@ -16,6 +16,12 @@ public sealed class QuoteRequest
     public QuoteRequestStatus Status { get; set; } = QuoteRequestStatus.Pending;
     public DateTime? ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
+    /// <summary>
+    /// Free-form reason recorded alongside non-success terminal states. Today
+    /// the only writer is the supplier-suspension flow, which writes
+    /// <c>supplier_suspended</c> when auto-expiring still-pending requests.
+    /// </summary>
+    public string? CancellationReason { get; set; }
 
     public Quote Quote { get; set; } = null!;
     public Supplier Supplier { get; set; } = null!;

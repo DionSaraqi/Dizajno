@@ -42,9 +42,9 @@ public sealed class SupplierQuotesController : ControllerBase
         if (!TryGetUserId(out var userId)) return Unauthorized();
 
         var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
-        if (memberships.Count == 0) return Forbid();
-
-        var supplierIds = memberships.Select(m => m.SupplierId).ToList();
+        var supplierIdSet = memberships.ActiveSupplierIds();
+        if (supplierIdSet.Count == 0) return Forbid();
+        var supplierIds = supplierIdSet.ToList();
         take = Math.Clamp(take, 1, 200);
         skip = Math.Max(0, skip);
 
@@ -84,8 +84,8 @@ public sealed class SupplierQuotesController : ControllerBase
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
         var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
-        if (memberships.Count == 0) return Forbid();
-        var supplierIds = memberships.Select(m => m.SupplierId).ToHashSet();
+        var supplierIds = memberships.ActiveSupplierIds();
+        if (supplierIds.Count == 0) return Forbid();
 
         var head = await _db.QuoteRequests
             .AsNoTracking()
@@ -132,7 +132,7 @@ public sealed class SupplierQuotesController : ControllerBase
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
         var membershipIds = (await _memberships.GetMembershipsAsync(userId, cancellationToken))
-            .Select(m => m.SupplierId).ToHashSet();
+            .ActiveSupplierIds();
         if (membershipIds.Count == 0) return Forbid();
 
         var quoteRequest = await _db.QuoteRequests
@@ -241,7 +241,7 @@ public sealed class SupplierQuotesController : ControllerBase
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
         var membershipIds = (await _memberships.GetMembershipsAsync(userId, cancellationToken))
-            .Select(m => m.SupplierId).ToHashSet();
+            .ActiveSupplierIds();
         if (membershipIds.Count == 0) return Forbid();
 
         var quoteRequest = await _db.QuoteRequests

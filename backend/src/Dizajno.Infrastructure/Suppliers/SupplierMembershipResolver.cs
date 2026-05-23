@@ -20,7 +20,8 @@ public sealed class SupplierMembershipResolver : ISupplierMembershipResolver
                 m.Supplier.Id,
                 m.Supplier.Slug,
                 m.Supplier.Name,
-                m.Role))
+                m.Role,
+                m.Supplier.SuspendedAt != null))
             .ToListAsync(cancellationToken);
         return rows;
     }

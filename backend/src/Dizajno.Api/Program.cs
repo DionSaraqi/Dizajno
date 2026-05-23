@@ -1,4 +1,5 @@
 using System.Text;
+using Dizajno.Api.Controllers;
 using Dizajno.Application.Auth;
 using Dizajno.Application.Seed;
 using Dizajno.Application.Storage;
@@ -17,6 +18,7 @@ const string FrontendCorsPolicy = "FrontendDev";
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<R2Options>(builder.Configuration.GetSection(R2Options.SectionName));
+builder.Services.Configure<InviteOptions>(builder.Configuration.GetSection("Invites"));
 
 // ── Services ───────────────────────────────────────────────────────────────
 

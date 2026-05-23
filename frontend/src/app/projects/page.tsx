@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   FileText,
   Briefcase,
+  ShieldCheck,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -112,6 +113,14 @@ export default function ProjectsPage() {
               className="flex items-center gap-2 px-3 py-1.5 rounded border border-white/10 hover:bg-white/5 text-dizajno-muted hover:text-dizajno-text font-mono text-xs tracking-wider transition"
             >
               <Briefcase size={14} /> Inbox
+            </Link>
+          )}
+          {user?.roles.includes("Admin") && (
+            <Link
+              href="/admin"
+              className="flex items-center gap-2 px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-mono text-xs tracking-wider transition"
+            >
+              <ShieldCheck size={14} /> Admin
             </Link>
           )}
           <button

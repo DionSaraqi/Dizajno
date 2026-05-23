@@ -157,6 +157,7 @@ export interface SupplierMembership {
   supplierSlug: string;
   supplierName: string;
   role: SupplierMemberRole;
+  isSuspended: boolean;
 }
 
 export interface UserSummary {
@@ -901,5 +902,283 @@ export function bindSupplierMember(
     method: "POST",
     auth: true,
     jsonBody: input,
+  });
+}
+
+// ── Phase 7a — Admin dashboard ────────────────────────────────────────────
+
+export interface AdminSupplier {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  websiteUrl: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  isTrusted: boolean;
+  suspendedAt: string | null;
+  memberCount: number;
+  productCount: number;
+  createdAt: string;
+}
+
+export interface CreateSupplierInput {
+  slug: string;
+  name: string;
+  description?: string | null;
+  websiteUrl?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+}
+
+export interface UpdateSupplierInput {
+  name: string;
+  description?: string | null;
+  websiteUrl?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+}
+
+export function listAdminSuppliers(filters: {
+  search?: string;
+  suspended?: boolean;
+  trusted?: boolean;
+} = {}): Promise<AdminSupplier[]> {
+  const q = new URLSearchParams();
+  if (filters.search) q.set("search", filters.search);
+  if (filters.suspended !== undefined) q.set("suspended", String(filters.suspended));
+  if (filters.trusted !== undefined) q.set("trusted", String(filters.trusted));
+  const query = q.toString();
+  return apiFetch<AdminSupplier[]>(`/api/admin/suppliers${query ? `?${query}` : ""}`, {
+    auth: true,
+  });
+}
+
+export function getAdminSupplier(id: string): Promise<AdminSupplier> {
+  return apiFetch<AdminSupplier>(`/api/admin/suppliers/${id}`, { auth: true });
+}
+
+export function createAdminSupplier(input: CreateSupplierInput): Promise<AdminSupplier> {
+  return apiFetch<AdminSupplier>("/api/admin/suppliers", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function updateAdminSupplier(
+  id: string,
+  input: UpdateSupplierInput
+): Promise<AdminSupplier> {
+  return apiFetch<AdminSupplier>(`/api/admin/suppliers/${id}`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function suspendSupplier(id: string): Promise<void> {
+  return apiFetch<void>(`/api/admin/suppliers/${id}/suspend`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export function restoreSupplier(id: string): Promise<void> {
+  return apiFetch<void>(`/api/admin/suppliers/${id}/restore`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export function trustSupplier(id: string): Promise<void> {
+  return apiFetch<void>(`/api/admin/suppliers/${id}/trust`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export function untrustSupplier(id: string): Promise<void> {
+  return apiFetch<void>(`/api/admin/suppliers/${id}/untrust`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+// ── Invites ──
+
+export interface SupplierInvite {
+  id: string;
+  supplierId: string;
+  invitedEmail: string;
+  role: SupplierMemberRole;
+  expiresAt: string;
+  acceptedAt: string | null;
+  acceptedByUserId: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  /** Only present on create — never persisted in plaintext. */
+  token?: string | null;
+  /** Full URL the admin forwards to the invitee. Only present on create. */
+  acceptUrl?: string | null;
+}
+
+export interface CreateSupplierInviteInput {
+  supplierId: string;
+  email: string;
+  role: SupplierMemberRole;
+  expiresInDays?: number;
+}
+
+export function listSupplierInvites(filters: {
+  supplierId?: string;
+  includeRevoked?: boolean;
+  includeAccepted?: boolean;
+} = {}): Promise<SupplierInvite[]> {
+  const q = new URLSearchParams();
+  if (filters.supplierId) q.set("supplierId", filters.supplierId);
+  if (filters.includeRevoked !== undefined) q.set("includeRevoked", String(filters.includeRevoked));
+  if (filters.includeAccepted !== undefined) q.set("includeAccepted", String(filters.includeAccepted));
+  const query = q.toString();
+  return apiFetch<SupplierInvite[]>(`/api/admin/invites${query ? `?${query}` : ""}`, {
+    auth: true,
+  });
+}
+
+export function createSupplierInvite(input: CreateSupplierInviteInput): Promise<SupplierInvite> {
+  return apiFetch<SupplierInvite>("/api/admin/invites", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function revokeSupplierInvite(id: string): Promise<void> {
+  return apiFetch<void>(`/api/admin/invites/${id}`, { method: "DELETE", auth: true });
+}
+
+// ── Public invite (preview + accept) ──
+
+export interface InvitePreview {
+  supplierName: string;
+  supplierSlug: string;
+  role: SupplierMemberRole;
+  invitedEmail: string;
+  expiresAt: string;
+  isExpired: boolean;
+  isAccepted: boolean;
+  isRevoked: boolean;
+}
+
+export function previewInvite(token: string): Promise<InvitePreview> {
+  return apiFetch<InvitePreview>(`/api/invites/${encodeURIComponent(token)}`);
+}
+
+export function acceptInvite(token: string): Promise<void> {
+  return apiFetch<void>(`/api/invites/${encodeURIComponent(token)}/accept`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+// ── Moderation ──
+
+export interface PendingProduct {
+  id: string;
+  slug: string;
+  name: string;
+  family: string;
+  category: string;
+  supplierId: string;
+  supplierName: string;
+  createdAt: string;
+}
+
+export interface PendingCategory {
+  id: string;
+  slug: string;
+  name: string;
+  family: string;
+  path: string;
+  suggestedBySupplierId: string | null;
+  suggestedBySupplierName: string | null;
+}
+
+export function listPendingProducts(): Promise<PendingProduct[]> {
+  return apiFetch<PendingProduct[]>("/api/admin/moderation/products", { auth: true });
+}
+
+export function approveProduct(id: string): Promise<void> {
+  return apiFetch<void>(`/api/admin/moderation/products/${id}/approve`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export function rejectProduct(id: string): Promise<void> {
+  return apiFetch<void>(`/api/admin/moderation/products/${id}/reject`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export function listPendingCategories(): Promise<PendingCategory[]> {
+  return apiFetch<PendingCategory[]>("/api/admin/moderation/categories", { auth: true });
+}
+
+export function approveCategory(id: string): Promise<void> {
+  return apiFetch<void>(`/api/admin/moderation/categories/${id}/approve`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+export function rejectCategory(id: string): Promise<void> {
+  return apiFetch<void>(`/api/admin/moderation/categories/${id}/reject`, {
+    method: "POST",
+    auth: true,
+  });
+}
+
+// ── Audit log ──
+
+export interface AuditLogEntry {
+  id: string;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  diff: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+export interface AuditLogPage {
+  entries: AuditLogEntry[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AuditLogFilters {
+  actorUserId?: string;
+  action?: string;
+  entityType?: string;
+  entityId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export function searchAuditLog(filters: AuditLogFilters = {}): Promise<AuditLogPage> {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  }
+  const query = q.toString();
+  return apiFetch<AuditLogPage>(`/api/admin/audit-log${query ? `?${query}` : ""}`, {
+    auth: true,
   });
 }

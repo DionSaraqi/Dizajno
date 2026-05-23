@@ -7,7 +7,7 @@ A browser-based 2D/3D room designer where users draw walls, place furniture via 
 The repository is a pnpm workspace split into two top-level packages:
 
 - `frontend/` — Next.js 14 application (the existing codebase). All paths in this document are relative to `frontend/` unless prefixed otherwise.
-- `backend/` — .NET 8 Web API (through Phase 2 backend: catalog API + auth + R2 asset uploads + projects/scene persistence). See [backend/BACKEND.md](backend/BACKEND.md) for the full backend reference (endpoints, env vars, migrations, troubleshooting).
+- `backend/` — .NET 8 Web API. Through Phase 7a: catalog + auth + R2 + projects/scene + sharing + customizer textures + quoting + branded fixtures + scene-assigned materials + admin dashboard (supplier moderation, tokenized invites, product/category moderation queues, audit log). See [backend/BACKEND.md](backend/BACKEND.md) for the full backend reference (endpoints, env vars, migrations, troubleshooting).
 - `docs/` — product + schema master plan. **[docs/PLAN.md](docs/PLAN.md)** is the source of truth for design decisions and the 7-phase roadmap — read it first when picking up the project cold or starting a new chat.
 
 Root-level convenience scripts re-export the frontend's most common commands so you can run them from the repo root.
@@ -80,8 +80,10 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 │       │   ├── page.tsx                   # Landing page (3D house scene)
 │       │   ├── layout.tsx                 # Root layout, wraps children in <Providers>
 │       │   ├── providers.tsx              # QueryClientProvider ('use client')
+│       │   ├── admin/                     # /admin/* — suppliers, moderation, audit-log (Phase 7a, Admin role only)
 │       │   ├── designer/                  # Designer page (room editor)
-│       │   ├── login/                     # Login page (placeholder)
+│       │   ├── invite/[token]/            # Public invite accept (Phase 7a)
+│       │   ├── login/                     # Login page
 │       │   └── profile/                   # Profile page (placeholder)
 │       ├── components/
 │       │   ├── designer/                  # Sidebar, Toolbar, PropertiesPanel, StatusBar
@@ -118,19 +120,22 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 │   │   │   ├── appsettings.json
 │   │   │   └── appsettings.Development.json
 │   │   ├── Dizajno.Application/           # Cross-layer contracts
+│   │   │   ├── Audit/                     # IAuditLogger (Phase 7a)
 │   │   │   ├── Auth/                      # IJwtTokenService, JwtOptions
-│   │   │   └── Seed/                      # IDataSeeder, SeedOptions
+│   │   │   ├── Seed/                      # IDataSeeder, SeedOptions
+│   │   │   └── Suppliers/                 # ISupplierMembershipResolver + ActiveSupplierIds extension
 │   │   ├── Dizajno.Domain/                # Pure entities + enums (no deps)
-│   │   │   ├── Entities/                  # Supplier, Category, Product, ProductVariant, Asset, Translation
-│   │   │   └── Enums/                     # ProductFamily, ProductStatus, UnitOfSale, AssetKind, ...
+│   │   │   ├── Entities/                  # Supplier, Category, Product, ProductVariant, Asset, Translation, SupplierInvite, AuditLogEntry, …
+│   │   │   └── Enums/                     # ProductFamily, ProductStatus (incl. Pending), CategoryStatus, UnitOfSale, AssetKind, …
 │   │   └── Dizajno.Infrastructure/
+│   │       ├── Audit/AuditLogger.cs       # Resolves actor/IP/UA from IHttpContextAccessor
 │   │       ├── Auth/JwtTokenService.cs
 │   │       ├── Identity/                  # ApplicationUser, RefreshToken
 │   │       ├── Persistence/
 │   │       │   ├── DizajnoDbContext.cs
 │   │       │   ├── Configurations/        # IEntityTypeConfiguration<T> per entity
 │   │       │   └── Seed/                  # DataSeeder + CatalogSeedData (source of truth for seeded items)
-│   │       └── Migrations/                # 0001_Foundation, …, 0007_Quoting
+│   │       └── Migrations/                # 0001_Foundation, …, 0009_AdminAndPortal
 │   └── tests/Dizajno.IntegrationTests/    # xUnit + Testcontainers + WebApplicationFactory<Program>
 │
 ├── docs/
@@ -153,9 +158,16 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 - The seeded backend rows are sourced from `backend/src/Dizajno.Infrastructure/Persistence/Seed/CatalogSeedData.cs`, which mirrors the frontend fallback file. Keep both in sync until the supplier portal ships (Phase 7 of the master plan).
 
 ### Supplier-side endpoints (Phase 5)
-- `/api/supplier/*` endpoints are gated by `ISupplierMembershipResolver` (Application layer) — every controller action loads the caller's `supplier_members` rows and checks the target supplier id is in the list. Admins are **not** implicit suppliers; they must be bound via the Phase-5 stopgap `POST /api/admin/supplier-members` endpoint.
+- `/api/supplier/*` endpoints are gated by `ISupplierMembershipResolver` (Application layer) — every controller action loads the caller's `supplier_members` rows and checks the target supplier id is in the list. Admins are **not** implicit suppliers; they must be bound via the Phase-5 stopgap `POST /api/admin/supplier-members` endpoint or the Phase 7a tokenized invite flow.
+- Phase 7a added `SupplierMembership.isSuspended` (filled from the supplier's `suspended_at`). The portal-gating helper `SupplierMembershipExtensions.ActiveSupplierIds()` filters those out; suspended-supplier members get 403 on every `/api/supplier/*` action until the admin restores them.
 - The frontend conditionally surfaces the `/supplier/quotes` nav by reading `useAuthStore().user?.supplierMemberships` — empty list → no nav, no inbox.
-- The full supplier portal (self-serve product upload, member-management UI) lands in Phase 7 and will replace the admin binding endpoint with proper UX.
+- The full self-serve supplier portal (product/variant CRUD with GLB upload, texture library, member management UI) lands in Phase 7b.
+
+### Admin tooling (Phase 7a)
+- `/api/admin/*` (Admin role required): suppliers list+CRUD + suspend/restore + trust/untrust, tokenized member invites (`/api/admin/invites`; raw token + `acceptUrl` returned once, only SHA-256 hash persisted), product + category moderation queues (`/api/admin/moderation/{products,categories}/{id}/{approve,reject}`), filterable audit-log search (`/api/admin/audit-log`). Every state change writes an `audit_log` row via `IAuditLogger` (actor + IP + UA pulled from `IHttpContextAccessor`).
+- Suspension side-effects: catalog filter hides suspended suppliers + pending categories, supplier-portal endpoints reject the suspended supplier's members, every still-Pending `QuoteRequest` flips to `Expired` with `cancellation_reason='supplier_suspended'`.
+- `Supplier.isTrusted` toggles whether new supplier-created products land as `Published` (trusted) or `Pending` (untrusted) — Phase 7b wires the actual creation endpoints; 7a builds the moderation queue that picks them up. The seeded `dizajno` supplier is trusted.
+- Frontend admin dashboard: `/admin/suppliers` (list + create + suspend/trust buttons), `/admin/suppliers/[id]` (members + invites + create-invite modal that displays the raw `acceptUrl` exactly once with a clipboard-copy button), `/admin/moderation` (tabbed pending products/categories), `/admin/audit-log` (paginated search). `/invite/[token]` is a standalone accept page that handles invalid / expired / revoked / already-accepted / ready-to-accept states.
 
 ### Catalog families & scene materials (Phase 6 + 6.5)
 - The catalog covers five families (`Furniture`, `Lighting`, `Appliance`, `BuildingMaterial`, `Fixture`). Today the seed ships 12 furniture rows + 2 fixtures + 6 building materials (3 paint tiers + 3 flooring tiers); lighting and appliance entries are deferred until GLB models exist.

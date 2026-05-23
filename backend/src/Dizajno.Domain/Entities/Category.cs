@@ -14,6 +14,9 @@ public sealed class Category
     /// </summary>
     public string Path { get; set; } = string.Empty;
     public int SortOrder { get; set; }
+    public CategoryStatus Status { get; set; } = CategoryStatus.Approved;
+    /// <summary>Supplier that suggested this category. Null for admin/seed categories.</summary>
+    public Guid? SuggestedBySupplierId { get; set; }
 
     public Category? ParentCategory { get; set; }
     public ICollection<Category> Children { get; set; } = new List<Category>();

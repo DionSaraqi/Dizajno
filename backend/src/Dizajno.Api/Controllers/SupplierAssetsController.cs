@@ -43,7 +43,7 @@ public sealed class SupplierAssetsController : ControllerBase
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
         var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
-        if (!memberships.Any(m => m.SupplierId == request.SupplierId)) return Forbid();
+        if (!memberships.Any(m => m.SupplierId == request.SupplierId && !m.IsSuspended)) return Forbid();
 
         if (request.Kind is not (AssetKind.Image or AssetKind.Doc or AssetKind.Attachment))
         {
@@ -104,7 +104,7 @@ public sealed class SupplierAssetsController : ControllerBase
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
         var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
-        if (!memberships.Any(m => m.SupplierId == request.SupplierId)) return Forbid();
+        if (!memberships.Any(m => m.SupplierId == request.SupplierId && !m.IsSuspended)) return Forbid();
 
         if (string.IsNullOrWhiteSpace(request.Key))
         {

@@ -202,7 +202,7 @@ public sealed class AuthController : ControllerBase
         var memberships = await _memberships.GetMembershipsAsync(user.Id, cancellationToken);
         var membershipDtos = memberships
             .Select(m => new SupplierMembershipDto(
-                m.SupplierId, m.SupplierSlug, m.SupplierName, m.Role))
+                m.SupplierId, m.SupplierSlug, m.SupplierName, m.Role, m.IsSuspended))
             .ToList();
         return new UserSummary(
             user.Id, user.Email ?? string.Empty, user.DisplayName, user.Locale,

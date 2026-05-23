@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/useAuthStore";
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
+  );
+}
+
+function RegisterForm() {
   const router = useRouter();
+  const params = useSearchParams();
+  const redirect = params.get("redirect") ?? "/projects";
   const status = useAuthStore((s) => s.status);
   const register = useAuthStore((s) => s.register);
 
@@ -18,9 +28,9 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace("/projects");
+      router.replace(redirect);
     }
-  }, [status, router]);
+  }, [status, redirect, router]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -110,7 +120,14 @@ export default function RegisterPage() {
 
         <p className="mt-6 font-mono text-[11px] text-dizajno-muted">
           Already have an account?{" "}
-          <Link href="/login" className="text-dizajno-text underline">
+          <Link
+            href={
+              redirect && redirect !== "/projects"
+                ? `/login?redirect=${encodeURIComponent(redirect)}`
+                : "/login"
+            }
+            className="text-dizajno-text underline"
+          >
             Sign in
           </Link>
         </p>

@@ -108,6 +108,15 @@ public sealed class DataSeeder : IDataSeeder
             .FirstOrDefaultAsync(s => s.Slug == "dizajno", cancellationToken);
         if (supplier is not null)
         {
+            // Idempotent backfill: pre-Phase-7a databases inserted dizajno
+            // before IsTrusted existed. Migration 0009 backfills via SQL
+            // already, but if a future migration ever rebuilds the column
+            // this keeps the seeded supplier auto-publishing.
+            if (!supplier.IsTrusted)
+            {
+                supplier.IsTrusted = true;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
             return supplier;
         }
 
@@ -117,6 +126,7 @@ public sealed class DataSeeder : IDataSeeder
             Slug = "dizajno",
             Name = "Dizajno",
             Description = "First-party seed catalog. Replaced by real suppliers once the supplier portal ships.",
+            IsTrusted = true,
             CreatedAt = DateTime.UtcNow
         };
         _db.Suppliers.Add(supplier);
