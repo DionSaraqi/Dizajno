@@ -186,7 +186,13 @@ frontend can deserialize without renaming. Phase 6 added four fields:
 - `coverageRate` — nullable numeric, m² per Liter; only set for paint/sealant rows. Used to suggest paint quantity from paintable wall area.
 - `wasteFactor` — numeric overage suggestion (e.g. `0.10` = +10%). Applied to the auto-suggested material quantity in the request-quote dialog.
 
-Current Phase 6 catalog rows: `solid-oak-door` and `pvc-window` (Fixture, Piece); `interior-matt-paint` (BuildingMaterial, Liter, coverage 10 m²/L, waste 10%); `oak-laminate-flooring` (BuildingMaterial, SquareMeter, waste 5%). The 12 Phase-1 furniture rows default to `family = "Furniture"`, `unitOfSale = "Piece"`, `coverageRate = null`, `wasteFactor = 0`.
+Current Phase 6 catalog rows (priced in EUR):
+
+- `solid-oak-door` (€220), `pvc-window` (€135) — Fixture, Piece
+- `interior-matt-paint` (€4/L, 10 m²/L coverage, 10% waste), `premium-eco-paint` (€9/L, 12 m²/L, 10%), `exterior-weather-paint` (€6/L, 8 m²/L, 10%) — BuildingMaterial, Liter
+- `oak-laminate-flooring` (€18/m², 5% waste), `budget-vinyl-flooring` (€11/m², 7%), `engineered-hardwood` (€45/m², 5%) — BuildingMaterial, SquareMeter
+
+The 12 Phase-1 furniture rows default to `family = "Furniture"`, `unitOfSale = "Piece"`, `coverageRate = null`, `wasteFactor = 0`, and now also carry concrete `basePrice` values (sofa €499, bed €380, chair €120, …) so the request-quote dialog shows real per-supplier subtotals. `DataSeeder.BackfillVariantPricesAsync` runs at startup and writes prices into any existing variant rows where `BasePrice IS NULL` — so an existing dev DB picks up the pricing pass without a wipe.
 
 ### Projects (`/api/projects`)
 
@@ -338,10 +344,10 @@ then start the API host (which runs the seeder against the freshly migrated DB).
 Each test class gets its own container — slower than sharing, but each class
 sees a deterministic starting state.
 
-Seven test classes today (75 tests):
-- `CatalogEndpointsTests` — 15 tests (Phase 6: filter-by-family Fixture/BuildingMaterial,
+Seven test classes today (76 tests):
+- `CatalogEndpointsTests` — 16 tests (Phase 6: filter-by-family Fixture/BuildingMaterial,
   unfiltered categories returns 8 across 3 families, paint exposes coverage + waste,
-  flooring exposes m² unit)
+  flooring exposes m² unit; pricing pass: every seeded variant carries a BasePrice)
 - `AuthEndpointsTests` — 10 tests (Phase 5: added `UserSummary.SupplierMemberships` empty-by-default assertion)
 - `AssetsEndpointsTests` — 8 tests (presign + finalize; uses `FakeObjectStorage`
   registered via `ConfigureTestServices`, so no live R2 credentials needed)

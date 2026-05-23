@@ -33,6 +33,7 @@ public static class CatalogSeedData
         UnitOfSale UnitOfSale = UnitOfSale.Piece,
         decimal? CoverageRate = null,
         decimal WasteFactor = 0m,
+        decimal? BasePrice = null,
         string? ModelUrl = null,
         IReadOnlyList<CollisionBoxSeed>? CollisionBoxes = null,
         IReadOnlyDictionary<string, string>? MaterialSlots = null,
@@ -60,7 +61,8 @@ public static class CatalogSeedData
             Color: "#8B4513",
             Icon: "bed",
             Category: "Bedroom",
-            SvgPreview: BedSvg),
+            SvgPreview: BedSvg,
+            BasePrice: 380m),
 
         new ItemSeed(
             Type: "nightstand",
@@ -69,7 +71,8 @@ public static class CatalogSeedData
             Color: "#A0522D",
             Icon: "lamp",
             Category: "Bedroom",
-            SvgPreview: NightstandSvg),
+            SvgPreview: NightstandSvg,
+            BasePrice: 95m),
 
         // ── Seating ──────────────────────────────────────────────────────────
         new ItemSeed(
@@ -79,7 +82,8 @@ public static class CatalogSeedData
             Color: "#6B4226",
             Icon: "armchair",
             Category: "Seating",
-            SvgPreview: ChairSvg),
+            SvgPreview: ChairSvg,
+            BasePrice: 120m),
 
         new ItemSeed(
             Type: "armchair",
@@ -89,6 +93,7 @@ public static class CatalogSeedData
             Icon: "armchair",
             Category: "Seating",
             SvgPreview: ArmchairSvg,
+            BasePrice: 340m,
             ModelUrl: "/models/armchair.glb"),
 
         new ItemSeed(
@@ -98,7 +103,8 @@ public static class CatalogSeedData
             Color: "#4A6670",
             Icon: "sofa",
             Category: "Seating",
-            SvgPreview: SofaSvg),
+            SvgPreview: SofaSvg,
+            BasePrice: 499m),
 
         new ItemSeed(
             Type: "sectional-sofa",
@@ -108,6 +114,7 @@ public static class CatalogSeedData
             Icon: "sofa",
             Category: "Seating",
             SvgPreview: SectionalSofaSvg,
+            BasePrice: 899m,
             ModelUrl: "/models/sectional-sofa.glb",
             CollisionBoxes:
             [
@@ -123,6 +130,7 @@ public static class CatalogSeedData
             Icon: "sofa",
             Category: "Seating",
             SvgPreview: GraySectionalSvg,
+            BasePrice: 1099m,
             ModelUrl: "/models/gray-sectional-sofa.glb",
             CollisionBoxes:
             [
@@ -138,6 +146,7 @@ public static class CatalogSeedData
             Icon: "sofa",
             Category: "Seating",
             SvgPreview: ColorableSectionalSvg,
+            BasePrice: 1290m,
             ModelUrl: "/models/colorable-sectional-sofa.glb",
             CollisionBoxes:
             [
@@ -164,7 +173,8 @@ public static class CatalogSeedData
             Color: "#A0522D",
             Icon: "table",
             Category: "Tables",
-            SvgPreview: TableSvg),
+            SvgPreview: TableSvg,
+            BasePrice: 260m),
 
         new ItemSeed(
             Type: "desk",
@@ -173,7 +183,8 @@ public static class CatalogSeedData
             Color: "#DEB887",
             Icon: "monitor",
             Category: "Tables",
-            SvgPreview: DeskSvg),
+            SvgPreview: DeskSvg,
+            BasePrice: 210m),
 
         // ── Storage ──────────────────────────────────────────────────────────
         new ItemSeed(
@@ -183,7 +194,8 @@ public static class CatalogSeedData
             Color: "#5C4033",
             Icon: "door-open",
             Category: "Storage",
-            SvgPreview: WardrobeSvg),
+            SvgPreview: WardrobeSvg,
+            BasePrice: 540m),
 
         new ItemSeed(
             Type: "bookshelf",
@@ -192,7 +204,8 @@ public static class CatalogSeedData
             Color: "#8B6914",
             Icon: "book-open",
             Category: "Storage",
-            SvgPreview: BookshelfSvg),
+            SvgPreview: BookshelfSvg,
+            BasePrice: 175m),
 
         // ── Fixtures (Phase 6) ──────────────────────────────────────────────
         new ItemSeed(
@@ -205,7 +218,8 @@ public static class CatalogSeedData
             Icon: "door-open",
             Category: "Doors",
             SvgPreview: DoorSvg,
-            Family: ProductFamily.Fixture),
+            Family: ProductFamily.Fixture,
+            BasePrice: 220m),
 
         new ItemSeed(
             Type: "pvc-window",
@@ -215,9 +229,13 @@ public static class CatalogSeedData
             Icon: "square",
             Category: "Windows",
             SvgPreview: WindowSvg,
-            Family: ProductFamily.Fixture),
+            Family: ProductFamily.Fixture,
+            BasePrice: 135m),
 
         // ── Building materials (Phase 6) ────────────────────────────────────
+        // Three paint + three flooring tiers showcase the request-quote dialog's
+        // calculator: different coverage rates and price points produce visibly
+        // different per-line totals.
         new ItemSeed(
             Type: "interior-matt-paint",
             Label: "Interior Matt Paint",
@@ -230,7 +248,38 @@ public static class CatalogSeedData
             Family: ProductFamily.BuildingMaterial,
             UnitOfSale: UnitOfSale.Liter,
             CoverageRate: 10m,
-            WasteFactor: 0.10m),
+            WasteFactor: 0.10m,
+            BasePrice: 4m),
+
+        new ItemSeed(
+            Type: "premium-eco-paint",
+            Label: "Premium Eco Paint",
+            Width: 0.18m, Depth: 0.18m, Height: 0.20m,
+            Color: "#EAE6DC",
+            Icon: "paint-bucket",
+            Category: "Paint",
+            SvgPreview: PremiumPaintSvg,
+            Family: ProductFamily.BuildingMaterial,
+            UnitOfSale: UnitOfSale.Liter,
+            // Wider coverage than the budget paint, so per-line totals diverge
+            // sharply once a room's wall area is plugged in.
+            CoverageRate: 12m,
+            WasteFactor: 0.10m,
+            BasePrice: 9m),
+
+        new ItemSeed(
+            Type: "exterior-weather-paint",
+            Label: "Exterior Weather Paint",
+            Width: 0.18m, Depth: 0.18m, Height: 0.20m,
+            Color: "#D8D2C2",
+            Icon: "paint-bucket",
+            Category: "Paint",
+            SvgPreview: ExteriorPaintSvg,
+            Family: ProductFamily.BuildingMaterial,
+            UnitOfSale: UnitOfSale.Liter,
+            CoverageRate: 8m,
+            WasteFactor: 0.10m,
+            BasePrice: 6m),
 
         new ItemSeed(
             Type: "oak-laminate-flooring",
@@ -243,7 +292,34 @@ public static class CatalogSeedData
             SvgPreview: FlooringSvg,
             Family: ProductFamily.BuildingMaterial,
             UnitOfSale: UnitOfSale.SquareMeter,
-            WasteFactor: 0.05m),
+            WasteFactor: 0.05m,
+            BasePrice: 18m),
+
+        new ItemSeed(
+            Type: "budget-vinyl-flooring",
+            Label: "Budget Vinyl Flooring",
+            Width: 1.20m, Depth: 0.20m, Height: 0.005m,
+            Color: "#C0A074",
+            Icon: "square",
+            Category: "Flooring",
+            SvgPreview: VinylFlooringSvg,
+            Family: ProductFamily.BuildingMaterial,
+            UnitOfSale: UnitOfSale.SquareMeter,
+            WasteFactor: 0.07m,
+            BasePrice: 11m),
+
+        new ItemSeed(
+            Type: "engineered-hardwood",
+            Label: "Engineered Hardwood",
+            Width: 1.20m, Depth: 0.20m, Height: 0.014m,
+            Color: "#6B4A2C",
+            Icon: "square",
+            Category: "Flooring",
+            SvgPreview: HardwoodSvg,
+            Family: ProductFamily.BuildingMaterial,
+            UnitOfSale: UnitOfSale.SquareMeter,
+            WasteFactor: 0.05m,
+            BasePrice: 45m),
     ];
 
     // ── SVG previews (verbatim from frontend/src/utils/furnitureCatalog.ts) ─
@@ -427,6 +503,52 @@ public static class CatalogSeedData
             <rect x="52" y="30" width="42" height="20" fill="#B0885A" stroke="currentColor" stroke-width="0.8"/>
             <rect x="6" y="54" width="42" height="20" fill="#B0885A" stroke="currentColor" stroke-width="0.8"/>
             <rect x="52" y="54" width="42" height="20" fill="#9A7244" stroke="currentColor" stroke-width="0.8"/>
+        </svg>
+        """;
+
+    private const string PremiumPaintSvg = """
+        <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <path d="M14 24 L66 24 L60 72 L20 72 Z" fill="#EAE6DC" stroke="currentColor" stroke-width="2"/>
+            <ellipse cx="40" cy="24" rx="26" ry="6" fill="#cfc8b8" stroke="currentColor" stroke-width="2"/>
+            <path d="M22 18 Q40 8 58 18" stroke="currentColor" stroke-width="2" fill="none"/>
+            <rect x="34" y="44" width="12" height="14" rx="2" fill="currentColor" opacity="0.25"/>
+            <path d="M30 60 L42 36 L54 60 Z" fill="#86c08a" stroke="currentColor" stroke-width="1.5" opacity="0.85"/>
+        </svg>
+        """;
+
+    private const string ExteriorPaintSvg = """
+        <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <path d="M14 24 L66 24 L60 72 L20 72 Z" fill="#D8D2C2" stroke="currentColor" stroke-width="2"/>
+            <ellipse cx="40" cy="24" rx="26" ry="6" fill="#b8b0a0" stroke="currentColor" stroke-width="2"/>
+            <path d="M22 18 Q40 8 58 18" stroke="currentColor" stroke-width="2" fill="none"/>
+            <rect x="34" y="44" width="12" height="14" rx="2" fill="currentColor" opacity="0.25"/>
+            <circle cx="58" cy="58" r="6" fill="#f6c45c" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M58 50 L58 46 M58 70 L58 66 M50 58 L46 58 M70 58 L66 58" stroke="#f6c45c" stroke-width="1.5"/>
+        </svg>
+        """;
+
+    private const string VinylFlooringSvg = """
+        <svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <rect x="4" y="4" width="92" height="72" rx="2" fill="#C0A074" stroke="currentColor" stroke-width="2"/>
+            <rect x="6" y="6" width="92" height="14" fill="#D0B084" stroke="currentColor" stroke-width="0.5"/>
+            <rect x="6" y="24" width="92" height="14" fill="#B89464" stroke="currentColor" stroke-width="0.5"/>
+            <rect x="6" y="42" width="92" height="14" fill="#D0B084" stroke="currentColor" stroke-width="0.5"/>
+            <rect x="6" y="60" width="92" height="14" fill="#B89464" stroke="currentColor" stroke-width="0.5"/>
+        </svg>
+        """;
+
+    private const string HardwoodSvg = """
+        <svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <rect x="4" y="4" width="92" height="72" rx="2" fill="#6B4A2C" stroke="currentColor" stroke-width="2"/>
+            <rect x="6" y="6" width="28" height="68" fill="#7B5A3A" stroke="currentColor" stroke-width="0.8"/>
+            <rect x="36" y="6" width="28" height="68" fill="#5B3A20" stroke="currentColor" stroke-width="0.8"/>
+            <rect x="66" y="6" width="28" height="68" fill="#7B5A3A" stroke="currentColor" stroke-width="0.8"/>
+            <line x1="12" y1="6" x2="12" y2="74" stroke="#3a2814" stroke-width="0.4" opacity="0.6"/>
+            <line x1="22" y1="6" x2="22" y2="74" stroke="#3a2814" stroke-width="0.4" opacity="0.6"/>
+            <line x1="42" y1="6" x2="42" y2="74" stroke="#2a1804" stroke-width="0.4" opacity="0.6"/>
+            <line x1="52" y1="6" x2="52" y2="74" stroke="#2a1804" stroke-width="0.4" opacity="0.6"/>
+            <line x1="72" y1="6" x2="72" y2="74" stroke="#3a2814" stroke-width="0.4" opacity="0.6"/>
+            <line x1="82" y1="6" x2="82" y2="74" stroke="#3a2814" stroke-width="0.4" opacity="0.6"/>
         </svg>
         """;
 }

@@ -25,12 +25,32 @@ public sealed class CatalogEndpointsTests : IClassFixture<DizajnoApiFactory>
             "/api/catalog/products", JsonOpts);
 
         products.Should().NotBeNull();
-        // Phase 1 seeded 12 furniture items; Phase 6 added 2 fixtures + 2 building materials.
-        products!.Should().HaveCount(16);
+        // Phase 1 seeded 12 furniture items; Phase 6 added 2 fixtures + 6 building
+        // materials (3 paints + 3 floorings, including the budget/premium tiers
+        // shipped alongside the original two so the calculator showcases
+        // distinct per-unit prices).
+        products!.Should().HaveCount(20);
         products!.Select(p => p.Type).Should().Contain([
             "bed", "sofa", "armchair", "colorable-sectional-sofa",
-            "solid-oak-door", "pvc-window", "interior-matt-paint", "oak-laminate-flooring"
+            "solid-oak-door", "pvc-window",
+            "interior-matt-paint", "premium-eco-paint", "exterior-weather-paint",
+            "oak-laminate-flooring", "budget-vinyl-flooring", "engineered-hardwood"
         ]);
+    }
+
+    [Fact]
+    public async Task GetProducts_ExposesBasePrices()
+    {
+        var products = await _client.GetFromJsonAsync<List<FurnitureItemDto>>(
+            "/api/catalog/products", JsonOpts);
+        products.Should().NotBeNull();
+        // Every seeded row now carries a BasePrice so the request-quote
+        // dialog can render real per-supplier subtotals and per-material
+        // line totals. Regression guard if anyone forgets to wire a new row.
+        products!.Should().OnlyContain(p => p.BasePrice != null && p.BasePrice > 0);
+        var sofa = products!.Single(p => p.Type == "sofa");
+        sofa.BasePrice.Should().Be(499m);
+        sofa.Currency.Should().Be("EUR");
     }
 
     [Theory]
@@ -86,17 +106,30 @@ public sealed class CatalogEndpointsTests : IClassFixture<DizajnoApiFactory>
         var products = await _client.GetFromJsonAsync<List<FurnitureItemDto>>(
             "/api/catalog/products?family=buildingmaterial", JsonOpts);
 
-        products!.Should().HaveCount(2);
+        // 3 paints (interior-matt, premium-eco, exterior-weather) + 3 flooring
+        // tiers (oak-laminate, budget-vinyl, engineered-hardwood) — distinct
+        // per-unit prices so the request-quote calculator has something to chew on.
+        products!.Should().HaveCount(6);
+
         var paint = products!.Single(p => p.Type == "interior-matt-paint");
         paint.Family.Should().Be("BuildingMaterial");
         paint.UnitOfSale.Should().Be("Liter");
         paint.CoverageRate.Should().Be(10m);
         paint.WasteFactor.Should().Be(0.10m);
+        paint.BasePrice.Should().Be(4m);
+
+        var premiumPaint = products!.Single(p => p.Type == "premium-eco-paint");
+        premiumPaint.CoverageRate.Should().Be(12m);
+        premiumPaint.BasePrice.Should().Be(9m);
 
         var flooring = products!.Single(p => p.Type == "oak-laminate-flooring");
         flooring.UnitOfSale.Should().Be("SquareMeter");
         flooring.WasteFactor.Should().Be(0.05m);
         flooring.CoverageRate.Should().BeNull();
+        flooring.BasePrice.Should().Be(18m);
+
+        var hardwood = products!.Single(p => p.Type == "engineered-hardwood");
+        hardwood.BasePrice.Should().Be(45m);
     }
 
     [Fact]

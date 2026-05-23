@@ -146,13 +146,28 @@ export function RequestQuoteDialog({
       }
     }
 
+    // Fold selected material picks (paint, flooring, …) into their supplier's
+    // subtotal so the headline preview reflects the full quote price, not just
+    // the furniture-and-fixture portion.
+    for (const item of materialItems) {
+      if (!item.variantId || !item.supplierId) continue;
+      const pick = materialPicks[item.variantId];
+      if (!pick?.selected || pick.quantity <= 0) continue;
+      const group = ensure(item.supplierId, item.supplierName ?? "Unknown supplier", item.currency ?? "EUR");
+      if (item.basePrice != null && group.subtotal != null) {
+        group.subtotal += item.basePrice * pick.quantity;
+      } else if (item.basePrice == null) {
+        group.subtotal = null;
+      }
+    }
+
     return {
       groups: Array.from(bySupplier.values()).sort((a, b) =>
         a.supplierName.localeCompare(b.supplierName)
       ),
       orphans,
     };
-  }, [furniture, openings, catalog]);
+  }, [furniture, openings, catalog, materialItems, materialPicks]);
 
   const selectedMaterialCount = useMemo(
     () =>
@@ -160,6 +175,29 @@ export function RequestQuoteDialog({
         .length,
     [materialPicks]
   );
+
+  // Materials subtotal in the dialog footer. Mirrors the per-supplier total
+  // contribution above but in a single number, so the user sees the calculator's
+  // bottom line at a glance. Falls back to null when any selected material is
+  // missing a basePrice (e.g. catalog imported without prices).
+  const materialsSubtotal = useMemo(() => {
+    let sum = 0;
+    let currency: string | null = null;
+    let priceMissing = false;
+    for (const item of materialItems) {
+      if (!item.variantId) continue;
+      const pick = materialPicks[item.variantId];
+      if (!pick?.selected || pick.quantity <= 0) continue;
+      if (item.basePrice == null) {
+        priceMissing = true;
+        continue;
+      }
+      sum += item.basePrice * pick.quantity;
+      currency ??= item.currency ?? "EUR";
+    }
+    if (priceMissing && sum === 0) return null;
+    return { sum, currency: currency ?? "EUR", priceMissing };
+  }, [materialItems, materialPicks]);
 
   const placedFurnitureCount = furniture.length;
   const brandedOpeningCount = openings.filter((o) => !!o.productVariantId).length;
@@ -291,65 +329,102 @@ export function RequestQuoteDialog({
                     item.wasteFactor,
                     areas
                   );
+                  const unit = unitLabel(item.unitOfSale);
+                  const currency = item.currency ?? "EUR";
+                  const perUnitLabel =
+                    item.basePrice == null
+                      ? null
+                      : `${formatPriceCompact(item.basePrice, currency)}/${unit}`;
+                  const lineSubtotal =
+                    item.basePrice != null && pick.selected && pick.quantity > 0
+                      ? item.basePrice * pick.quantity
+                      : null;
                   return (
                     <li
                       key={item.variantId}
-                      className="flex items-center gap-2 rounded border border-white/10 bg-black/30 px-3 py-2"
+                      className="rounded border border-white/10 bg-black/30 px-3 py-2"
                     >
-                      <input
-                        type="checkbox"
-                        checked={pick.selected}
-                        onChange={(e) =>
-                          setMaterialPicks((prev) => ({
-                            ...prev,
-                            [item.variantId!]: {
-                              selected: e.target.checked,
-                              quantity:
-                                e.target.checked && pick.quantity <= 0
-                                  ? suggested ?? 0
-                                  : pick.quantity,
-                            },
-                          }))
-                        }
-                        className="accent-dizajno-accent"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-mono text-xs text-dizajno-text truncate">
-                          {item.label}
-                        </p>
-                        <p className="font-mono text-[10px] tracking-widest text-dizajno-muted/70 uppercase mt-0.5">
-                          {suggested == null
-                            ? "Enter quantity manually"
-                            : `Suggested: ${suggested} ${unitLabel(item.unitOfSale)}`}
-                          {item.wasteFactor && item.wasteFactor > 0 && suggested != null && (
-                            <> · +{Math.round((item.wasteFactor ?? 0) * 100)}% waste</>
-                          )}
-                        </p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={pick.selected}
+                          onChange={(e) =>
+                            setMaterialPicks((prev) => ({
+                              ...prev,
+                              [item.variantId!]: {
+                                selected: e.target.checked,
+                                quantity:
+                                  e.target.checked && pick.quantity <= 0
+                                    ? suggested ?? 0
+                                    : pick.quantity,
+                              },
+                            }))
+                          }
+                          className="accent-dizajno-accent"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <p className="font-mono text-xs text-dizajno-text truncate">
+                              {item.label}
+                            </p>
+                            {perUnitLabel && (
+                              <p className="font-mono text-[11px] text-dizajno-text/80 whitespace-nowrap">
+                                {perUnitLabel}
+                              </p>
+                            )}
+                          </div>
+                          <p className="font-mono text-[10px] tracking-widest text-dizajno-muted/70 uppercase mt-0.5">
+                            {suggested == null
+                              ? "Enter quantity manually"
+                              : `Suggested ${suggested} ${unit}`}
+                            {item.wasteFactor && item.wasteFactor > 0 && suggested != null && (
+                              <> · +{Math.round((item.wasteFactor ?? 0) * 100)}% waste</>
+                            )}
+                          </p>
+                        </div>
+                        <input
+                          type="number"
+                          min={0}
+                          step={item.unitOfSale === "Liter" ? 1 : 0.1}
+                          value={pick.quantity}
+                          disabled={!pick.selected}
+                          onChange={(e) =>
+                            setMaterialPicks((prev) => ({
+                              ...prev,
+                              [item.variantId!]: {
+                                selected: prev[item.variantId!]?.selected ?? false,
+                                quantity: Math.max(0, parseFloat(e.target.value) || 0),
+                              },
+                            }))
+                          }
+                          className="w-20 rounded border border-white/10 bg-black/40 px-2 py-1 text-sm text-dizajno-text disabled:opacity-50 focus:border-white/40 focus:outline-none"
+                        />
+                        <span className="font-mono text-[10px] text-dizajno-muted w-8 text-center">
+                          {unit}
+                        </span>
                       </div>
-                      <input
-                        type="number"
-                        min={0}
-                        step={item.unitOfSale === "Liter" ? 1 : 0.1}
-                        value={pick.quantity}
-                        disabled={!pick.selected}
-                        onChange={(e) =>
-                          setMaterialPicks((prev) => ({
-                            ...prev,
-                            [item.variantId!]: {
-                              selected: prev[item.variantId!]?.selected ?? false,
-                              quantity: Math.max(0, parseFloat(e.target.value) || 0),
-                            },
-                          }))
-                        }
-                        className="w-20 rounded border border-white/10 bg-black/40 px-2 py-1 text-sm text-dizajno-text disabled:opacity-50 focus:border-white/40 focus:outline-none"
-                      />
-                      <span className="font-mono text-[10px] text-dizajno-muted w-8 text-center">
-                        {unitLabel(item.unitOfSale)}
-                      </span>
+                      {lineSubtotal != null && (
+                        <p className="font-mono text-[11px] text-emerald-400/80 text-right mt-1.5">
+                          = {formatPrice(lineSubtotal, currency)}
+                        </p>
+                      )}
                     </li>
                   );
                 })}
               </ul>
+              {materialsSubtotal && (materialsSubtotal.sum > 0 || materialsSubtotal.priceMissing) && (
+                <p className="mt-2 font-mono text-[11px] text-dizajno-text text-right">
+                  Materials subtotal:{" "}
+                  <span className="text-emerald-400/90">
+                    {formatPrice(materialsSubtotal.sum, materialsSubtotal.currency)}
+                  </span>
+                  {materialsSubtotal.priceMissing && (
+                    <span className="text-amber-400/80">
+                      {" "}· some items missing price
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
           )}
 
@@ -397,5 +472,24 @@ function formatPrice(value: number, currency: string): string {
     }).format(value);
   } catch {
     return `${value.toFixed(0)} ${currency}`;
+  }
+}
+
+/**
+ * Compact price formatter that keeps the decimal for small per-unit prices
+ * (e.g. €4/L paint) but strips trailing zeros for round numbers. Used in the
+ * materials section so the price-tag chip stays short.
+ */
+function formatPriceCompact(value: number, currency: string): string {
+  const decimals = value < 10 ? 2 : 0;
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: decimals,
+    }).format(value);
+  } catch {
+    return `${value.toFixed(decimals)} ${currency}`;
   }
 }

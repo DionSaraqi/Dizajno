@@ -47,6 +47,7 @@ public sealed class DataSeeder : IDataSeeder
         var categories = await SeedCategoriesAsync(cancellationToken);
         await SeedProductsAsync(supplier, categories, cancellationToken);
         await SeedTextureLibraryAsync(supplier, cancellationToken);
+        await BackfillVariantPricesAsync(cancellationToken);
     }
 
     private async Task SeedRolesAsync()
@@ -236,6 +237,7 @@ public sealed class DataSeeder : IDataSeeder
             {
                 Id = Guid.NewGuid(),
                 ProductId = productId,
+                BasePrice = seed.BasePrice,
                 Sku = $"{seed.Type}-default",
                 Name = "Default",
                 Width = seed.Width,
@@ -396,6 +398,38 @@ public sealed class DataSeeder : IDataSeeder
             await _db.SaveChangesAsync(cancellationToken);
             _log.LogInformation("Seeded {Count} product-variant texture slots", newSlots);
         }
+    }
+
+    /// <summary>
+    /// One-shot backfill so dev DBs that were seeded before catalog prices landed
+    /// pick up the new <c>BasePrice</c> values on the next API restart without
+    /// requiring a <c>docker compose down -v</c>. Only updates variants whose
+    /// <c>BasePrice</c> is currently null and whose <see cref="CatalogSeedData"/>
+    /// entry sets a price; never overwrites a price that's already on the row.
+    /// Idempotent: a second run is a no-op.
+    /// </summary>
+    private async Task BackfillVariantPricesAsync(CancellationToken cancellationToken)
+    {
+        var pricesBySku = CatalogSeedData.Items
+            .Where(i => i.BasePrice is not null)
+            .ToDictionary(i => $"{i.Type}-default", i => i.BasePrice!.Value);
+        if (pricesBySku.Count == 0) return;
+
+        var skus = pricesBySku.Keys.ToList();
+        var nullPriced = await _db.ProductVariants
+            .Where(v => skus.Contains(v.Sku) && v.BasePrice == null)
+            .ToListAsync(cancellationToken);
+        if (nullPriced.Count == 0) return;
+
+        foreach (var variant in nullPriced)
+        {
+            if (pricesBySku.TryGetValue(variant.Sku, out var price))
+            {
+                variant.BasePrice = price;
+            }
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+        _log.LogInformation("Backfilled {Count} variant prices", nullPriced.Count);
     }
 
     private static string DeriveTextureName(string url)
