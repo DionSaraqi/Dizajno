@@ -23,6 +23,14 @@ public sealed class Product
     /// In Phase 4 this moves to an Asset row generated from CAD.
     /// </summary>
     public string? PreviewSvg { get; set; }
+    /// <summary>
+    /// Optional URL to a tileable texture image (JPG/PNG under
+    /// <c>frontend/public/textures/</c>, or an R2 public URL once assets land
+    /// there). Used by the designer's `FloorMesh` and `WallMesh` to skin
+    /// surfaces with the variant's appearance. Null = renderer falls back to
+    /// <c>ProductVariant.Color</c>.
+    /// </summary>
+    public string? TextureUrl { get; set; }
     /// <summary>Family-specific JSON attributes (lumen, energy class, ...). Stored as jsonb.</summary>
     public string Attributes { get; set; } = "{}";
     public DateTime CreatedAt { get; set; }

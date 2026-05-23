@@ -1,22 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Send, X } from "lucide-react";
 import { useDesignerStore } from "@/store/useDesignerStore";
 import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
-import {
-  computeRoomAreas,
-  quantityUnitToken,
-  suggestMaterialQuantity,
-  unitLabel,
-} from "@/utils/areaCalc";
+import { polygonArea, unitLabel } from "@/utils/areaCalc";
 import * as api from "@/lib/api";
 import type {
   FurnitureCatalogItem,
   FurnitureData,
-  OpeningData,
 } from "@/types/designer";
 
 interface RequestQuoteDialogProps {
@@ -29,22 +23,20 @@ interface SupplierGroup {
   supplierId: string;
   supplierName: string;
   items: Array<{ item: FurnitureData; def: FurnitureCatalogItem }>;
-  brandedOpenings: Array<{ opening: OpeningData; def: FurnitureCatalogItem }>;
+  brandedOpenings: Array<{ openingId: string; def: FurnitureCatalogItem }>;
+  /** Per-material aggregates rolled into this supplier's row. */
+  materials: Array<{ def: FurnitureCatalogItem; quantity: number; subtotal: number | null }>;
   subtotal: number | null;
   currency: string;
 }
 
-interface MaterialPick {
-  selected: boolean;
-  quantity: number;
-}
-
 /**
- * "Request quote" flow. Reads the live scene from the designer store, groups
- * placed items + branded openings by supplier (using catalog metadata), and
- * surfaces a per-supplier preview before fanning out to
- * <c>POST /api/projects/{id}/quotes</c>. Phase 6 added a "Materials & finishes"
- * section that auto-suggests paint/flooring quantities from the room geometry.
+ * Phase 6.5 redesign: the dialog is now a read-only summary of what the user
+ * has already designed. Walls with paint + floors with flooring + branded
+ * openings + placed furniture all get rolled up per supplier with computed
+ * quantities (paint = wallArea/coverage × waste, flooring = floorArea × waste,
+ * everything else = piece counts). Submit just sends a message; the backend
+ * recomputes the same fan-out from the persisted scene.
  */
 export function RequestQuoteDialog({
   projectId,
@@ -60,45 +52,6 @@ export function RequestQuoteDialog({
   const { items: catalog } = useFurnitureCatalog();
   const [message, setMessage] = useState("");
 
-  const areas = useMemo(
-    () => computeRoomAreas({ walls, floors, openings }),
-    [walls, floors, openings]
-  );
-
-  const materialItems = useMemo(
-    () =>
-      catalog
-        .filter((c) => c.family === "BuildingMaterial" && c.variantId)
-        .sort((a, b) => a.label.localeCompare(b.label)),
-    [catalog]
-  );
-
-  const [materialPicks, setMaterialPicks] = useState<Record<string, MaterialPick>>({});
-
-  // Seed picks with suggested quantities whenever the dialog opens or the
-  // catalog/geometry changes. Preserves any user edits via the functional setter.
-  useEffect(() => {
-    if (!open) return;
-    setMaterialPicks((prev) => {
-      const next: Record<string, MaterialPick> = {};
-      for (const item of materialItems) {
-        if (!item.variantId) continue;
-        const suggested = suggestMaterialQuantity(
-          item.unitOfSale,
-          item.coverageRate ?? null,
-          item.wasteFactor,
-          areas
-        );
-        const existing = prev[item.variantId];
-        next[item.variantId] = {
-          selected: existing?.selected ?? false,
-          quantity: existing?.quantity ?? suggested ?? 0,
-        };
-      }
-      return next;
-    });
-  }, [open, materialItems, areas]);
-
   const groups = useMemo(() => {
     const bySupplier = new Map<string, SupplierGroup>();
     const orphans: FurnitureData[] = [];
@@ -110,6 +63,7 @@ export function RequestQuoteDialog({
           supplierName,
           items: [],
           brandedOpenings: [],
+          materials: [],
           subtotal: 0,
           currency,
         };
@@ -117,7 +71,16 @@ export function RequestQuoteDialog({
       }
       return group;
     };
+    const addToSubtotal = (group: SupplierGroup, contribution: number | null) => {
+      if (group.subtotal == null) return;
+      if (contribution == null) {
+        group.subtotal = null;
+      } else {
+        group.subtotal += contribution;
+      }
+    };
 
+    // Placed items (quantity 1 each).
     for (const item of furniture) {
       const def = catalog.find((c) => c.type === item.type);
       if (!def || !def.supplierId) {
@@ -126,39 +89,69 @@ export function RequestQuoteDialog({
       }
       const group = ensure(def.supplierId, def.supplierName ?? "Unknown supplier", def.currency ?? "EUR");
       group.items.push({ item, def });
-      if (def.basePrice != null && group.subtotal != null) {
-        group.subtotal += def.basePrice;
-      } else if (def.basePrice == null) {
-        group.subtotal = null;
-      }
+      addToSubtotal(group, def.basePrice ?? null);
     }
 
+    // Branded openings (one per opening).
     for (const opening of openings) {
       if (!opening.productVariantId) continue;
       const def = catalog.find((c) => c.variantId === opening.productVariantId);
       if (!def || !def.supplierId) continue;
       const group = ensure(def.supplierId, def.supplierName ?? "Unknown supplier", def.currency ?? "EUR");
-      group.brandedOpenings.push({ opening, def });
-      if (def.basePrice != null && group.subtotal != null) {
-        group.subtotal += def.basePrice;
-      } else if (def.basePrice == null) {
-        group.subtotal = null;
-      }
+      group.brandedOpenings.push({ openingId: opening.id, def });
+      addToSubtotal(group, def.basePrice ?? null);
     }
 
-    // Fold selected material picks (paint, flooring, …) into their supplier's
-    // subtotal so the headline preview reflects the full quote price, not just
-    // the furniture-and-fixture portion.
-    for (const item of materialItems) {
-      if (!item.variantId || !item.supplierId) continue;
-      const pick = materialPicks[item.variantId];
-      if (!pick?.selected || pick.quantity <= 0) continue;
-      const group = ensure(item.supplierId, item.supplierName ?? "Unknown supplier", item.currency ?? "EUR");
-      if (item.basePrice != null && group.subtotal != null) {
-        group.subtotal += item.basePrice * pick.quantity;
-      } else if (item.basePrice == null) {
-        group.subtotal = null;
-      }
+    // Flooring — aggregate floor areas per assigned variant.
+    const floorAreaByVariant = new Map<string, number>();
+    for (const floor of floors) {
+      if (!floor.flooringVariantId) continue;
+      const area = polygonArea(floor.vertices);
+      floorAreaByVariant.set(
+        floor.flooringVariantId,
+        (floorAreaByVariant.get(floor.flooringVariantId) ?? 0) + area
+      );
+    }
+    for (const [variantId, area] of floorAreaByVariant) {
+      const def = catalog.find((c) => c.variantId === variantId);
+      if (!def || !def.supplierId) continue;
+      const waste = def.wasteFactor ?? 0;
+      const qty = round1(area * (1 + waste));
+      const subtotal = def.basePrice != null ? def.basePrice * qty : null;
+      const group = ensure(def.supplierId, def.supplierName ?? "Unknown supplier", def.currency ?? "EUR");
+      group.materials.push({ def, quantity: qty, subtotal });
+      addToSubtotal(group, subtotal);
+    }
+
+    // Paint — aggregate paintable wall surface per assigned variant.
+    const paintAreaByVariant = new Map<string, number>();
+    const openingAreaByWallId = new Map<string, number>();
+    for (const opening of openings) {
+      openingAreaByWallId.set(
+        opening.wallId,
+        (openingAreaByWallId.get(opening.wallId) ?? 0) + opening.width * opening.height
+      );
+    }
+    for (const wall of walls) {
+      if (!wall.paintVariantId) continue;
+      const length = Math.hypot(wall.end[0] - wall.start[0], wall.end[1] - wall.start[1]);
+      const gross = length * wall.height;
+      const openingArea = openingAreaByWallId.get(wall.id) ?? 0;
+      const paintable = Math.max(0, gross - openingArea);
+      paintAreaByVariant.set(
+        wall.paintVariantId,
+        (paintAreaByVariant.get(wall.paintVariantId) ?? 0) + paintable
+      );
+    }
+    for (const [variantId, area] of paintAreaByVariant) {
+      const def = catalog.find((c) => c.variantId === variantId);
+      if (!def || !def.supplierId || !def.coverageRate || def.coverageRate <= 0) continue;
+      const waste = def.wasteFactor ?? 0;
+      const qty = Math.ceil((area / def.coverageRate) * (1 + waste));
+      const subtotal = def.basePrice != null ? def.basePrice * qty : null;
+      const group = ensure(def.supplierId, def.supplierName ?? "Unknown supplier", def.currency ?? "EUR");
+      group.materials.push({ def, quantity: qty, subtotal });
+      addToSubtotal(group, subtotal);
     }
 
     return {
@@ -167,62 +160,35 @@ export function RequestQuoteDialog({
       ),
       orphans,
     };
-  }, [furniture, openings, catalog, materialItems, materialPicks]);
+  }, [furniture, openings, floors, walls, catalog]);
 
-  const selectedMaterialCount = useMemo(
+  const totalLines = useMemo(
     () =>
-      Object.values(materialPicks).filter((p) => p.selected && p.quantity > 0)
-        .length,
-    [materialPicks]
+      groups.groups.reduce(
+        (acc, g) => acc + g.items.length + g.brandedOpenings.length + g.materials.length,
+        0
+      ),
+    [groups]
   );
 
-  // Materials subtotal in the dialog footer. Mirrors the per-supplier total
-  // contribution above but in a single number, so the user sees the calculator's
-  // bottom line at a glance. Falls back to null when any selected material is
-  // missing a basePrice (e.g. catalog imported without prices).
-  const materialsSubtotal = useMemo(() => {
+  const grandTotal = useMemo(() => {
     let sum = 0;
-    let currency: string | null = null;
-    let priceMissing = false;
-    for (const item of materialItems) {
-      if (!item.variantId) continue;
-      const pick = materialPicks[item.variantId];
-      if (!pick?.selected || pick.quantity <= 0) continue;
-      if (item.basePrice == null) {
-        priceMissing = true;
-        continue;
+    let currency = "EUR";
+    let known = true;
+    for (const g of groups.groups) {
+      if (g.subtotal == null) {
+        known = false;
+      } else {
+        sum += g.subtotal;
+        currency = g.currency;
       }
-      sum += item.basePrice * pick.quantity;
-      currency ??= item.currency ?? "EUR";
     }
-    if (priceMissing && sum === 0) return null;
-    return { sum, currency: currency ?? "EUR", priceMissing };
-  }, [materialItems, materialPicks]);
-
-  const placedFurnitureCount = furniture.length;
-  const brandedOpeningCount = openings.filter((o) => !!o.productVariantId).length;
-  const totalSourceCount =
-    placedFurnitureCount + brandedOpeningCount + selectedMaterialCount;
-  const dialogEmpty = totalSourceCount === 0;
+    return { sum, currency, known };
+  }, [groups]);
 
   const mutation = useMutation({
-    mutationFn: () => {
-      const manualLines = Object.entries(materialPicks)
-        .filter(([, pick]) => pick.selected && pick.quantity > 0)
-        .map(([variantId, pick]) => {
-          const def = materialItems.find((m) => m.variantId === variantId);
-          return {
-            productVariantId: variantId,
-            quantity: pick.quantity,
-            quantityUnit: quantityUnitToken(def?.unitOfSale),
-          };
-        });
-      return api.createQuote(
-        projectId,
-        message.trim() || null,
-        manualLines
-      );
-    },
+    // Backend recomputes everything from the persisted scene; no manualLines needed.
+    mutationFn: () => api.createQuote(projectId, message.trim() || null),
     onSuccess: (detail) => {
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       onClose();
@@ -232,7 +198,8 @@ export function RequestQuoteDialog({
 
   if (!open) return null;
 
-  const submitDisabled = mutation.isPending || dialogEmpty;
+  const sceneEmpty = totalLines === 0;
+  const submitDisabled = mutation.isPending || sceneEmpty;
 
   return (
     <div
@@ -257,172 +224,98 @@ export function RequestQuoteDialog({
         </header>
 
         <div className="p-5 space-y-5">
-          {dialogEmpty ? (
+          {sceneEmpty ? (
             <p className="font-mono text-xs text-dizajno-muted">
-              Add furniture, attach a branded door/window, or pick a material below
-              to request a quote.
+              Add furniture, attach a branded door/window, or assign flooring/paint
+              in the designer to request a quote. Materials and finishes are picked
+              by selecting a wall or floor and using its properties panel.
             </p>
           ) : (
             <div>
               <p className="font-mono text-[10px] tracking-widest uppercase text-dizajno-muted mb-2">
-                Suppliers ({groups.groups.length})
+                Summary ({groups.groups.length} supplier{groups.groups.length === 1 ? "" : "s"} · {totalLines} line{totalLines === 1 ? "" : "s"})
               </p>
-              <ul className="space-y-1.5">
-                {groups.groups.map((g) => {
-                  const lineCount = g.items.length + g.brandedOpenings.length;
-                  return (
-                    <li
-                      key={g.supplierId}
-                      className="flex items-center justify-between rounded border border-white/10 bg-black/30 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-mono text-xs text-dizajno-text truncate">
-                          {g.supplierName}
-                        </p>
-                        <p className="font-mono text-[10px] tracking-widest text-dizajno-muted/70 uppercase mt-0.5">
-                          {lineCount} {lineCount === 1 ? "item" : "items"}
-                          {g.brandedOpenings.length > 0 && (
-                            <>
-                              {" "}· {g.brandedOpenings.length} fixture
-                              {g.brandedOpenings.length === 1 ? "" : "s"}
-                            </>
-                          )}
-                        </p>
-                      </div>
-                      <p className="font-mono text-xs text-dizajno-text whitespace-nowrap ml-3">
+              <ul className="space-y-3">
+                {groups.groups.map((g) => (
+                  <li
+                    key={g.supplierId}
+                    className="rounded border border-white/10 bg-black/30 px-3 py-2"
+                  >
+                    <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                      <p className="font-mono text-xs text-dizajno-text truncate">
+                        {g.supplierName}
+                      </p>
+                      <p className="font-mono text-xs text-emerald-400/90 whitespace-nowrap">
                         {g.subtotal == null
                           ? "— est."
                           : formatPrice(g.subtotal, g.currency)}
                       </p>
-                    </li>
-                  );
-                })}
+                    </div>
+                    <ul className="space-y-0.5">
+                      {g.items.map(({ item, def }) => (
+                        <li
+                          key={item.id}
+                          className="flex items-baseline justify-between gap-2"
+                        >
+                          <span className="font-mono text-[11px] text-dizajno-muted truncate">
+                            {def.label} × 1
+                          </span>
+                          <span className="font-mono text-[11px] text-dizajno-muted whitespace-nowrap">
+                            {def.basePrice == null
+                              ? "—"
+                              : formatPrice(def.basePrice, def.currency ?? "EUR")}
+                          </span>
+                        </li>
+                      ))}
+                      {g.brandedOpenings.map(({ openingId, def }) => (
+                        <li
+                          key={openingId}
+                          className="flex items-baseline justify-between gap-2"
+                        >
+                          <span className="font-mono text-[11px] text-dizajno-muted truncate">
+                            {def.label} × 1
+                          </span>
+                          <span className="font-mono text-[11px] text-dizajno-muted whitespace-nowrap">
+                            {def.basePrice == null
+                              ? "—"
+                              : formatPrice(def.basePrice, def.currency ?? "EUR")}
+                          </span>
+                        </li>
+                      ))}
+                      {g.materials.map(({ def, quantity, subtotal }) => (
+                        <li
+                          key={def.variantId}
+                          className="flex items-baseline justify-between gap-2"
+                        >
+                          <span className="font-mono text-[11px] text-dizajno-muted truncate">
+                            {def.label} · {quantity} {unitLabel(def.unitOfSale)}
+                            {def.wasteFactor && def.wasteFactor > 0 && (
+                              <> (+{Math.round((def.wasteFactor ?? 0) * 100)}% waste)</>
+                            )}
+                          </span>
+                          <span className="font-mono text-[11px] text-dizajno-muted whitespace-nowrap">
+                            {subtotal == null
+                              ? "—"
+                              : formatPrice(subtotal, def.currency ?? "EUR")}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
               </ul>
               {groups.orphans.length > 0 && (
                 <p className="mt-2 font-mono text-[10px] text-amber-400/80">
-                  {groups.orphans.length} item(s) cannot be quoted — the catalog
+                  {groups.orphans.length} placed item(s) cannot be quoted — the catalog
                   couldn&apos;t resolve their supplier. They&apos;ll be skipped.
                 </p>
               )}
-            </div>
-          )}
-
-          {materialItems.length > 0 && (
-            <div>
-              <p className="font-mono text-[10px] tracking-widest uppercase text-dizajno-muted mb-1">
-                Materials & finishes
-              </p>
-              <p className="font-mono text-[10px] text-dizajno-muted/70 mb-2">
-                Floor area {areas.floorAreaM2.toFixed(1)} m² · Paintable walls{" "}
-                {areas.paintableWallM2.toFixed(1)} m²
-              </p>
-              <ul className="space-y-1.5">
-                {materialItems.map((item) => {
-                  if (!item.variantId) return null;
-                  const pick = materialPicks[item.variantId] ?? {
-                    selected: false,
-                    quantity: 0,
-                  };
-                  const suggested = suggestMaterialQuantity(
-                    item.unitOfSale,
-                    item.coverageRate ?? null,
-                    item.wasteFactor,
-                    areas
-                  );
-                  const unit = unitLabel(item.unitOfSale);
-                  const currency = item.currency ?? "EUR";
-                  const perUnitLabel =
-                    item.basePrice == null
-                      ? null
-                      : `${formatPriceCompact(item.basePrice, currency)}/${unit}`;
-                  const lineSubtotal =
-                    item.basePrice != null && pick.selected && pick.quantity > 0
-                      ? item.basePrice * pick.quantity
-                      : null;
-                  return (
-                    <li
-                      key={item.variantId}
-                      className="rounded border border-white/10 bg-black/30 px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={pick.selected}
-                          onChange={(e) =>
-                            setMaterialPicks((prev) => ({
-                              ...prev,
-                              [item.variantId!]: {
-                                selected: e.target.checked,
-                                quantity:
-                                  e.target.checked && pick.quantity <= 0
-                                    ? suggested ?? 0
-                                    : pick.quantity,
-                              },
-                            }))
-                          }
-                          className="accent-dizajno-accent"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <p className="font-mono text-xs text-dizajno-text truncate">
-                              {item.label}
-                            </p>
-                            {perUnitLabel && (
-                              <p className="font-mono text-[11px] text-dizajno-text/80 whitespace-nowrap">
-                                {perUnitLabel}
-                              </p>
-                            )}
-                          </div>
-                          <p className="font-mono text-[10px] tracking-widest text-dizajno-muted/70 uppercase mt-0.5">
-                            {suggested == null
-                              ? "Enter quantity manually"
-                              : `Suggested ${suggested} ${unit}`}
-                            {item.wasteFactor && item.wasteFactor > 0 && suggested != null && (
-                              <> · +{Math.round((item.wasteFactor ?? 0) * 100)}% waste</>
-                            )}
-                          </p>
-                        </div>
-                        <input
-                          type="number"
-                          min={0}
-                          step={item.unitOfSale === "Liter" ? 1 : 0.1}
-                          value={pick.quantity}
-                          disabled={!pick.selected}
-                          onChange={(e) =>
-                            setMaterialPicks((prev) => ({
-                              ...prev,
-                              [item.variantId!]: {
-                                selected: prev[item.variantId!]?.selected ?? false,
-                                quantity: Math.max(0, parseFloat(e.target.value) || 0),
-                              },
-                            }))
-                          }
-                          className="w-20 rounded border border-white/10 bg-black/40 px-2 py-1 text-sm text-dizajno-text disabled:opacity-50 focus:border-white/40 focus:outline-none"
-                        />
-                        <span className="font-mono text-[10px] text-dizajno-muted w-8 text-center">
-                          {unit}
-                        </span>
-                      </div>
-                      {lineSubtotal != null && (
-                        <p className="font-mono text-[11px] text-emerald-400/80 text-right mt-1.5">
-                          = {formatPrice(lineSubtotal, currency)}
-                        </p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-              {materialsSubtotal && (materialsSubtotal.sum > 0 || materialsSubtotal.priceMissing) && (
-                <p className="mt-2 font-mono text-[11px] text-dizajno-text text-right">
-                  Materials subtotal:{" "}
+              {grandTotal.known && groups.groups.length > 1 && (
+                <p className="mt-3 font-mono text-xs text-dizajno-text text-right">
+                  Estimated total:{" "}
                   <span className="text-emerald-400/90">
-                    {formatPrice(materialsSubtotal.sum, materialsSubtotal.currency)}
+                    {formatPrice(grandTotal.sum, grandTotal.currency)}
                   </span>
-                  {materialsSubtotal.priceMissing && (
-                    <span className="text-amber-400/80">
-                      {" "}· some items missing price
-                    </span>
-                  )}
                 </p>
               )}
             </div>
@@ -475,21 +368,6 @@ function formatPrice(value: number, currency: string): string {
   }
 }
 
-/**
- * Compact price formatter that keeps the decimal for small per-unit prices
- * (e.g. €4/L paint) but strips trailing zeros for round numbers. Used in the
- * materials section so the price-tag chip stays short.
- */
-function formatPriceCompact(value: number, currency: string): string {
-  const decimals = value < 10 ? 2 : 0;
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: decimals,
-    }).format(value);
-  } catch {
-    return `${value.toFixed(decimals)} ${currency}`;
-  }
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
 }

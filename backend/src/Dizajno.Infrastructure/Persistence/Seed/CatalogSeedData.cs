@@ -34,6 +34,7 @@ public static class CatalogSeedData
         decimal? CoverageRate = null,
         decimal WasteFactor = 0m,
         decimal? BasePrice = null,
+        string? TextureUrl = null,
         string? ModelUrl = null,
         IReadOnlyList<CollisionBoxSeed>? CollisionBoxes = null,
         IReadOnlyDictionary<string, string>? MaterialSlots = null,
@@ -249,7 +250,8 @@ public static class CatalogSeedData
             UnitOfSale: UnitOfSale.Liter,
             CoverageRate: 10m,
             WasteFactor: 0.10m,
-            BasePrice: 4m),
+            BasePrice: 4m,
+            TextureUrl: "/textures/interior-matt-paint.jpg"),
 
         new ItemSeed(
             Type: "premium-eco-paint",
@@ -265,7 +267,8 @@ public static class CatalogSeedData
             // sharply once a room's wall area is plugged in.
             CoverageRate: 12m,
             WasteFactor: 0.10m,
-            BasePrice: 9m),
+            BasePrice: 9m,
+            TextureUrl: "/textures/premium-eco-paint.jpg"),
 
         new ItemSeed(
             Type: "exterior-weather-paint",
@@ -279,7 +282,8 @@ public static class CatalogSeedData
             UnitOfSale: UnitOfSale.Liter,
             CoverageRate: 8m,
             WasteFactor: 0.10m,
-            BasePrice: 6m),
+            BasePrice: 6m,
+            TextureUrl: "/textures/exterior-weather-paint.jpg"),
 
         new ItemSeed(
             Type: "oak-laminate-flooring",
@@ -293,7 +297,8 @@ public static class CatalogSeedData
             Family: ProductFamily.BuildingMaterial,
             UnitOfSale: UnitOfSale.SquareMeter,
             WasteFactor: 0.05m,
-            BasePrice: 18m),
+            BasePrice: 18m,
+            TextureUrl: "/textures/oak-laminate-flooring.jpg"),
 
         new ItemSeed(
             Type: "budget-vinyl-flooring",
@@ -306,7 +311,8 @@ public static class CatalogSeedData
             Family: ProductFamily.BuildingMaterial,
             UnitOfSale: UnitOfSale.SquareMeter,
             WasteFactor: 0.07m,
-            BasePrice: 11m),
+            BasePrice: 11m,
+            TextureUrl: "/textures/budget-vinyl-flooring.jpg"),
 
         new ItemSeed(
             Type: "engineered-hardwood",
@@ -319,7 +325,8 @@ public static class CatalogSeedData
             Family: ProductFamily.BuildingMaterial,
             UnitOfSale: UnitOfSale.SquareMeter,
             WasteFactor: 0.05m,
-            BasePrice: 45m),
+            BasePrice: 45m,
+            TextureUrl: "/textures/engineered-hardwood.jpg"),
     ];
 
     // ── SVG previews (verbatim from frontend/src/utils/furnitureCatalog.ts) ─

@@ -17,10 +17,16 @@ public sealed class WallConfiguration : IEntityTypeConfiguration<Wall>
         b.Property(x => x.Height).HasColumnType("numeric(6,3)");
 
         b.HasIndex(x => x.ProjectId);
+        b.HasIndex(x => x.PaintProductVariantId);
 
         b.HasOne(x => x.Project)
             .WithMany(p => p.Walls)
             .HasForeignKey(x => x.ProjectId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        b.HasOne(x => x.PaintProductVariant)
+            .WithMany()
+            .HasForeignKey(x => x.PaintProductVariantId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

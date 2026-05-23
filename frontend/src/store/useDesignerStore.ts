@@ -25,9 +25,16 @@ interface DesignerActions {
     floors: FloorData[],
     openings?: OpeningData[]
   ) => void;
-  updateWall: (id: string, changes: Partial<Pick<WallData, "thickness" | "height">>) => void;
+  updateWall: (
+    id: string,
+    changes: Partial<Pick<WallData, "thickness" | "height" | "paintVariantId">>
+  ) => void;
   setDrawingFrom: (point: [number, number] | null) => void;
   setFloors: (floors: FloorData[]) => void;
+  updateFloor: (
+    id: string,
+    changes: Partial<Pick<FloorData, "flooringVariantId">>
+  ) => void;
 
   // Furniture actions
   placeFurniture: (item: FurnitureData) => void;
@@ -127,6 +134,9 @@ export const useDesignerStore = create<DesignerStore>()(
       })),
       setDrawingFrom: (point) => set({ drawingFrom: point }),
       setFloors: (floors) => set({ floors }),
+      updateFloor: (id, changes) => set((s) => ({
+        floors: s.floors.map((f) => f.id === id ? { ...f, ...changes } : f),
+      })),
 
       // Furniture actions
       placeFurniture: (item) =>

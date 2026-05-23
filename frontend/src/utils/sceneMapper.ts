@@ -62,11 +62,13 @@ export function mapStoreToApiScene(
     endZ: w.end[1],
     thickness: w.thickness,
     height: w.height,
+    paintProductVariantId: w.paintVariantId ?? null,
   }));
 
   const floors: FloorApi[] = state.floors.map((f) => ({
     id: f.id,
     vertices: f.vertices.map(([x, z]) => [x, z]),
+    flooringProductVariantId: f.flooringVariantId ?? null,
   }));
 
   const openings: OpeningApi[] = state.openings.map((o) => ({
@@ -129,11 +131,13 @@ export function mapApiSceneToStore(
     end: [w.endX, w.endZ],
     thickness: w.thickness,
     height: w.height,
+    paintVariantId: w.paintProductVariantId ?? null,
   }));
 
   const floors: FloorData[] = api.floors.map((f) => ({
     id: f.id,
     vertices: f.vertices.map(([x, z]) => [x, z] as [number, number]),
+    flooringVariantId: f.flooringProductVariantId ?? null,
   }));
 
   const openings: OpeningData[] = api.openings.map((o) => ({

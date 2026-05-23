@@ -46,11 +46,13 @@ public sealed record WallDto(
     decimal EndX,
     decimal EndZ,
     decimal Thickness,
-    decimal Height);
+    decimal Height,
+    Guid? PaintProductVariantId = null);
 
 public sealed record FloorDto(
     Guid Id,
-    IReadOnlyList<IReadOnlyList<decimal>> Vertices);
+    IReadOnlyList<IReadOnlyList<decimal>> Vertices,
+    Guid? FlooringProductVariantId = null);
 
 public sealed record OpeningDto(
     Guid Id,

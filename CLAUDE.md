@@ -157,11 +157,13 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 - The frontend conditionally surfaces the `/supplier/quotes` nav by reading `useAuthStore().user?.supplierMemberships` — empty list → no nav, no inbox.
 - The full supplier portal (self-serve product upload, member-management UI) lands in Phase 7 and will replace the admin binding endpoint with proper UX.
 
-### Catalog families & branded fixtures (Phase 6)
-- The catalog covers five families (`Furniture`, `Lighting`, `Appliance`, `BuildingMaterial`, `Fixture`). Today the seed ships 12 furniture rows + 2 fixtures + 2 building materials; lighting and appliance entries are deferred until GLB models exist.
-- `FurnitureItemDto` (frontend `FurnitureCatalogItem`) carries `family`, `unitOfSale`, `coverageRate`, `wasteFactor`. The frontend uses these to (1) hide non-furniture items from the place-furniture sidebar tabs, (2) populate the branded-fixture picker on a selected opening, and (3) drive the auto-quantity suggestion in the request-quote materials section.
-- A branded opening (`OpeningData.productVariantId` non-null) renders with the variant's `color` overriding the default frame color in `WallOpening.tsx`. No GLB-in-hole rendering yet — that's a future increment.
-- The request-quote dialog can submit `manualLines` for materials that aren't placed on the canvas (paint, flooring). Quantities are computed from room geometry via `frontend/src/utils/areaCalc.ts` and the user can override them before submit.
+### Catalog families & scene materials (Phase 6 + 6.5)
+- The catalog covers five families (`Furniture`, `Lighting`, `Appliance`, `BuildingMaterial`, `Fixture`). Today the seed ships 12 furniture rows + 2 fixtures + 6 building materials (3 paint tiers + 3 flooring tiers); lighting and appliance entries are deferred until GLB models exist.
+- `FurnitureItemDto` (frontend `FurnitureCatalogItem`) carries `family`, `unitOfSale`, `coverageRate`, `wasteFactor`, `basePrice`, `currency`, `textureUrl`. The frontend uses these to (1) hide non-furniture items from the place-furniture sidebar tabs, (2) populate the branded-fixture picker on a selected opening, and (3) populate the per-floor/wall material pickers + drive the auto-quantity math at quote time.
+- **Branded openings** (`OpeningData.productVariantId`): variant color overrides the default frame color in `WallOpening.tsx`.
+- **Scene materials (Phase 6.5)**: walls and floors carry optional FKs to a Paint or Flooring variant (`paint_product_variant_id`, `flooring_product_variant_id`). Floors are selectable (`select` mode); a "Paint" picker lives in wall properties and a "Flooring" picker lives in floor properties. `FloorMesh` + `WallMesh` share `hooks/useMaterialTexture.ts` to load the variant's `textureUrl` via `THREE.TextureLoader` with `RepeatWrapping`; missing textures fall back to `variant.color`.
+- **Quote fan-out** aggregates per-material across the whole project — one quote line per distinct flooring/paint variant. Floor area = shoelace; paintable wall = `length × height − Σ(opening areas on that wall)`. Quantities apply the product's `wasteFactor` automatically.
+- **Texture image files** live in `frontend/public/textures/{slug}.jpg`. They're user-provided assets — the seed writes the URL but doesn't carry the JPGs. Missing files = silent fallback to color, never a fatal error.
 
 ### State Management
 All designer state lives in `src/store/useDesignerStore.ts` (Zustand). Undo/redo is provided by Zundo's `temporal` middleware. The store manages walls, floors, furniture, selections, modes, and UI settings.

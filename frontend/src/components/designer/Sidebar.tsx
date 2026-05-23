@@ -31,6 +31,7 @@ import {
   getFurnitureDef,
 } from "@/utils/furnitureCatalog";
 import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
+import { polygonArea } from "@/utils/areaCalc";
 import type { FurnitureCatalogItem } from "@/types/designer";
 import Button from "@/components/ui/Button";
 
@@ -87,11 +88,15 @@ function PropertiesSection() {
   if (selectedIds.length !== 1) return null;
   const selectedId = selectedIds[0];
 
+  const floors = useDesignerStore((s) => s.floors);
+  const updateFloor = useDesignerStore((s) => s.updateFloor);
+
   const selectedFurniture = furniture.find((f) => f.id === selectedId);
   const selectedWall = walls.find((w) => w.id === selectedId);
   const selectedOpening = openings.find((o) => o.id === selectedId);
+  const selectedFloor = floors.find((f) => f.id === selectedId);
 
-  if (!selectedFurniture && !selectedWall && !selectedOpening) return null;
+  if (!selectedFurniture && !selectedWall && !selectedOpening && !selectedFloor) return null;
 
   const def = selectedFurniture ? getFurnitureDef(selectedFurniture.type) : null;
 
@@ -105,6 +110,14 @@ function PropertiesSection() {
           item.family === "Fixture" &&
           item.category === (selectedOpening.type === "door" ? "Doors" : "Windows")
       )
+    : [];
+
+  // Phase 6.5: paint variants for the selected wall, flooring variants for the selected floor.
+  const paintOptions: FurnitureCatalogItem[] = selectedWall
+    ? liveCatalog.filter((item) => item.family === "BuildingMaterial" && item.category === "Paint")
+    : [];
+  const flooringOptions: FurnitureCatalogItem[] = selectedFloor
+    ? liveCatalog.filter((item) => item.family === "BuildingMaterial" && item.category === "Flooring")
     : [];
 
   function handleSetRotation(radians: number) {
@@ -135,7 +148,13 @@ function PropertiesSection() {
       >
         <div className="min-w-0">
           <span className="text-xs font-semibold text-dizajno-text truncate block">
-            {selectedWall ? "Wall" : selectedOpening ? (selectedOpening.type === "door" ? "Door" : "Window") : (def?.label ?? selectedFurniture!.type)}
+            {selectedWall
+              ? "Wall"
+              : selectedOpening
+                ? (selectedOpening.type === "door" ? "Door" : "Window")
+                : selectedFloor
+                  ? "Floor"
+                  : (def?.label ?? selectedFurniture!.type)}
           </span>
           <span className="text-[10px] text-dizajno-muted">Properties</span>
         </div>
@@ -210,6 +229,35 @@ function PropertiesSection() {
                 />
               </div>
 
+              {/* Phase 6.5: paint picker. Selecting a variant tints the wall
+                  with the variant's texture/color and adds it as an aggregated
+                  paint quote line on submit. */}
+              {paintOptions.length > 0 && (
+                <div className="px-4 py-2 border-t border-dizajno-border">
+                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                    Paint (optional)
+                  </h4>
+                  <select
+                    value={selectedWall.paintVariantId ?? ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      updateWall(selectedWall.id, { paintVariantId: value ? value : null });
+                    }}
+                    className="w-full text-xs bg-dizajno-elevated border border-dizajno-border rounded px-2 py-1 text-dizajno-text cursor-pointer focus:outline-none focus:border-dizajno-accent"
+                  >
+                    <option value="">None (unpainted)</option>
+                    {paintOptions.map((option) =>
+                      option.variantId ? (
+                        <option key={option.variantId} value={option.variantId}>
+                          {option.label}
+                          {option.basePrice != null ? ` — €${option.basePrice}/L` : ""}
+                        </option>
+                      ) : null
+                    )}
+                  </select>
+                </div>
+              )}
+
               {/* Delete wall */}
               <div className="px-4 pt-2">
                 <button
@@ -221,6 +269,45 @@ function PropertiesSection() {
                   Delete Wall
                 </button>
               </div>
+            </>
+          )}
+
+          {/* ── Floor properties (Phase 6.5) ── */}
+          {selectedFloor && (
+            <>
+              <div className="px-4 py-2 border-t border-dizajno-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                  Area
+                </h4>
+                <span className="text-xs text-dizajno-text font-mono">
+                  {polygonArea(selectedFloor.vertices).toFixed(1)} m²
+                </span>
+              </div>
+              {flooringOptions.length > 0 && (
+                <div className="px-4 py-2 border-t border-dizajno-border">
+                  <h4 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted mb-1.5">
+                    Flooring (optional)
+                  </h4>
+                  <select
+                    value={selectedFloor.flooringVariantId ?? ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      updateFloor(selectedFloor.id, { flooringVariantId: value ? value : null });
+                    }}
+                    className="w-full text-xs bg-dizajno-elevated border border-dizajno-border rounded px-2 py-1 text-dizajno-text cursor-pointer focus:outline-none focus:border-dizajno-accent"
+                  >
+                    <option value="">None (bare floor)</option>
+                    {flooringOptions.map((option) =>
+                      option.variantId ? (
+                        <option key={option.variantId} value={option.variantId}>
+                          {option.label}
+                          {option.basePrice != null ? ` — €${option.basePrice}/m²` : ""}
+                        </option>
+                      ) : null
+                    )}
+                  </select>
+                </div>
+              )}
             </>
           )}
 

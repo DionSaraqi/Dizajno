@@ -31,7 +31,8 @@ public sealed record FurnitureItemDto(
     string Family,
     string UnitOfSale,
     decimal? CoverageRate,
-    decimal WasteFactor);
+    decimal WasteFactor,
+    string? TextureUrl);
 
 public sealed record CollisionBoxDto(
     decimal OffsetX,

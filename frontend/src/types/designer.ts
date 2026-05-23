@@ -6,11 +6,22 @@ export interface WallData {
   end: [number, number];
   thickness: number;
   height: number;
+  /**
+   * Phase 6.5: optional FK to a Paint variant in the catalog. When set,
+   * the wall renders with the variant's texture/color in 3D and shows up
+   * as a quote line (aggregated with other walls sharing the same paint).
+   */
+  paintVariantId?: string | null;
 }
 
 export interface FloorData {
   id: string;
   vertices: [number, number][];
+  /**
+   * Phase 6.5: optional FK to a Flooring variant in the catalog. Same
+   * mechanics as `WallData.paintVariantId` but for floor polygons.
+   */
+  flooringVariantId?: string | null;
 }
 
 export interface FurnitureData {
@@ -147,6 +158,12 @@ export interface FurnitureCatalogItem {
   coverageRate?: number | null;
   /** Suggested overage factor for area/volume materials (e.g. 0.10 = 10%). */
   wasteFactor?: number;
+  /**
+   * Optional URL to a tileable texture image. Used by `FloorMesh` and
+   * `WallMesh` to skin floors / walls that have this variant assigned.
+   * When null, the renderer falls back to `color`.
+   */
+  textureUrl?: string | null;
 }
 
 export type OpeningType = "door" | "window";

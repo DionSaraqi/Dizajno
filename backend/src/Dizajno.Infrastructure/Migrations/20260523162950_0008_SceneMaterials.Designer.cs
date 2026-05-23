@@ -3,6 +3,7 @@ using System;
 using Dizajno.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Dizajno.Infrastructure.Migrations
 {
     [DbContext(typeof(DizajnoDbContext))]
-    partial class DizajnoDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260523162950_0008_SceneMaterials")]
+    partial class _0008_SceneMaterials
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

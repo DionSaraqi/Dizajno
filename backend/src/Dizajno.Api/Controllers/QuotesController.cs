@@ -132,6 +132,98 @@ public sealed class QuotesController : ControllerBase
                 o.Family, o.SupplierId, o.SupplierSlug, o.SupplierName)
         }).ToList();
 
+        // Phase 6.5: scene-assigned materials. Floors with a flooring variant +
+        // walls with a paint variant produce aggregated quote lines (one row per
+        // distinct material across the whole project). Quantities are computed
+        // from polygon area / wall surface, the variant's WasteFactor, and the
+        // paint CoverageRate.
+        var flooredFloorsRaw = await _db.Floors
+            .AsNoTracking()
+            .Where(f => f.ProjectId == projectId && f.FlooringProductVariantId != null)
+            .Select(f => new
+            {
+                FlooringProductVariantId = f.FlooringProductVariantId!.Value,
+                f.Vertices
+            })
+            .ToListAsync(cancellationToken);
+
+        var paintedWallsRaw = await _db.Walls
+            .AsNoTracking()
+            .Where(w => w.ProjectId == projectId && w.PaintProductVariantId != null)
+            .Select(w => new
+            {
+                WallId = w.Id,
+                PaintProductVariantId = w.PaintProductVariantId!.Value,
+                w.StartX,
+                w.StartZ,
+                w.EndX,
+                w.EndZ,
+                w.Height
+            })
+            .ToListAsync(cancellationToken);
+
+        // Openings on painted walls — used to subtract door/window area from the
+        // paintable surface so the supplier doesn't get billed to paint thin air.
+        var paintedWallIds = paintedWallsRaw.Select(w => w.WallId).ToList();
+        var openingAreaByWall = new Dictionary<Guid, decimal>();
+        if (paintedWallIds.Count > 0)
+        {
+            var openingRows = await _db.Openings
+                .AsNoTracking()
+                .Where(o => paintedWallIds.Contains(o.WallId))
+                .Select(o => new { o.WallId, o.Width, o.Height })
+                .ToListAsync(cancellationToken);
+            foreach (var group in openingRows.GroupBy(o => o.WallId))
+            {
+                openingAreaByWall[group.Key] = group.Sum(o => o.Width * o.Height);
+            }
+        }
+
+        // Load variant + product metadata for every material variant referenced.
+        var materialVariantIds = flooredFloorsRaw.Select(f => f.FlooringProductVariantId)
+            .Concat(paintedWallsRaw.Select(w => w.PaintProductVariantId))
+            .Distinct()
+            .ToList();
+        var materialMeta = new Dictionary<Guid, MaterialMeta>();
+        if (materialVariantIds.Count > 0)
+        {
+            var rows = await _db.ProductVariants
+                .AsNoTracking()
+                .Where(v => materialVariantIds.Contains(v.Id))
+                .Select(v => new
+                {
+                    VariantId = v.Id,
+                    v.Sku,
+                    VariantName = v.Name,
+                    v.Width,
+                    v.Depth,
+                    v.Height,
+                    v.Currency,
+                    v.BasePrice,
+                    ProductId = v.Product.Id,
+                    ProductSlug = v.Product.Slug,
+                    ProductName = v.Product.Name,
+                    Family = v.Product.Family,
+                    v.Product.CoverageRate,
+                    v.Product.WasteFactor,
+                    SupplierId = v.Product.SupplierId,
+                    SupplierSlug = v.Product.Supplier.Slug,
+                    SupplierName = v.Product.Supplier.Name
+                })
+                .ToListAsync(cancellationToken);
+            foreach (var row in rows)
+            {
+                materialMeta[row.VariantId] = new MaterialMeta(
+                    new VariantSnapshotSource(
+                        row.VariantId, row.Sku, row.VariantName,
+                        row.Width, row.Depth, row.Height,
+                        row.Currency, row.BasePrice, row.ProductId, row.ProductSlug, row.ProductName,
+                        row.Family, row.SupplierId, row.SupplierSlug, row.SupplierName),
+                    row.CoverageRate,
+                    row.WasteFactor);
+            }
+        }
+
         // Phase 6: manual lines (paint, flooring, etc.) submitted by the client. Each
         // must reference a Published variant before being inserted; bad ids return 400.
         var manualLines = request.ManualLines ?? Array.Empty<ManualQuoteLineRequest>();
@@ -197,10 +289,12 @@ public sealed class QuotesController : ControllerBase
             }
         }
 
-        if (placed.Count == 0 && brandedOpenings.Count == 0 && manualLines.Count == 0)
+        if (placed.Count == 0 && brandedOpenings.Count == 0 && manualLines.Count == 0
+            && flooredFloorsRaw.Count == 0 && paintedWallsRaw.Count == 0)
         {
             return Problem(
-                "Quote must include at least one placed item, branded opening, or manual line.",
+                "Quote must include at least one placed item, branded opening, " +
+                "material assignment, or manual line.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
 
@@ -259,6 +353,54 @@ public sealed class QuotesController : ControllerBase
                 Variant: variant,
                 Quantity: line.Quantity,
                 QuantityUnit: line.QuantityUnit.Trim(),
+                MaterialOverrides: null,
+                ScaledWidth: null,
+                ScaledDepth: null,
+                ScaledHeight: null,
+                IsCustomSize: false));
+        }
+
+        // Phase 6.5 — aggregated flooring lines (one per distinct variant).
+        foreach (var group in flooredFloorsRaw.GroupBy(f => f.FlooringProductVariantId))
+        {
+            if (!materialMeta.TryGetValue(group.Key, out var meta)) continue;
+            var totalAreaM2 = group.Sum(f => PolygonArea(f.Vertices));
+            if (totalAreaM2 <= 0m) continue;
+            var withWaste = totalAreaM2 * (1m + meta.WasteFactor);
+            pendingLines.Add(new PendingLine(
+                Variant: meta.Source,
+                Quantity: Math.Round(withWaste, 2, MidpointRounding.AwayFromZero),
+                QuantityUnit: "m2",
+                MaterialOverrides: null,
+                ScaledWidth: null,
+                ScaledDepth: null,
+                ScaledHeight: null,
+                IsCustomSize: false));
+        }
+
+        // Phase 6.5 — aggregated paint lines. Paintable surface = wall length × height
+        // minus opening areas on that wall; liters = paintable / coverage × (1 + waste),
+        // rounded up to whole cans.
+        foreach (var group in paintedWallsRaw.GroupBy(w => w.PaintProductVariantId))
+        {
+            if (!materialMeta.TryGetValue(group.Key, out var meta)) continue;
+            if (meta.CoverageRate is not { } coverage || coverage <= 0m) continue;
+            decimal paintableM2 = 0m;
+            foreach (var wall in group)
+            {
+                var dx = wall.EndX - wall.StartX;
+                var dz = wall.EndZ - wall.StartZ;
+                var length = (decimal)Math.Sqrt((double)(dx * dx + dz * dz));
+                var grossArea = length * wall.Height;
+                var openingArea = openingAreaByWall.GetValueOrDefault(wall.WallId, 0m);
+                paintableM2 += Math.Max(0m, grossArea - openingArea);
+            }
+            if (paintableM2 <= 0m) continue;
+            var litersRaw = paintableM2 / coverage * (1m + meta.WasteFactor);
+            pendingLines.Add(new PendingLine(
+                Variant: meta.Source,
+                Quantity: Math.Ceiling(litersRaw),
+                QuantityUnit: "L",
                 MaterialOverrides: null,
                 ScaledWidth: null,
                 ScaledDepth: null,
@@ -358,6 +500,45 @@ public sealed class QuotesController : ControllerBase
         decimal? ScaledDepth,
         decimal? ScaledHeight,
         bool IsCustomSize);
+
+    /// <summary>
+    /// Variant projection enriched with the product's CoverageRate (m²/L for
+    /// paint) and WasteFactor — both needed to compute scene-assigned material
+    /// quantities at fan-out time.
+    /// </summary>
+    private sealed record MaterialMeta(
+        VariantSnapshotSource Source,
+        decimal? CoverageRate,
+        decimal WasteFactor);
+
+    /// <summary>
+    /// Shoelace area of a jsonb-encoded polygon (<c>[[x,z], …]</c>). Returns 0
+    /// for empty or degenerate polygons so a malformed Floor row can't kill
+    /// the whole quote.
+    /// </summary>
+    internal static decimal PolygonArea(string verticesJson)
+    {
+        if (string.IsNullOrWhiteSpace(verticesJson)) return 0m;
+        List<List<decimal>>? verts;
+        try
+        {
+            verts = JsonSerializer.Deserialize<List<List<decimal>>>(verticesJson, JsonOpts);
+        }
+        catch
+        {
+            return 0m;
+        }
+        if (verts is null || verts.Count < 3) return 0m;
+        decimal sum = 0m;
+        for (var i = 0; i < verts.Count; i++)
+        {
+            var a = verts[i];
+            var b = verts[(i + 1) % verts.Count];
+            if (a.Count < 2 || b.Count < 2) continue;
+            sum += a[0] * b[1] - b[0] * a[1];
+        }
+        return Math.Abs(sum) / 2m;
+    }
 
     // ── GET /api/quotes ────────────────────────────────────────────────────
 

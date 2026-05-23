@@ -51,7 +51,7 @@ backend/
 │   │   │   ├── DizajnoDbContext.cs
 │   │   │   ├── Configurations/
 │   │   │   └── Seed/               DataSeeder + CatalogSeedData
-│   │   └── Migrations/             0001_Foundation, 0002_RefreshTokens, 0003_ProductPreviewSvg, 0004_Projects, 0005_Sharing, 0006_CustomizerTextures, 0007_Quoting
+│   │   └── Migrations/             0001_Foundation, …, 0007_Quoting, 0008_SceneMaterials
 │   └── Dizajno.Api/                ASP.NET Core host
 │       ├── Program.cs              wiring (Swagger, CORS, JWT, seeder invocation)
 │       ├── Controllers/            AuthController, CatalogController
@@ -246,15 +246,20 @@ Requester side — all endpoints require a bearer token, ownership 404s on forei
 ids. See [QuotesController.cs](src/Dizajno.Api/Controllers/QuotesController.cs).
 
 - `POST /api/projects/{id}/quotes` — `{ message?, manualLines? }` → 201 `QuoteDetailDto`.
-  Folds three sources into a single line stream and groups by `variant.product.supplier_id`:
+  Folds five sources into a single line stream and groups by `variant.product.supplier_id`:
   - the project's `placed_items` (Phase 5)
   - `openings WHERE product_variant_id IS NOT NULL` (Phase 6 branded fixtures)
   - the optional `manualLines: [{ productVariantId, quantity, quantityUnit }]` array
-    (Phase 6 — paint, flooring, anything not placed in the scene)
+    (Phase 6 — preserved as a legacy API surface; the Phase-6.5 dialog no longer uses it)
+  - `floors WHERE flooring_product_variant_id IS NOT NULL` — aggregated one line per
+    distinct flooring variant; `quantity = Σ(floorArea) × (1 + wasteFactor)` m²
+  - `walls WHERE paint_product_variant_id IS NOT NULL` — aggregated one line per
+    distinct paint variant; `quantity = ceil(Σ(paintableWallArea) / coverageRate × (1 + wasteFactor))` L,
+    where `paintableWallArea = length × height − Σ(opening areas on that wall)`
 
   Inserts one `Quote` parent + N `QuoteRequest` rows + M `QuoteLine` rows in one
   transaction. Each line gets a frozen `variant_snapshot` jsonb so the supplier
-  view stays meaningful even if the catalog changes. 400 if **all three** sources
+  view stays meaningful even if the catalog changes. 400 if **all five** sources
   are empty. 400 if any manual-line `productVariantId` is missing or its product
   isn't `Published`.
 - `GET /api/quotes?status=&skip=&take=` — paginated list of the caller's quotes
@@ -344,7 +349,7 @@ then start the API host (which runs the seeder against the freshly migrated DB).
 Each test class gets its own container — slower than sharing, but each class
 sees a deterministic starting state.
 
-Seven test classes today (76 tests):
+Seven test classes today (79 tests):
 - `CatalogEndpointsTests` — 16 tests (Phase 6: filter-by-family Fixture/BuildingMaterial,
   unfiltered categories returns 8 across 3 families, paint exposes coverage + waste,
   flooring exposes m² unit; pricing pass: every seeded variant carries a BasePrice)
@@ -356,11 +361,13 @@ Seven test classes today (76 tests):
 - `CustomizerTexturesTests` — 5 tests (Phase 4: catalog DTO from relational rows,
   variant attributes no longer stash `textureSlots`, seeder library + slot rows,
   cross-supplier trigger raises `PostgresException`)
-- `QuotesEndpointsTests` — 16 tests (Phase 5: fan-out per supplier, ownership 404s,
+- `QuotesEndpointsTests` — 19 tests (Phase 5: fan-out per supplier, ownership 404s,
   cancel propagates Expired, close-before-response 409, close-after-decline succeeds,
   `IsCustomSize` flip, supplier inbox member gating, respond happy path + idempotent
   upsert, cross-supplier attachment 400, cancelled-quote response 409, admin-bind RBAC 403;
-  Phase 6: branded opening in fan-out, manual material lines accepted, unknown variant 400)
+  Phase 6: branded opening in fan-out, manual material lines accepted, unknown variant 400;
+  Phase 6.5: flooring aggregates floor area, paint aggregates across walls, opening
+  area subtracted from paintable surface)
 
 ## Troubleshooting
 

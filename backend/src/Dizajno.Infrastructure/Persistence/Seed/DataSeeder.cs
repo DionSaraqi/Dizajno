@@ -48,6 +48,7 @@ public sealed class DataSeeder : IDataSeeder
         await SeedProductsAsync(supplier, categories, cancellationToken);
         await SeedTextureLibraryAsync(supplier, cancellationToken);
         await BackfillVariantPricesAsync(cancellationToken);
+        await BackfillProductTextureUrlsAsync(cancellationToken);
     }
 
     private async Task SeedRolesAsync()
@@ -210,6 +211,7 @@ public sealed class DataSeeder : IDataSeeder
                 WasteFactor = seed.WasteFactor,
                 Name = seed.Label,
                 PreviewSvg = seed.SvgPreview,
+                TextureUrl = seed.TextureUrl,
                 Attributes = JsonSerializer.Serialize(new { icon = seed.Icon }, JsonOpts),
                 CreatedAt = now,
                 UpdatedAt = now
@@ -430,6 +432,37 @@ public sealed class DataSeeder : IDataSeeder
         }
         await _db.SaveChangesAsync(cancellationToken);
         _log.LogInformation("Backfilled {Count} variant prices", nullPriced.Count);
+    }
+
+    /// <summary>
+    /// Companion to <see cref="BackfillVariantPricesAsync"/>. Walks
+    /// <see cref="CatalogSeedData.Items"/> looking for rows with a TextureUrl and
+    /// stamps it onto the matching product row if it's currently null. Lets a
+    /// dev DB seeded before the texture-on-product column landed pick up the
+    /// URLs on next restart without a wipe.
+    /// </summary>
+    private async Task BackfillProductTextureUrlsAsync(CancellationToken cancellationToken)
+    {
+        var textureBySlug = CatalogSeedData.Items
+            .Where(i => !string.IsNullOrWhiteSpace(i.TextureUrl))
+            .ToDictionary(i => i.Type, i => i.TextureUrl!);
+        if (textureBySlug.Count == 0) return;
+
+        var slugs = textureBySlug.Keys.ToList();
+        var nullTextured = await _db.Products
+            .Where(p => slugs.Contains(p.Slug) && p.TextureUrl == null)
+            .ToListAsync(cancellationToken);
+        if (nullTextured.Count == 0) return;
+
+        foreach (var product in nullTextured)
+        {
+            if (textureBySlug.TryGetValue(product.Slug, out var url))
+            {
+                product.TextureUrl = url;
+            }
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+        _log.LogInformation("Backfilled {Count} product texture URLs", nullTextured.Count);
     }
 
     private static string DeriveTextureName(string url)

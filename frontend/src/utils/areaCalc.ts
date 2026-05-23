@@ -51,7 +51,7 @@ export function computeRoomAreas(scene: SceneSlice): RoomAreas {
   return { floorAreaM2, paintableWallM2, openingAreaM2 };
 }
 
-function polygonArea(vertices: ReadonlyArray<readonly [number, number]>): number {
+export function polygonArea(vertices: ReadonlyArray<readonly [number, number]>): number {
   if (vertices.length < 3) return 0;
   let sum = 0;
   for (let i = 0; i < vertices.length; i++) {

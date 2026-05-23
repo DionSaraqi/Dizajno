@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import * as THREE from "three";
 import { Edges } from "@react-three/drei";
+import { useMaterialTexture } from "@/hooks/useMaterialTexture";
 import type { OpeningData } from "@/types/designer";
 
 interface WallSegment {
@@ -20,6 +21,8 @@ interface WallMeshProps {
   selected?: boolean;
   hovered?: boolean;
   openings?: OpeningData[];
+  /** Phase 6.5: optional Paint variant id. When set, walls tint with the variant's color. */
+  paintVariantId?: string | null;
   onClick?: (e: any) => void;
   onPointerOver?: (e: any) => void;
   onPointerOut?: (e: any) => void;
@@ -69,6 +72,8 @@ function computeSegments(
 }
 
 const WALL_COLOR = "#6B7280";
+/** Paint tiles ~0.5× per meter (subtle finish, not as visible as flooring planks). */
+const PAINT_TEXTURE_REPEAT_PER_METER = 0.5;
 
 export default function WallMesh({
   start,
@@ -78,6 +83,7 @@ export default function WallMesh({
   selected = false,
   hovered = false,
   openings = [],
+  paintVariantId,
   onClick,
   onPointerOver,
   onPointerOut,
@@ -87,6 +93,16 @@ export default function WallMesh({
   const endVec = new THREE.Vector3(end[0], 0, end[1]);
   const direction = new THREE.Vector3().subVectors(endVec, startVec);
   const wallLength = direction.length();
+
+  const paint = useMaterialTexture(paintVariantId ?? null);
+  // Set sensible texture tiling once per wall (varies by length × height).
+  useEffect(() => {
+    if (!paint.map) return;
+    paint.map.repeat.set(
+      Math.max(1, wallLength * PAINT_TEXTURE_REPEAT_PER_METER),
+      Math.max(1, height * PAINT_TEXTURE_REPEAT_PER_METER)
+    );
+  }, [paint.map, wallLength, height]);
 
   if (wallLength < 0.01) return null;
 
@@ -100,6 +116,7 @@ export default function WallMesh({
 
   const segments = computeSegments(wallLength, height, openings);
   const edgeColor = selected ? "#ffffff" : hovered ? "#00aaff" : null;
+  const wallSurfaceColor = paint.map ? "#ffffff" : paint.color ?? WALL_COLOR;
 
   return (
     <group>
@@ -123,7 +140,7 @@ export default function WallMesh({
             onPointerMove={onPointerMove ? stopAndCall(onPointerMove) : undefined}
           >
             <boxGeometry args={[segLen, segH, thickness]} />
-            <meshStandardMaterial color={WALL_COLOR} />
+            <meshStandardMaterial color={wallSurfaceColor} map={paint.map ?? null} />
             {edgeColor && <Edges threshold={1} color={edgeColor} />}
           </mesh>
         );
@@ -139,7 +156,7 @@ export default function WallMesh({
           onPointerOut={stopAndCall(onPointerOut)}
         >
           <cylinderGeometry args={[thickness / 2, thickness / 2, height, 12]} />
-          <meshStandardMaterial color={WALL_COLOR} />
+          <meshStandardMaterial color={paint.color ?? WALL_COLOR} />
           {edgeColor && <Edges threshold={1} color={edgeColor} />}
         </mesh>
       ))}

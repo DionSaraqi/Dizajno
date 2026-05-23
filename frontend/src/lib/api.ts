@@ -248,11 +248,13 @@ export interface WallApi {
   endZ: number;
   thickness: number;
   height: number;
+  paintProductVariantId?: string | null;
 }
 
 export interface FloorApi {
   id: string;
   vertices: number[][];
+  flooringProductVariantId?: string | null;
 }
 
 export type OpeningTypeApi = "Door" | "Window";

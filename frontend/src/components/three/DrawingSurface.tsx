@@ -673,6 +673,7 @@ function SceneContent() {
           selected={selectedIds.includes(wall.id)}
           hovered={hoveredId === wall.id}
           openings={openings.filter((o) => o.wallId === wall.id)}
+          paintVariantId={wall.paintVariantId ?? null}
           onClick={(e: any) => {
             if (mode === "select" || mode === "draw") {
               select(wall.id);
@@ -754,9 +755,24 @@ function SceneContent() {
         </>
       )}
 
-      {/* Floors */}
+      {/* Floors — selectable in select mode so the user can assign flooring. */}
       {floors.map((floor) => (
-        <FloorMesh key={floor.id} vertices={floor.vertices} />
+        <FloorMesh
+          key={floor.id}
+          vertices={floor.vertices}
+          flooringVariantId={floor.flooringVariantId ?? null}
+          selected={selectedIds.includes(floor.id)}
+          hovered={hoveredId === floor.id}
+          onClick={() => {
+            if (mode === "select") select(floor.id);
+          }}
+          onPointerOver={() => {
+            if (mode === "select" && !useDesignerStore.getState().isDragging) {
+              setHoveredId(floor.id);
+            }
+          }}
+          onPointerOut={() => setHoveredId(null)}
+        />
       ))}
 
       {/* Openings (door/window frames rendered in world space) */}

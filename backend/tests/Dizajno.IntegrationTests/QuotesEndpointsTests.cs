@@ -541,4 +541,150 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    // ── Phase 6.5 — scene-assigned materials ───────────────────────────────
+
+    /// <summary>
+    /// Builds a 4 × 5 m room (single floor polygon, four walls) with an optional
+    /// floor flooring + per-wall paint assignment. Returns the new project id.
+    /// </summary>
+    private async Task<Guid> CreateRoomAsync(
+        HttpClient client,
+        Guid? flooringVariantId,
+        Guid? paintVariantId)
+    {
+        var create = await client.PostAsJsonAsync("/api/projects",
+            new CreateProjectRequest("Room"), JsonOpts);
+        var project = (await create.Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
+
+        var w1 = Guid.NewGuid();
+        var w2 = Guid.NewGuid();
+        var w3 = Guid.NewGuid();
+        var w4 = Guid.NewGuid();
+
+        var walls = new[]
+        {
+            new WallDto(w1, 0m, 0m, 4m, 0m, 0.1m, 2.5m, paintVariantId),
+            new WallDto(w2, 4m, 0m, 4m, 5m, 0.1m, 2.5m, paintVariantId),
+            new WallDto(w3, 4m, 5m, 0m, 5m, 0.1m, 2.5m, paintVariantId),
+            new WallDto(w4, 0m, 5m, 0m, 0m, 0.1m, 2.5m, paintVariantId),
+        };
+
+        var floor = new FloorDto(
+            Guid.NewGuid(),
+            new IReadOnlyList<decimal>[]
+            {
+                new[] { 0m, 0m },
+                new[] { 4m, 0m },
+                new[] { 4m, 5m },
+                new[] { 0m, 5m },
+            },
+            flooringVariantId);
+
+        var scene = new SceneDto(walls, new[] { floor }, Array.Empty<OpeningDto>(), Array.Empty<PlacedItemDto>());
+
+        var put = await client.PutAsJsonAsync(
+            $"/api/projects/{project.Id}/scene",
+            new ReplaceSceneRequest(scene),
+            JsonOpts);
+        put.EnsureSuccessStatusCode();
+        return project.Id;
+    }
+
+    [Fact]
+    public async Task Create_WithFlooringAssigned_AggregatesAreaIntoOneLine()
+    {
+        var (client, _) = await NewAuthedClientAsync($"floor-{Guid.NewGuid():N}"[..18]);
+        var flooringVariantId = await GetVariantIdBySlugAsync("oak-laminate-flooring");
+        var projectId = await CreateRoomAsync(client, flooringVariantId, paintVariantId: null);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/projects/{projectId}/quotes",
+            new CreateQuoteRequest(Message: null));
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var detail = (await response.Content.ReadFromJsonAsync<QuoteDetailDto>(JsonOpts))!;
+
+        detail.Requests.Should().ContainSingle();
+        var lines = detail.Requests[0].Lines;
+        lines.Should().ContainSingle()
+            .Which.VariantSnapshot.GetProperty("productSlug").GetString()
+            .Should().Be("oak-laminate-flooring");
+        // 4 × 5 = 20 m² × (1 + 0.05) = 21.00 m²
+        lines[0].Quantity.Should().Be(21.00m);
+        lines[0].QuantityUnit.Should().Be("m2");
+    }
+
+    [Fact]
+    public async Task Create_WithPaintAssigned_AggregatesAcrossWallsIntoOneLine()
+    {
+        var (client, _) = await NewAuthedClientAsync($"paint-{Guid.NewGuid():N}"[..18]);
+        var paintVariantId = await GetVariantIdBySlugAsync("interior-matt-paint");
+        var projectId = await CreateRoomAsync(client, flooringVariantId: null, paintVariantId: paintVariantId);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/projects/{projectId}/quotes",
+            new CreateQuoteRequest(Message: null));
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var detail = (await response.Content.ReadFromJsonAsync<QuoteDetailDto>(JsonOpts))!;
+
+        detail.Requests.Should().ContainSingle();
+        var lines = detail.Requests[0].Lines;
+        lines.Should().ContainSingle()
+            .Which.VariantSnapshot.GetProperty("productSlug").GetString()
+            .Should().Be("interior-matt-paint");
+        // Perimeter 18 m × 2.5 m = 45 m² wall surface
+        // (4 walls aggregate into a single line)
+        // ceil(45 / 10 × 1.10) = ceil(4.95) = 5 L
+        lines[0].Quantity.Should().Be(5m);
+        lines[0].QuantityUnit.Should().Be("L");
+    }
+
+    [Fact]
+    public async Task Create_WithPaintAndOpening_SubtractsOpeningAreaFromPaintableSurface()
+    {
+        // Same 4 × 5 room, but one wall gets a 2 m × 2 m door cut into it.
+        // Paintable area drops by 4 m² → 41 m² total → ceil(41/10 × 1.10) = 5 L
+        // (same as the previous test result — verifies subtraction happens).
+        var (client, _) = await NewAuthedClientAsync($"sub-{Guid.NewGuid():N}"[..18]);
+        var paintVariantId = await GetVariantIdBySlugAsync("interior-matt-paint");
+
+        var create = await client.PostAsJsonAsync("/api/projects",
+            new CreateProjectRequest("Sub"), JsonOpts);
+        var project = (await create.Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
+
+        var wallId = Guid.NewGuid();
+        var openingId = Guid.NewGuid();
+        var walls = new[]
+        {
+            new WallDto(wallId, 0m, 0m, 10m, 0m, 0.1m, 2.5m, paintVariantId),
+        };
+        var openings = new[]
+        {
+            new OpeningDto(
+                Id: openingId,
+                WallId: wallId,
+                Type: Domain.Enums.OpeningType.Door,
+                OffsetFromStart: 1m, Width: 2m, Height: 2m, SillHeight: 0m,
+                ProductVariantId: null,
+                MaterialOverrides: null),
+        };
+
+        var put = await client.PutAsJsonAsync(
+            $"/api/projects/{project.Id}/scene",
+            new ReplaceSceneRequest(new SceneDto(
+                walls, Array.Empty<FloorDto>(), openings, Array.Empty<PlacedItemDto>())),
+            JsonOpts);
+        put.EnsureSuccessStatusCode();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/projects/{project.Id}/quotes",
+            new CreateQuoteRequest(Message: null));
+        var detail = (await response.Content.ReadFromJsonAsync<QuoteDetailDto>(JsonOpts))!;
+
+        var lines = detail.Requests[0].Lines;
+        lines.Should().ContainSingle();
+        // 10 × 2.5 = 25 m² gross − 4 m² opening = 21 m² × 1.10 / 10 = 2.31 → ceil = 3 L
+        lines[0].Quantity.Should().Be(3m);
+        lines[0].QuantityUnit.Should().Be("L");
+    }
 }

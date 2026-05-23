@@ -223,7 +223,8 @@ public sealed class CatalogController : ControllerBase
             Family: row.Product.Family.ToString(),
             UnitOfSale: row.Product.UnitOfSale.ToString(),
             CoverageRate: row.Product.CoverageRate,
-            WasteFactor: row.Product.WasteFactor);
+            WasteFactor: row.Product.WasteFactor,
+            TextureUrl: row.Product.TextureUrl);
     }
 
     private static T? ReadAttribute<T>(string? json, string key)

@@ -225,18 +225,21 @@ public sealed class SharedProjectsController : ControllerBase
         var walls = await _db.Walls
             .AsNoTracking()
             .Where(w => w.ProjectId == projectId)
-            .Select(w => new WallDto(w.Id, w.StartX, w.StartZ, w.EndX, w.EndZ, w.Thickness, w.Height))
+            .Select(w => new WallDto(
+                w.Id, w.StartX, w.StartZ, w.EndX, w.EndZ, w.Thickness, w.Height,
+                w.PaintProductVariantId))
             .ToListAsync(cancellationToken);
 
         var floorRows = await _db.Floors
             .AsNoTracking()
             .Where(f => f.ProjectId == projectId)
-            .Select(f => new { f.Id, f.Vertices })
+            .Select(f => new { f.Id, f.Vertices, f.FlooringProductVariantId })
             .ToListAsync(cancellationToken);
         var floors = floorRows
             .Select(f => new FloorDto(
                 f.Id,
-                JsonSerializer.Deserialize<List<List<decimal>>>(f.Vertices, JsonOpts) ?? new()))
+                JsonSerializer.Deserialize<List<List<decimal>>>(f.Vertices, JsonOpts) ?? new(),
+                f.FlooringProductVariantId))
             .ToList();
 
         var openingRows = await _db.Openings
