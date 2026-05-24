@@ -3,7 +3,10 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { AlertCircle, ArrowRight, Lock, Mail } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
+import AuthShell from "@/components/auth/AuthShell";
+import { Button, FormField, Input } from "@/components/ui";
 
 export default function LoginPage() {
   return (
@@ -33,7 +36,7 @@ function LoginForm() {
     }
   }, [status, redirect, router]);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLocalError(null);
     setSubmitting(true);
@@ -41,7 +44,9 @@ function LoginForm() {
       await login(email, password);
     } catch (error) {
       setLocalError(
-        error instanceof Error ? error.message : "Login failed. Check your credentials."
+        error instanceof Error
+          ? error.message
+          : "Login failed. Check your credentials.",
       );
     } finally {
       setSubmitting(false);
@@ -49,67 +54,101 @@ function LoginForm() {
   }
 
   const errorMessage = localError ?? storeError;
+  const registerHref =
+    redirect && redirect !== "/projects"
+      ? `/register?redirect=${encodeURIComponent(redirect)}`
+      : "/register";
 
   return (
-    <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg blueprint-grid">
-      <div className="w-full max-w-sm rounded-lg border border-white/10 bg-black/40 backdrop-blur p-8 shadow-2xl">
-        <h1 className="font-mono text-2xl tracking-[0.2em] text-dizajno-text mb-1">
-          DIZAJNO
-        </h1>
-        <p className="font-mono text-xs text-dizajno-muted tracking-wider mb-6">
-          sign in to continue
-        </p>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1">
-            <span className="font-mono text-[11px] tracking-widest text-dizajno-muted uppercase">
-              Email
-            </span>
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="font-mono text-[11px] tracking-widest text-dizajno-muted uppercase">
-              Password
-            </span>
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none"
-            />
-          </label>
-
-          {errorMessage && (
-            <p className="font-mono text-[11px] text-red-400 break-words">
-              {errorMessage}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-2 rounded bg-white/10 border border-white/20 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed py-2 font-mono text-sm tracking-wider text-dizajno-text transition"
+    <AuthShell
+      eyebrow="Sign in"
+      title="Welcome back."
+      subtitle="Pick up your projects, browse the catalog, or respond to quote requests from your inbox."
+      footer={
+        <>
+          New to Dizajno?{" "}
+          <Link
+            href={registerHref}
+            className="text-dizajno-text font-medium hover:text-dizajno-accent transition-colors"
           >
-            {submitting ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-
-        <p className="mt-6 font-mono text-[11px] text-dizajno-muted">
-          No account?{" "}
-          <Link href="/register" className="text-dizajno-text underline">
-            Create one
+            Create an account
           </Link>
-        </p>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <FormField label="Email" htmlFor="email">
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@studio.com"
+            leftIcon={<Mail />}
+          />
+        </FormField>
+
+        <FormField
+          label="Password"
+          htmlFor="password"
+          rightLabel={
+            <Link
+              href="#"
+              className="text-dizajno-muted hover:text-dizajno-text transition-colors"
+            >
+              Forgot?
+            </Link>
+          }
+        >
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            leftIcon={<Lock />}
+          />
+        </FormField>
+
+        {errorMessage && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2.5 text-[13px] text-dizajno-danger"
+          >
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <span className="leading-snug">{errorMessage}</span>
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          fullWidth
+          loading={submitting}
+          rightIcon={!submitting ? <ArrowRight /> : undefined}
+        >
+          {submitting ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+
+      <div className="mt-6 pt-6 border-t border-dizajno-border flex items-center justify-between text-[12.5px] text-dizajno-muted">
+        <span>Demo account</span>
+        <button
+          type="button"
+          onClick={() => {
+            setEmail("admin@dizajno.local");
+            setPassword("Admin1234!");
+          }}
+          className="font-mono text-dizajno-text-subtle hover:text-dizajno-text underline-offset-2 hover:underline transition-colors"
+        >
+          admin@dizajno.local
+        </button>
       </div>
-    </main>
+    </AuthShell>
   );
 }

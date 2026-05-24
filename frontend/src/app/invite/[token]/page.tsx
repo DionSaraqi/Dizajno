@@ -4,16 +4,19 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, MailOpen, ShieldAlert } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Mailbox,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
+import AuthShell from "@/components/auth/AuthShell";
+import { Badge, Button, Spinner } from "@/components/ui";
 
-/**
- * Standalone page (no /admin layout) — accessible without authentication so
- * the invitee can read who they're joining before being forced to login.
- * Tracks 3 visual states: invalid/expired/revoked, ready-to-accept (logged in),
- * and ready-to-accept (logged out — sends to login with redirect).
- */
 export default function InviteAcceptPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
@@ -33,7 +36,6 @@ export default function InviteAcceptPage() {
     mutationFn: () => api.acceptInvite(token),
     onSuccess: () => {
       setAccepted(true);
-      // Refresh the user summary so the new SupplierMembership shows up in nav.
       useAuthStore.getState().bootstrap();
     },
   });
@@ -47,122 +49,221 @@ export default function InviteAcceptPage() {
     }
   }, [accepted, router]);
 
+  if (preview.isLoading) {
+    return (
+      <AuthShell eyebrow="Invitation" title="Loading…">
+        <div className="flex items-center gap-3 text-dizajno-muted text-[14px]">
+          <Spinner size={16} />
+          Checking your invite…
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (preview.error) {
+    return (
+      <AuthShell
+        eyebrow="Invitation"
+        title="Invite not found."
+        subtitle="The link may be mistyped, expired, or revoked. Ask the person who invited you for a fresh one."
+        footer={
+          <Link
+            href="/login"
+            className="text-dizajno-text font-medium hover:text-dizajno-accent transition-colors"
+          >
+            Go to sign in →
+          </Link>
+        }
+      >
+        <StatusCard
+          tone="danger"
+          icon={<ShieldAlert />}
+          title="Couldn't verify this invitation"
+          body="The invite link doesn't match anything in our system."
+        />
+      </AuthShell>
+    );
+  }
+
+  const data = preview.data;
+  if (!data) return null;
+
+  if (accepted) {
+    return (
+      <AuthShell
+        eyebrow="Welcome aboard"
+        title={`Joined ${data.supplierName}.`}
+        subtitle="Redirecting you to your projects in a moment."
+      >
+        <StatusCard
+          tone="success"
+          icon={<ShieldCheck />}
+          title="Membership confirmed"
+          body={`You're now a ${data.role} of ${data.supplierName}.`}
+        />
+      </AuthShell>
+    );
+  }
+
+  if (data.isExpired) {
+    return (
+      <AuthShell eyebrow="Invitation" title="This invite has expired.">
+        <StatusCard
+          tone="danger"
+          icon={<ShieldAlert />}
+          title="Expired"
+          body="Ask the admin or supplier owner to send you a new invitation."
+        />
+      </AuthShell>
+    );
+  }
+
+  if (data.isRevoked) {
+    return (
+      <AuthShell eyebrow="Invitation" title="This invite was revoked.">
+        <StatusCard
+          tone="danger"
+          icon={<ShieldAlert />}
+          title="Revoked"
+          body="The link is no longer valid. Reach out to whoever invited you."
+        />
+      </AuthShell>
+    );
+  }
+
+  if (data.isAccepted) {
+    return (
+      <AuthShell eyebrow="Invitation" title="Already accepted.">
+        <StatusCard
+          tone="neutral"
+          icon={<CheckCircle2 />}
+          title="This invite has already been redeemed"
+          body="If that wasn't you, please contact the supplier owner."
+        />
+      </AuthShell>
+    );
+  }
+
   return (
-    <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg blueprint-grid px-4">
-      <div className="w-full max-w-md rounded border border-white/15 bg-black/40 backdrop-blur px-8 py-10 space-y-6">
-        {preview.isLoading && (
-          <p className="font-mono text-sm text-dizajno-muted text-center">Loading invite…</p>
-        )}
-        {preview.error && (
-          <div className="text-center space-y-2">
-            <ShieldAlert size={32} className="mx-auto text-red-400" />
-            <p className="font-mono text-sm text-red-300">Invite not found.</p>
-            <p className="font-mono text-xs text-dizajno-muted">
-              The link may be mistyped or has been revoked.
+    <AuthShell
+      eyebrow="Invitation"
+      title={`Join ${data.supplierName}.`}
+      subtitle={
+        data.role === "Owner"
+          ? "You've been invited as an Owner — full access to the supplier's catalog, members, and profile."
+          : "You've been invited as Staff — you'll be able to edit the supplier's catalog."
+      }
+    >
+      <div className="rounded-xl border border-dizajno-border bg-dizajno-surface p-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-dizajno-accent-soft text-dizajno-accent flex items-center justify-center">
+            <Mailbox size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[14px] font-semibold text-dizajno-text">
+              {data.supplierName}
+            </div>
+            <div className="mt-0.5 flex items-center gap-2">
+              <Badge tone="accent" size="sm" dot>
+                {data.role}
+              </Badge>
+              <span className="text-[12px] text-dizajno-muted">
+                {data.role === "Owner"
+                  ? "Full supplier admin"
+                  : "Catalog editor"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5">
+        {status === "authenticated" ? (
+          <>
+            <p className="text-[13px] text-dizajno-muted mb-3">
+              Signed in as{" "}
+              <span className="text-dizajno-text font-medium">
+                {user?.email}
+              </span>
             </p>
+            {accept.error && (
+              <div
+                role="alert"
+                className="mb-3 flex items-start gap-2 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2.5 text-[13px] text-dizajno-danger"
+              >
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                <span>{(accept.error as Error).message}</span>
+              </div>
+            )}
+            <Button
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={accept.isPending}
+              rightIcon={!accept.isPending ? <ArrowRight /> : undefined}
+              onClick={() => accept.mutate()}
+            >
+              {accept.isPending ? "Accepting…" : "Accept invitation"}
+            </Button>
+          </>
+        ) : (
+          <div className="space-y-2">
+            <Link
+              href={`/login?redirect=${encodeURIComponent(redirectTarget)}`}
+              className="block"
+            >
+              <Button variant="primary" size="lg" fullWidth rightIcon={<ArrowRight />}>
+                Sign in to accept
+              </Button>
+            </Link>
+            <Link
+              href={`/register?redirect=${encodeURIComponent(redirectTarget)}`}
+              className="block"
+            >
+              <Button variant="ghost" size="lg" fullWidth>
+                Or create a new account
+              </Button>
+            </Link>
           </div>
         )}
-        {preview.data && (
-          <>
-            {accepted ? (
-              <div className="text-center space-y-3">
-                <CheckCircle2 size={36} className="mx-auto text-emerald-300" />
-                <p className="font-mono text-sm text-emerald-200">
-                  Joined {preview.data.supplierName}.
-                </p>
-                <p className="font-mono text-xs text-dizajno-muted">
-                  Redirecting to your projects…
-                </p>
-              </div>
-            ) : preview.data.isExpired ? (
-              <Info icon={<ShieldAlert className="text-red-400" size={32} />} tone="red">
-                This invite has expired. Ask the admin to issue a fresh one.
-              </Info>
-            ) : preview.data.isRevoked ? (
-              <Info icon={<ShieldAlert className="text-red-400" size={32} />} tone="red">
-                This invite has been revoked.
-              </Info>
-            ) : preview.data.isAccepted ? (
-              <Info icon={<CheckCircle2 className="text-emerald-300" size={32} />} tone="green">
-                This invite was already accepted.
-              </Info>
-            ) : (
-              <>
-                <div className="text-center space-y-2">
-                  <MailOpen size={32} className="mx-auto text-amber-300" />
-                  <p className="font-mono text-xs tracking-widest uppercase text-dizajno-muted">
-                    You&apos;re invited to join
-                  </p>
-                  <p className="font-mono text-xl text-dizajno-text">
-                    {preview.data.supplierName}
-                  </p>
-                  <p className="font-mono text-[10px] tracking-widest uppercase text-dizajno-muted">
-                    as {preview.data.role} ·{" "}
-                    {preview.data.role === "Owner"
-                      ? "full supplier admin"
-                      : "catalog editor"}
-                  </p>
-                </div>
-
-                {status === "authenticated" ? (
-                  <>
-                    <p className="font-mono text-xs text-dizajno-muted text-center">
-                      Signed in as{" "}
-                      <span className="text-dizajno-text">{user?.email}</span>
-                    </p>
-                    {accept.error && (
-                      <p className="font-mono text-xs text-red-400 text-center">
-                        {(accept.error as Error).message}
-                      </p>
-                    )}
-                    <button
-                      type="button"
-                      disabled={accept.isPending}
-                      onClick={() => accept.mutate()}
-                      className="w-full rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 font-mono text-xs tracking-widest uppercase text-amber-300 hover:bg-amber-500/20 transition disabled:opacity-50"
-                    >
-                      {accept.isPending ? "Accepting…" : "Accept invite"}
-                    </button>
-                  </>
-                ) : (
-                  <div className="space-y-2">
-                    <Link
-                      href={`/login?redirect=${encodeURIComponent(redirectTarget)}`}
-                      className="block text-center rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 font-mono text-xs tracking-widest uppercase text-amber-300 hover:bg-amber-500/20 transition"
-                    >
-                      Log in to accept
-                    </Link>
-                    <Link
-                      href={`/register?redirect=${encodeURIComponent(redirectTarget)}`}
-                      className="block text-center rounded border border-white/10 px-3 py-2 font-mono text-xs tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
-                    >
-                      Or register a new account
-                    </Link>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
       </div>
-    </main>
+    </AuthShell>
   );
 }
 
-function Info({
-  icon,
+function StatusCard({
   tone,
-  children,
+  icon,
+  title,
+  body,
 }: {
+  tone: "success" | "danger" | "neutral";
   icon: React.ReactNode;
-  tone: "red" | "green";
-  children: React.ReactNode;
+  title: React.ReactNode;
+  body: React.ReactNode;
 }) {
-  const color = tone === "red" ? "text-red-300" : "text-emerald-300";
+  const toneStyles = {
+    success:
+      "border-dizajno-success/30 bg-dizajno-success-soft text-dizajno-success",
+    danger:
+      "border-dizajno-danger/30 bg-dizajno-danger-soft text-dizajno-danger",
+    neutral:
+      "border-dizajno-border bg-dizajno-elevated text-dizajno-text-subtle",
+  }[tone];
+
   return (
-    <div className="text-center space-y-2">
-      <div className="mx-auto">{icon}</div>
-      <p className={`font-mono text-sm ${color}`}>{children}</p>
+    <div
+      className={["rounded-xl border p-4 flex items-start gap-3", toneStyles].join(
+        " ",
+      )}
+    >
+      <div className="[&_svg]:size-5 mt-0.5">{icon}</div>
+      <div className="min-w-0">
+        <div className="font-semibold text-[13.5px] leading-snug">{title}</div>
+        <div className="mt-0.5 text-[12.5px] opacity-90 leading-relaxed">
+          {body}
+        </div>
+      </div>
     </div>
   );
 }

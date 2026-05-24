@@ -4,15 +4,33 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Inbox } from "lucide-react";
+import {
+  Briefcase,
+  ChevronRight,
+  FileText,
+  Inbox,
+  LayoutGrid,
+  ShieldCheck,
+} from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  PageHeader,
+  Skeleton,
+  TopBar,
+} from "@/components/ui";
 
 const POLL_MS = 30_000;
 
 export default function QuotesListPage() {
   const router = useRouter();
   const status = useAuthStore((s) => s.status);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -27,111 +45,173 @@ export default function QuotesListPage() {
     refetchInterval: POLL_MS,
   });
 
-  if (status !== "authenticated") {
+  if (status !== "authenticated" || !user) {
     return (
-      <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg blueprint-grid">
-        <p className="font-mono text-sm text-dizajno-muted tracking-wider">Loading…</p>
+      <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg">
+        <p className="text-sm text-dizajno-muted">Loading…</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen w-screen bg-dizajno-bg blueprint-grid">
-      <header className="flex items-center gap-4 px-8 py-5 border-b border-white/10 backdrop-blur">
-        <Link
-          href="/projects"
-          className="text-dizajno-muted hover:text-dizajno-text transition"
-          aria-label="Back to projects"
-        >
-          <ArrowLeft size={18} />
-        </Link>
-        <div>
-          <h1 className="font-mono text-lg tracking-[0.2em] text-dizajno-text">
-            QUOTES
-          </h1>
-          <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-            Responses from suppliers, all in one place.
-          </p>
-        </div>
-      </header>
+    <div className="min-h-screen w-screen bg-dizajno-bg">
+      <TopBar
+        links={[
+          { label: "Projects", href: "/projects" },
+          { label: "Quotes", href: "/quotes", active: true },
+        ]}
+        actions={
+          <>
+            {(user.supplierMemberships?.length ?? 0) > 0 && (
+              <Link href="/supplier">
+                <Button variant="secondary" size="sm" leftIcon={<Briefcase />}>
+                  Supplier portal
+                </Button>
+              </Link>
+            )}
+            {user.roles.includes("Admin") && (
+              <Link href="/admin">
+                <Button variant="secondary" size="sm" leftIcon={<ShieldCheck />}>
+                  Admin
+                </Button>
+              </Link>
+            )}
+          </>
+        }
+        user={{ displayName: user.displayName, email: user.email }}
+        onSignOut={async () => {
+          await logout();
+          router.push("/");
+        }}
+      />
 
-      <section className="max-w-5xl mx-auto px-8 py-10">
-        {quotes.isLoading && (
-          <p className="font-mono text-sm text-dizajno-muted">Loading quotes…</p>
-        )}
-        {quotes.error && (
-          <p className="font-mono text-sm text-red-400 break-words">
-            Failed to load quotes: {(quotes.error as Error).message}
-          </p>
-        )}
-        {quotes.data && quotes.data.length === 0 && (
-          <div className="rounded border border-white/10 bg-black/30 px-6 py-10 text-center">
-            <Inbox size={32} className="mx-auto text-dizajno-muted/60 mb-3" />
-            <p className="font-mono text-sm text-dizajno-muted">
-              No quotes yet. Open a project, design a room, then click{" "}
-              <span className="text-dizajno-text">Quote</span> in the header.
-            </p>
-          </div>
-        )}
+      <div className="max-w-6xl mx-auto px-6">
+        <PageHeader
+          eyebrow="Inbox"
+          title="Your quote requests"
+          description="Every project you've requested a quote on. Suppliers reply asynchronously — this page polls every 30 seconds."
+        />
 
-        {quotes.data && quotes.data.length > 0 && (
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {quotes.data.map((quote) => (
-              <li
-                key={quote.id}
-                className="rounded-lg border border-white/10 bg-black/30 hover:bg-black/40 backdrop-blur overflow-hidden transition"
-              >
-                <Link href={`/quotes/${quote.id}`} className="block aspect-video relative">
-                  {quote.projectThumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={quote.projectThumbnailUrl}
-                      alt={quote.projectName}
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-dizajno-muted font-mono text-xs tracking-widest opacity-50">
-                      NO THUMBNAIL
-                    </div>
-                  )}
-                  <StatusPill status={quote.status} />
+        <section className="py-8">
+          {quotes.isLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[0, 1, 2].map((i) => (
+                <Card key={i} flush>
+                  <Skeleton className="aspect-[4/3] rounded-t-xl" />
+                  <div className="px-4 py-3.5 space-y-2">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {quotes.error && (
+            <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
+              Failed to load quotes: {(quotes.error as Error).message}
+            </div>
+          )}
+
+          {quotes.data && quotes.data.length === 0 && (
+            <EmptyState
+              icon={<Inbox />}
+              title="No quotes yet"
+              description="Open a project, design a room, then click 'Quote' in the designer header to fan out a request to all the suppliers in the scene."
+              action={
+                <Link href="/projects">
+                  <Button variant="secondary" leftIcon={<LayoutGrid />}>
+                    Go to projects
+                  </Button>
                 </Link>
-                <Link
-                  href={`/quotes/${quote.id}`}
-                  className="block px-4 py-3 border-t border-white/5"
-                >
-                  <p className="font-mono text-sm text-dizajno-text truncate">
-                    {quote.projectName}
-                  </p>
-                  <p className="font-mono text-[10px] tracking-widest text-dizajno-muted/70 uppercase mt-1">
-                    {quote.respondedCount}/{quote.supplierCount} replied
-                    {quote.declinedCount > 0 ? ` · ${quote.declinedCount} declined` : ""}
-                  </p>
-                  <p className="font-mono text-[10px] tracking-widest text-dizajno-muted/50 uppercase mt-0.5">
-                    {new Date(quote.createdAt).toLocaleDateString()}
-                  </p>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </main>
+              }
+            />
+          )}
+
+          {quotes.data && quotes.data.length > 0 && (
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {quotes.data.map((quote) => (
+                <li key={quote.id} className="group">
+                  <Link href={`/quotes/${quote.id}`} className="block">
+                    <Card
+                      flush
+                      className="overflow-hidden transition-shadow hover:shadow-card"
+                    >
+                      <div className="relative aspect-[4/3] bg-dizajno-elevated border-b border-dizajno-border overflow-hidden">
+                        {quote.projectThumbnailUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={quote.projectThumbnailUrl}
+                            alt={quote.projectName}
+                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-dizajno-muted-subtle">
+                            <FileText
+                              size={24}
+                              className="mb-2 opacity-60"
+                              strokeWidth={1.4}
+                            />
+                            <span className="text-[10.5px] font-medium uppercase tracking-label">
+                              No preview
+                            </span>
+                          </div>
+                        )}
+                        <div className="absolute top-2.5 right-2.5">
+                          <StatusBadge status={quote.status} />
+                        </div>
+                      </div>
+                      <div className="px-4 py-3.5 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[14px] font-medium text-dizajno-text truncate group-hover:text-dizajno-accent transition-colors">
+                            {quote.projectName}
+                          </p>
+                          <p className="mt-0.5 text-[12px] text-dizajno-muted">
+                            <span className="font-medium text-dizajno-text-subtle tabular-nums">
+                              {quote.respondedCount}/{quote.supplierCount}
+                            </span>{" "}
+                            replied
+                            {quote.declinedCount > 0 && (
+                              <>
+                                <span className="mx-1.5 text-dizajno-muted-subtle">
+                                  ·
+                                </span>
+                                {quote.declinedCount} declined
+                              </>
+                            )}
+                            <span className="mx-1.5 text-dizajno-muted-subtle">
+                              ·
+                            </span>
+                            {new Date(quote.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <ChevronRight
+                          size={16}
+                          className="text-dizajno-muted-subtle group-hover:text-dizajno-text group-hover:translate-x-0.5 transition-all shrink-0"
+                        />
+                      </div>
+                    </Card>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
   );
 }
 
-function StatusPill({ status }: { status: api.QuoteStatus }) {
-  const colour =
-    status === "Open"
-      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-      : status === "Closed"
-        ? "bg-white/10 text-dizajno-muted border-white/20"
-        : "bg-red-500/20 text-red-300 border-red-500/40";
+function StatusBadge({ status }: { status: api.QuoteStatus }) {
+  const map = {
+    Open: { tone: "success" as const, label: "Open" },
+    Closed: { tone: "neutral" as const, label: "Closed" },
+    Cancelled: { tone: "danger" as const, label: "Cancelled" },
+  };
+  const entry = map[status];
   return (
-    <span
-      className={`absolute top-2 right-2 rounded border px-2 py-0.5 font-mono text-[10px] tracking-widest uppercase ${colour}`}
-    >
-      {status}
-    </span>
+    <Badge tone={entry.tone} size="sm" dot>
+      {entry.label}
+    </Badge>
   );
 }

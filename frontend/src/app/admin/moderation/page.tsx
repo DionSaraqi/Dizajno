@@ -2,49 +2,63 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, X } from "lucide-react";
+import { Check, FileQuestion, Sparkles, X } from "lucide-react";
 import * as api from "@/lib/api";
+import {
+  Avatar,
+  Button,
+  Card,
+  EmptyState,
+  IconButton,
+  PageHeader,
+  Skeleton,
+  Tabs,
+  Tooltip,
+} from "@/components/ui";
 
 type Tab = "products" | "categories";
 
 export default function ModerationPage() {
   const [tab, setTab] = useState<Tab>("products");
+  const productsCount = useQuery({
+    queryKey: ["admin", "moderation", "products"],
+    queryFn: () => api.listPendingProducts(),
+  }).data?.length;
+  const categoriesCount = useQuery({
+    queryKey: ["admin", "moderation", "categories"],
+    queryFn: () => api.listPendingCategories(),
+  }).data?.length;
+
   return (
     <>
-      <div className="flex gap-2 mb-6">
-        <TabButton active={tab === "products"} onClick={() => setTab("products")}>
-          Products
-        </TabButton>
-        <TabButton active={tab === "categories"} onClick={() => setTab("categories")}>
-          Categories
-        </TabButton>
-      </div>
-      {tab === "products" ? <PendingProducts /> : <PendingCategories />}
+      <PageHeader
+        eyebrow="Queue"
+        title="Moderation"
+        description="Review supplier-submitted products and category suggestions before they appear in the catalog."
+        bottom={
+          <Tabs
+            value={tab}
+            onChange={(v) => setTab(v as Tab)}
+            tabs={[
+              {
+                value: "products",
+                label: "Products",
+                count: productsCount,
+              },
+              {
+                value: "categories",
+                label: "Categories",
+                count: categoriesCount,
+              },
+            ]}
+          />
+        }
+        divided={false}
+      />
+      <section className="py-6">
+        {tab === "products" ? <PendingProducts /> : <PendingCategories />}
+      </section>
     </>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded border px-3 py-1.5 font-mono text-xs tracking-widest uppercase transition ${
-        active
-          ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-          : "border-white/10 text-dizajno-muted hover:text-dizajno-text hover:border-white/20"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -56,52 +70,78 @@ function PendingProducts() {
   });
   const approve = useMutation({
     mutationFn: (id: string) => api.approveProduct(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "moderation", "products"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["admin", "moderation", "products"] }),
   });
   const reject = useMutation({
     mutationFn: (id: string) => api.rejectProduct(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "moderation", "products"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["admin", "moderation", "products"] }),
   });
 
-  if (products.isLoading) return <p className="font-mono text-sm text-dizajno-muted">Loading…</p>;
-  if (products.data?.length === 0)
-    return <p className="font-mono text-sm text-dizajno-muted">Queue is empty.</p>;
+  if (products.isLoading) {
+    return <QueueSkeleton />;
+  }
+  if (products.data?.length === 0) {
+    return (
+      <EmptyState
+        icon={<Sparkles />}
+        title="No pending products"
+        description="When a supplier publishes a product, it shows up here. Approve to send live; reject to hide."
+      />
+    );
+  }
 
   return (
-    <ul className="space-y-2">
-      {products.data?.map((p) => (
-        <li
-          key={p.id}
-          className="flex items-center justify-between rounded border border-white/10 bg-black/30 px-3 py-2"
-        >
-          <div className="min-w-0">
-            <p className="font-mono text-sm text-dizajno-text truncate">{p.name}</p>
-            <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase mt-0.5">
-              {p.family} · {p.category} · {p.supplierName} ·{" "}
-              {new Date(p.createdAt).toLocaleDateString()}
-            </p>
-          </div>
-          <div className="flex gap-1.5">
-            <button
-              type="button"
-              onClick={() => approve.mutate(p.id)}
-              title="Approve → Published"
-              className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-emerald-300 hover:border-emerald-500/40 transition"
-            >
-              <Check size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => reject.mutate(p.id)}
-              title="Reject → Hidden"
-              className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        </li>
-      ))}
-    </ul>
+    <Card flush>
+      <ul className="divide-y divide-dizajno-border">
+        {products.data?.map((p) => (
+          <li key={p.id} className="px-5 py-4 flex items-center gap-4">
+            <Avatar
+              size={36}
+              shape="square"
+              fallback={p.name.slice(0, 2)}
+              alt={p.name}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px] font-medium text-dizajno-text truncate">
+                {p.name}
+              </p>
+              <p className="mt-0.5 text-[12px] text-dizajno-muted truncate">
+                <span>{p.family}</span>
+                <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                <span>{p.category}</span>
+                <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                <span className="text-dizajno-text-subtle">{p.supplierName}</span>
+                <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                <span>{new Date(p.createdAt).toLocaleDateString()}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Tooltip content="Reject → Hidden">
+                <IconButton
+                  variant="danger"
+                  size="sm"
+                  onClick={() => reject.mutate(p.id)}
+                  disabled={reject.isPending}
+                >
+                  <X />
+                </IconButton>
+              </Tooltip>
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<Check />}
+                loading={approve.isPending}
+                onClick={() => approve.mutate(p.id)}
+              >
+                Approve
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -113,52 +153,99 @@ function PendingCategories() {
   });
   const approve = useMutation({
     mutationFn: (id: string) => api.approveCategory(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "moderation", "categories"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["admin", "moderation", "categories"],
+      }),
   });
   const reject = useMutation({
     mutationFn: (id: string) => api.rejectCategory(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "moderation", "categories"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: ["admin", "moderation", "categories"],
+      }),
     onError: (e: Error) => alert(e.message),
   });
 
-  if (cats.isLoading) return <p className="font-mono text-sm text-dizajno-muted">Loading…</p>;
-  if (cats.data?.length === 0)
-    return <p className="font-mono text-sm text-dizajno-muted">Queue is empty.</p>;
+  if (cats.isLoading) return <QueueSkeleton />;
+  if (cats.data?.length === 0) {
+    return (
+      <EmptyState
+        icon={<FileQuestion />}
+        title="No pending category suggestions"
+        description="When a supplier suggests a new category from their portal, it lands here for approval."
+      />
+    );
+  }
 
   return (
-    <ul className="space-y-2">
-      {cats.data?.map((c) => (
-        <li
-          key={c.id}
-          className="flex items-center justify-between rounded border border-white/10 bg-black/30 px-3 py-2"
-        >
-          <div className="min-w-0">
-            <p className="font-mono text-sm text-dizajno-text truncate">{c.name}</p>
-            <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase mt-0.5">
-              {c.family} · {c.path}
-              {c.suggestedBySupplierName ? ` · suggested by ${c.suggestedBySupplierName}` : ""}
-            </p>
-          </div>
-          <div className="flex gap-1.5">
-            <button
-              type="button"
-              onClick={() => approve.mutate(c.id)}
-              title="Approve"
-              className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-emerald-300 hover:border-emerald-500/40 transition"
-            >
-              <Check size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => reject.mutate(c.id)}
-              title="Reject (delete)"
-              className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        </li>
-      ))}
-    </ul>
+    <Card flush>
+      <ul className="divide-y divide-dizajno-border">
+        {cats.data?.map((c) => (
+          <li key={c.id} className="px-5 py-4 flex items-center gap-4">
+            <div className="w-9 h-9 rounded-lg bg-dizajno-elevated text-dizajno-muted flex items-center justify-center shrink-0">
+              <FileQuestion size={15} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px] font-medium text-dizajno-text truncate">
+                {c.name}
+              </p>
+              <p className="mt-0.5 text-[12px] text-dizajno-muted truncate">
+                <span>{c.family}</span>
+                <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                <span className="font-mono">{c.path}</span>
+                {c.suggestedBySupplierName && (
+                  <>
+                    <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                    <span className="text-dizajno-text-subtle">
+                      suggested by {c.suggestedBySupplierName}
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Tooltip content="Reject (delete)">
+                <IconButton
+                  variant="danger"
+                  size="sm"
+                  onClick={() => reject.mutate(c.id)}
+                  disabled={reject.isPending}
+                >
+                  <X />
+                </IconButton>
+              </Tooltip>
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<Check />}
+                loading={approve.isPending}
+                onClick={() => approve.mutate(c.id)}
+              >
+                Approve
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function QueueSkeleton() {
+  return (
+    <Card flush>
+      <ul className="divide-y divide-dizajno-border">
+        {[0, 1, 2].map((i) => (
+          <li key={i} className="px-5 py-4 flex items-center gap-4">
+            <Skeleton className="w-9 h-9 rounded-lg" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }

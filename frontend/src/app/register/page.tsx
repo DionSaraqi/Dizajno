@@ -3,7 +3,10 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { AlertCircle, ArrowRight, Lock, Mail, User } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
+import AuthShell from "@/components/auth/AuthShell";
+import { Button, FormField, Input } from "@/components/ui";
 
 export default function RegisterPage() {
   return (
@@ -32,7 +35,7 @@ function RegisterForm() {
     }
   }, [status, redirect, router]);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
@@ -42,96 +45,140 @@ function RegisterForm() {
       setError(
         err instanceof Error
           ? err.message
-          : "Registration failed. Password must be 8+ chars with a digit and an uppercase letter."
+          : "Registration failed. Password must be 8+ chars with a digit and an uppercase letter.",
       );
     } finally {
       setSubmitting(false);
     }
   }
 
+  const loginHref =
+    redirect && redirect !== "/projects"
+      ? `/login?redirect=${encodeURIComponent(redirect)}`
+      : "/login";
+
+  // Live password strength indicator
+  const checks = {
+    length: password.length >= 8,
+    digit: /\d/.test(password),
+    upper: /[A-Z]/.test(password),
+  };
+  const strength = Object.values(checks).filter(Boolean).length;
+
   return (
-    <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg blueprint-grid">
-      <div className="w-full max-w-sm rounded-lg border border-white/10 bg-black/40 backdrop-blur p-8 shadow-2xl">
-        <h1 className="font-mono text-2xl tracking-[0.2em] text-dizajno-text mb-1">
-          DIZAJNO
-        </h1>
-        <p className="font-mono text-xs text-dizajno-muted tracking-wider mb-6">
-          create an account
-        </p>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1">
-            <span className="font-mono text-[11px] tracking-widest text-dizajno-muted uppercase">
-              Email
-            </span>
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="font-mono text-[11px] tracking-widest text-dizajno-muted uppercase">
-              Display name (optional)
-            </span>
-            <input
-              type="text"
-              autoComplete="name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="font-mono text-[11px] tracking-widest text-dizajno-muted uppercase">
-              Password
-            </span>
-            <input
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none"
-            />
-            <span className="font-mono text-[10px] text-dizajno-muted/70 mt-1">
-              8+ chars, one digit, one uppercase letter
-            </span>
-          </label>
-
-          {error && (
-            <p className="font-mono text-[11px] text-red-400 break-words">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-2 rounded bg-white/10 border border-white/20 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed py-2 font-mono text-sm tracking-wider text-dizajno-text transition"
-          >
-            {submitting ? "Creating…" : "Create account"}
-          </button>
-        </form>
-
-        <p className="mt-6 font-mono text-[11px] text-dizajno-muted">
+    <AuthShell
+      eyebrow="Create account"
+      title="Start designing."
+      subtitle="Save your rooms, source from real suppliers, and request quotes — all in one place."
+      footer={
+        <>
           Already have an account?{" "}
           <Link
-            href={
-              redirect && redirect !== "/projects"
-                ? `/login?redirect=${encodeURIComponent(redirect)}`
-                : "/login"
-            }
-            className="text-dizajno-text underline"
+            href={loginHref}
+            className="text-dizajno-text font-medium hover:text-dizajno-accent transition-colors"
           >
             Sign in
           </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <FormField label="Display name" htmlFor="displayName" hint="Optional">
+          <Input
+            id="displayName"
+            type="text"
+            autoComplete="name"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Dion Saraqi"
+            leftIcon={<User />}
+          />
+        </FormField>
+
+        <FormField label="Email" htmlFor="email" required>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@studio.com"
+            leftIcon={<Mail />}
+          />
+        </FormField>
+
+        <FormField
+          label="Password"
+          htmlFor="password"
+          required
+          hint={
+            password.length === 0 ? "8+ characters with a digit and an uppercase letter" : undefined
+          }
+        >
+          <Input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            leftIcon={<Lock />}
+          />
+          {password.length > 0 && (
+            <div className="mt-2 flex items-center gap-2">
+              <div className="flex gap-1 flex-1">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className={[
+                      "h-1 flex-1 rounded-full transition-colors",
+                      i < strength
+                        ? strength === 3
+                          ? "bg-dizajno-success"
+                          : strength === 2
+                            ? "bg-dizajno-warning"
+                            : "bg-dizajno-danger"
+                        : "bg-dizajno-elevated",
+                    ].join(" ")}
+                  />
+                ))}
+              </div>
+              <span className="text-[11px] text-dizajno-muted tabular-nums">
+                {strength === 3 ? "Strong" : strength === 2 ? "Fair" : "Weak"}
+              </span>
+            </div>
+          )}
+        </FormField>
+
+        {error && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2.5 text-[13px] text-dizajno-danger"
+          >
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            <span className="leading-snug">{error}</span>
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          fullWidth
+          loading={submitting}
+          rightIcon={!submitting ? <ArrowRight /> : undefined}
+        >
+          {submitting ? "Creating account…" : "Create account"}
+        </Button>
+
+        <p className="text-[12px] text-dizajno-muted text-center leading-relaxed pt-2">
+          By creating an account you agree to our terms and the use of cookies
+          for authentication.
         </p>
-      </div>
-    </main>
+      </form>
+    </AuthShell>
   );
 }

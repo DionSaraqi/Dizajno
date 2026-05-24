@@ -2,18 +2,32 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, Image as ImageIcon, Plus, Trash2, Upload, X } from "lucide-react";
+import {
+  Box,
+  Check,
+  ImageIcon,
+  Layers,
+  Palette,
+  Plus,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import * as api from "@/lib/api";
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  ConfirmDialog,
+  FormField,
+  IconButton,
+  Input,
+  Select,
+  Spinner,
+  Tooltip,
+} from "@/components/ui";
 
-/**
- * One card per variant. Has: dimensions/price/color edit, GLB upload, SVG
- * preview upload, collision boxes (numeric rows for L-shapes etc.), material
- * slot defaults (named hex colors), and the texture-slot bindings picker.
- *
- * Heavy form, but everything saves through a single `Save variant` button at
- * the bottom (or per-section in the case of asset attaches + slot bindings,
- * which are atomic backend operations).
- */
 export default function VariantRowEditor({
   supplierId,
   productId,
@@ -38,24 +52,25 @@ export default function VariantRowEditor({
   const [basePrice, setBasePrice] = useState(variant.basePrice?.toString() ?? "");
   const [currency, setCurrency] = useState(variant.currency || "EUR");
 
-  // Collision boxes (parsed → editable rows → serialised back)
+  // Collision boxes / material slots
   const [collisions, setCollisions] = useState<CollisionRow[]>(() =>
-    parseCollisionBoxes(variant.collisionBoxes)
+    parseCollisionBoxes(variant.collisionBoxes),
   );
-
-  // Material defaults (slotName → hex)
   const [materialSlots, setMaterialSlots] = useState<MaterialRow[]>(() =>
-    parseMaterialDefaults(variant.materialDefaults)
+    parseMaterialDefaults(variant.materialDefaults),
   );
 
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     if (!savedAt) return;
     const id = setTimeout(() => setSavedAt(null), 2500);
     return () => clearTimeout(id);
   }, [savedAt]);
+
+  void productId; // referenced via parent's invalidation key
 
   const save = useMutation({
     mutationFn: () =>
@@ -81,13 +96,16 @@ export default function VariantRowEditor({
 
   const deleteVariant = useMutation({
     mutationFn: () => api.deleteVariant(variant.id),
-    onSuccess: onDeleted,
-    onError: (e: Error) => alert(e.message),
+    onSuccess: () => {
+      onDeleted();
+      setDeleteOpen(false);
+    },
+    onError: (e: Error) => setError(e.message),
   });
 
   // Asset uploads — each handler picks a file, calls the three-step helper,
-  // then attaches to the variant. The helper surfaces R2-misconfigured errors
-  // as a regular Error so we just alert and bail.
+  // then attaches to the variant. R2-misconfigured errors surface as a regular
+  // Error so we can show them inline.
   const attachGlb = useMutation({
     mutationFn: async (file: File) => {
       const asset = await api.uploadSupplierFile(supplierId, file, "Glb");
@@ -95,180 +113,255 @@ export default function VariantRowEditor({
       return asset;
     },
     onSuccess: onChanged,
-    onError: (e: Error) => alert(`GLB upload failed: ${e.message}`),
+    onError: (e: Error) => setError(`GLB upload failed: ${e.message}`),
   });
   const detachGlb = useMutation({
-    mutationFn: () => api.attachVariantGlb(variant.id, "00000000-0000-0000-0000-000000000000"),
+    mutationFn: () =>
+      api.attachVariantGlb(variant.id, "00000000-0000-0000-0000-000000000000"),
     onSuccess: onChanged,
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => setError(e.message),
   });
   const attachPreview = useMutation({
     mutationFn: async (file: File) => {
-      const asset = await api.uploadSupplierFile(supplierId, file, "SvgPreview");
+      const asset = await api.uploadSupplierFile(
+        supplierId,
+        file,
+        "SvgPreview",
+      );
       await api.attachVariantPreview(variant.id, asset.id);
       return asset;
     },
     onSuccess: onChanged,
-    onError: (e: Error) => alert(`SVG upload failed: ${e.message}`),
+    onError: (e: Error) => setError(`SVG upload failed: ${e.message}`),
   });
   const detachPreview = useMutation({
-    mutationFn: () => api.attachVariantPreview(variant.id, "00000000-0000-0000-0000-000000000000"),
+    mutationFn: () =>
+      api.attachVariantPreview(
+        variant.id,
+        "00000000-0000-0000-0000-000000000000",
+      ),
     onSuccess: onChanged,
-    onError: (e: Error) => alert(e.message),
+    onError: (e: Error) => setError(e.message),
   });
 
   return (
-    <section className="rounded border border-white/15 bg-black/30 px-4 py-4 space-y-4">
-      <header className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <h3 className="font-mono text-sm text-dizajno-text">{variant.sku}</h3>
-          <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase mt-0.5">
-            Variant · sort {variant.sortOrder}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            if (confirm(`Delete variant ${variant.sku}? Fails if any saved project scene still references it.`)) {
-              deleteVariant.mutate();
-            }
-          }}
-          className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-          title="Delete variant"
-        >
-          <Trash2 size={14} />
-        </button>
-      </header>
+    <>
+      <Card>
+        <CardBody className="space-y-6">
+          {/* Header */}
+          <header className="flex items-start justify-between gap-3 pb-4 border-b border-dizajno-border-subtle">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-[15px] font-semibold text-dizajno-text font-mono">
+                  {variant.sku}
+                </h3>
+                <Badge tone="neutral" size="sm" mono>
+                  sort {variant.sortOrder}
+                </Badge>
+              </div>
+              <p className="text-[12.5px] text-dizajno-muted mt-0.5">
+                Variant SKU is immutable — saved as-is.
+              </p>
+            </div>
+            <Tooltip content="Delete this variant">
+              <IconButton
+                variant="danger"
+                size="sm"
+                onClick={() => setDeleteOpen(true)}
+                disabled={deleteVariant.isPending}
+              >
+                <Trash2 />
+              </IconButton>
+            </Tooltip>
+          </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <LabeledInput label="Name">
-          <input value={name} onChange={(e) => setName(e.target.value)} className="portal-input" />
-        </LabeledInput>
-        <LabeledInput label="Color (hex)">
-          <div className="flex items-center gap-2">
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              className="w-9 h-9 rounded border border-white/10 bg-black/30 cursor-pointer"
-            />
-            <input
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              className="portal-input flex-1"
-            />
+          {/* Basic fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <FormField label="Name">
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </FormField>
+            <FormField label="Color" hint="Hex">
+              <ColorInput value={color} onChange={setColor} />
+            </FormField>
+            <FormField label="Base price" hint="Currency code → 3 letters">
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={basePrice}
+                  onChange={(e) => setBasePrice(e.target.value)}
+                  placeholder="—"
+                />
+                <Input
+                  value={currency}
+                  maxLength={3}
+                  onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                  className="w-20 font-mono"
+                />
+              </div>
+            </FormField>
           </div>
-        </LabeledInput>
-        <LabeledInput label="Base price">
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={basePrice}
-              onChange={(e) => setBasePrice(e.target.value)}
-              placeholder="—"
-              className="portal-input flex-1"
-            />
-            <input
-              value={currency}
-              maxLength={3}
-              onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-              className="portal-input w-16"
-            />
+
+          {/* Dimensions */}
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-label text-dizajno-muted mb-2">
+              Dimensions
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <FormField label="Width" hint="m, X axis" required>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={width}
+                  onChange={(e) => setWidth(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Depth" hint="m, Z axis" required>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={depth}
+                  onChange={(e) => setDepth(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Height" hint="m, Y axis" required>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={height}
+                  onChange={(e) => setHeight(e.target.value)}
+                />
+              </FormField>
+            </div>
           </div>
-        </LabeledInput>
-      </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <LabeledInput label="Width (m, X)">
-          <input
-            type="number" step="0.01" min="0.01"
-            value={width}
-            onChange={(e) => setWidth(e.target.value)}
-            className="portal-input"
+          <CollisionBoxesEditor rows={collisions} onChange={setCollisions} />
+
+          <MaterialSlotsEditor
+            rows={materialSlots}
+            onChange={setMaterialSlots}
           />
-        </LabeledInput>
-        <LabeledInput label="Depth (m, Z)">
-          <input
-            type="number" step="0.01" min="0.01"
-            value={depth}
-            onChange={(e) => setDepth(e.target.value)}
-            className="portal-input"
+
+          <AssetSlot
+            label="GLB model"
+            icon={<Box />}
+            currentUrl={variant.glbAssetUrl}
+            currentId={variant.glbAssetId}
+            accept="model/gltf-binary,.glb"
+            uploading={attachGlb.isPending || detachGlb.isPending}
+            onUpload={(file) => attachGlb.mutate(file)}
+            onDetach={() => detachGlb.mutate()}
           />
-        </LabeledInput>
-        <LabeledInput label="Height (m, Y)">
-          <input
-            type="number" step="0.01" min="0.01"
-            value={height}
-            onChange={(e) => setHeight(e.target.value)}
-            className="portal-input"
+
+          <AssetSlot
+            label="SVG preview"
+            icon={<ImageIcon />}
+            currentUrl={variant.svgPreviewAssetUrl}
+            currentId={variant.svgPreviewAssetId}
+            accept="image/svg+xml,.svg"
+            uploading={attachPreview.isPending || detachPreview.isPending}
+            onUpload={(file) => attachPreview.mutate(file)}
+            onDetach={() => detachPreview.mutate()}
           />
-        </LabeledInput>
-      </div>
 
-      <CollisionBoxesEditor
-        rows={collisions}
-        onChange={setCollisions}
+          <TextureSlotsBinder supplierId={supplierId} variantId={variant.id} qc={qc} />
+
+          {error && (
+            <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger flex items-start justify-between gap-3">
+              <span>{error}</span>
+              <button
+                onClick={() => setError(null)}
+                className="text-dizajno-danger/70 hover:text-dizajno-danger text-[12px] font-medium shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-dizajno-border-subtle">
+            {savedAt && (
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] text-dizajno-success">
+                <Check size={14} /> Saved
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="primary"
+              loading={save.isPending}
+              onClick={() => {
+                setError(null);
+                save.mutate();
+              }}
+            >
+              Save variant
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete variant?"
+        description={`Variant "${variant.sku}" will be permanently removed. This will fail if any saved project scene still references it — hide the parent product instead if that's the case.`}
+        confirmLabel="Delete variant"
+        confirmTone="danger"
+        busy={deleteVariant.isPending}
+        onConfirm={() => deleteVariant.mutate()}
+        onCancel={() => setDeleteOpen(false)}
       />
+    </>
+  );
+}
 
-      <MaterialSlotsEditor
-        rows={materialSlots}
-        onChange={setMaterialSlots}
+// ── Color input ─────────────────────────────────────────────────────────────
+
+function ColorInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex gap-2 items-center">
+      <label className="relative shrink-0 cursor-pointer">
+        <span
+          className="block w-9 h-9 rounded-md border border-dizajno-border shadow-card-sm"
+          style={{ background: value }}
+        />
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 opacity-0 cursor-pointer"
+        />
+      </label>
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="font-mono"
+        placeholder="#999999"
       />
-
-      <AssetSlot
-        label="GLB model"
-        icon={<Box size={14} />}
-        currentUrl={variant.glbAssetUrl}
-        currentId={variant.glbAssetId}
-        accept="model/gltf-binary,.glb"
-        uploading={attachGlb.isPending}
-        onUpload={(file) => attachGlb.mutate(file)}
-        onDetach={() => detachGlb.mutate()}
-      />
-
-      <AssetSlot
-        label="SVG preview"
-        icon={<ImageIcon size={14} />}
-        currentUrl={variant.svgPreviewAssetUrl}
-        currentId={variant.svgPreviewAssetId}
-        accept="image/svg+xml,.svg"
-        uploading={attachPreview.isPending}
-        onUpload={(file) => attachPreview.mutate(file)}
-        onDetach={() => detachPreview.mutate()}
-      />
-
-      <TextureSlotsBinder supplierId={supplierId} variantId={variant.id} />
-
-      {error && <p className="font-mono text-xs text-red-400 break-words">{error}</p>}
-
-      <div className="flex items-center justify-end gap-2">
-        {savedAt && (
-          <span className="font-mono text-[10px] tracking-widest text-emerald-300 uppercase">
-            Saved
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            setError(null);
-            save.mutate();
-          }}
-          disabled={save.isPending}
-          className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition disabled:opacity-50"
-        >
-          {save.isPending ? "Saving…" : "Save variant"}
-        </button>
-      </div>
-    </section>
+    </div>
   );
 }
 
 // ── Asset slot ──────────────────────────────────────────────────────────────
 
 function AssetSlot({
-  label, icon, currentUrl, currentId, accept, uploading, onUpload, onDetach,
+  label,
+  icon,
+  currentUrl,
+  currentId,
+  accept,
+  uploading,
+  onUpload,
+  onDetach,
 }: {
   label: string;
   icon: React.ReactNode;
@@ -280,60 +373,57 @@ function AssetSlot({
   onDetach: () => void;
 }) {
   return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between">
-        <label className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-          {icon}
-          {label}
-        </label>
+    <div>
+      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-label text-dizajno-muted mb-2">
+        <span className="[&_svg]:size-3.5">{icon}</span>
+        {label}
       </div>
-      <div className="flex items-center justify-between gap-3 rounded border border-white/10 bg-black/40 px-3 py-2">
+      <div className="rounded-lg border border-dizajno-border bg-dizajno-bg/40 px-3 py-2.5 flex items-center gap-3">
         <div className="min-w-0 flex-1">
           {currentUrl ? (
             <a
               href={currentUrl}
               target="_blank"
               rel="noreferrer"
-              className="font-mono text-[11px] text-emerald-300 hover:underline break-all"
+              className="text-[12px] text-dizajno-accent hover:underline break-all font-mono"
             >
               {currentUrl}
             </a>
           ) : (
-            <span className="font-mono text-[11px] text-dizajno-muted">— Not set —</span>
+            <span className="text-[12.5px] text-dizajno-muted">Not set</span>
           )}
         </div>
-        <div className="flex gap-1.5">
-          <label
-            className={`flex items-center gap-1 rounded border border-white/10 px-2 py-1 font-mono text-[10px] tracking-widest uppercase cursor-pointer transition ${
-              uploading
-                ? "text-dizajno-muted opacity-50 cursor-wait"
-                : "text-dizajno-muted hover:text-emerald-300 hover:border-emerald-500/40"
-            }`}
-            title="Upload via R2 presign"
-          >
-            <Upload size={12} />
-            {uploading ? "…" : "Upload"}
-            <input
-              type="file"
-              accept={accept}
-              disabled={uploading}
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onUpload(f);
-                e.target.value = "";
-              }}
-            />
+        <div className="flex gap-1.5 shrink-0">
+          <label className="inline-flex">
+            <span
+              className={[
+                "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-[12px] font-medium transition-colors cursor-pointer",
+                uploading
+                  ? "border-dizajno-border bg-dizajno-elevated text-dizajno-muted cursor-wait"
+                  : "border-dizajno-border bg-dizajno-surface hover:bg-dizajno-elevated text-dizajno-text-subtle hover:text-dizajno-text",
+              ].join(" ")}
+            >
+              {uploading ? <Spinner size={12} /> : <Upload size={12} />}
+              {uploading ? "…" : "Upload"}
+              <input
+                type="file"
+                accept={accept}
+                disabled={uploading}
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onUpload(f);
+                  e.target.value = "";
+                }}
+              />
+            </span>
           </label>
           {currentId && (
-            <button
-              type="button"
-              onClick={onDetach}
-              className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-              title="Detach"
-            >
-              <X size={12} />
-            </button>
+            <Tooltip content="Detach">
+              <IconButton variant="danger" size="sm" onClick={onDetach}>
+                <X />
+              </IconButton>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -343,7 +433,12 @@ function AssetSlot({
 
 // ── Collision boxes ─────────────────────────────────────────────────────────
 
-type CollisionRow = { offsetX: string; offsetZ: string; width: string; depth: string };
+type CollisionRow = {
+  offsetX: string;
+  offsetZ: string;
+  width: string;
+  depth: string;
+};
 
 function CollisionBoxesEditor({
   rows,
@@ -352,80 +447,398 @@ function CollisionBoxesEditor({
   rows: CollisionRow[];
   onChange: (rows: CollisionRow[]) => void;
 }) {
+  function updateRow(index: number, key: keyof CollisionRow, val: string) {
+    onChange(rows.map((r, i) => (i === index ? { ...r, [key]: val } : r)));
+  }
+
   return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <label className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-          Collision sub-boxes (optional)
-        </label>
-        <span className="font-mono text-[10px] text-dizajno-muted/80">
-          Leave empty for rectangular furniture — the renderer uses width × depth automatically.
-        </span>
+    <div>
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <p className="text-[11px] font-medium uppercase tracking-label text-dizajno-muted">
+          Collision sub-boxes
+        </p>
+        <p className="text-[12px] text-dizajno-muted">
+          Leave empty for rectangular furniture — width × depth is used by default.
+        </p>
       </div>
-      <div className="rounded border border-white/10 bg-black/40 px-3 py-3 space-y-2">
+      <div className="rounded-lg border border-dizajno-border bg-dizajno-bg/40 px-3 py-3 space-y-2">
         {rows.length === 0 && (
-          <p className="font-mono text-[11px] text-dizajno-muted">
+          <p className="text-[12.5px] text-dizajno-muted">
             No sub-boxes. Add one if the visible model is L-shaped or curved.
           </p>
         )}
         {rows.map((r, i) => (
-          <div key={i} className="grid grid-cols-5 gap-2 items-center">
-            <NumCell value={r.offsetX} placeholder="offsetX" onChange={(v) => updateRow(i, "offsetX", v)} />
-            <NumCell value={r.offsetZ} placeholder="offsetZ" onChange={(v) => updateRow(i, "offsetZ", v)} />
-            <NumCell value={r.width} placeholder="width" onChange={(v) => updateRow(i, "width", v)} />
-            <NumCell value={r.depth} placeholder="depth" onChange={(v) => updateRow(i, "depth", v)} />
-            <button
-              type="button"
-              onClick={() => onChange(rows.filter((_, j) => j !== i))}
-              className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-              title="Remove sub-box"
-            >
-              <Trash2 size={12} />
-            </button>
+          <div key={i} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-center">
+            <Input
+              size="sm"
+              type="number"
+              step="0.01"
+              placeholder="offsetX"
+              value={r.offsetX}
+              onChange={(e) => updateRow(i, "offsetX", e.target.value)}
+              className="font-mono"
+            />
+            <Input
+              size="sm"
+              type="number"
+              step="0.01"
+              placeholder="offsetZ"
+              value={r.offsetZ}
+              onChange={(e) => updateRow(i, "offsetZ", e.target.value)}
+              className="font-mono"
+            />
+            <Input
+              size="sm"
+              type="number"
+              step="0.01"
+              placeholder="width"
+              value={r.width}
+              onChange={(e) => updateRow(i, "width", e.target.value)}
+              className="font-mono"
+            />
+            <Input
+              size="sm"
+              type="number"
+              step="0.01"
+              placeholder="depth"
+              value={r.depth}
+              onChange={(e) => updateRow(i, "depth", e.target.value)}
+              className="font-mono"
+            />
+            <Tooltip content="Remove sub-box">
+              <IconButton
+                variant="danger"
+                size="sm"
+                onClick={() => onChange(rows.filter((_, j) => j !== i))}
+              >
+                <Trash2 />
+              </IconButton>
+            </Tooltip>
           </div>
         ))}
-        <button
-          type="button"
-          onClick={() => onChange([...rows, { offsetX: "0", offsetZ: "0", width: "1", depth: "1" }])}
-          className="flex items-center gap-1.5 rounded border border-white/10 px-2 py-1 font-mono text-[10px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text hover:border-white/20 transition"
-        >
-          <Plus size={12} /> Add sub-box
-        </button>
+        <div className="pt-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            leftIcon={<Plus />}
+            onClick={() =>
+              onChange([
+                ...rows,
+                { offsetX: "0", offsetZ: "0", width: "1", depth: "1" },
+              ])
+            }
+          >
+            Add sub-box
+          </Button>
+        </div>
       </div>
     </div>
   );
-
-  function updateRow(index: number, key: keyof CollisionRow, val: string) {
-    onChange(rows.map((r, i) => (i === index ? { ...r, [key]: val } : r)));
-  }
 }
 
-function NumCell({
-  value, placeholder, onChange,
-}: { value: string; placeholder: string; onChange: (v: string) => void }) {
+// ── Material slot defaults ──────────────────────────────────────────────────
+
+type MaterialRow = { slot: string; color: string };
+
+function MaterialSlotsEditor({
+  rows,
+  onChange,
+}: {
+  rows: MaterialRow[];
+  onChange: (rows: MaterialRow[]) => void;
+}) {
   return (
-    <input
-      type="number"
-      step="0.01"
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="portal-input font-mono text-xs"
-    />
+    <div>
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <p className="text-[11px] font-medium uppercase tracking-label text-dizajno-muted flex items-center gap-1.5">
+          <Palette size={11} />
+          Material slot defaults
+        </p>
+        <p className="text-[12px] text-dizajno-muted">
+          One hex per named material in the GLB (e.g. Body, Pillows, Legs).
+        </p>
+      </div>
+      <div className="rounded-lg border border-dizajno-border bg-dizajno-bg/40 px-3 py-3 space-y-2">
+        {rows.length === 0 && (
+          <p className="text-[12.5px] text-dizajno-muted">
+            No slots. Surfaces in the customizer&apos;s color picker.
+          </p>
+        )}
+        {rows.map((r, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-[1fr_minmax(11rem,12rem)_auto] gap-2 items-center"
+          >
+            <Input
+              size="sm"
+              value={r.slot}
+              onChange={(e) =>
+                onChange(
+                  rows.map((x, j) => (j === i ? { ...x, slot: e.target.value } : x)),
+                )
+              }
+              placeholder="Slot name (e.g. Body)"
+            />
+            <ColorInput
+              value={r.color}
+              onChange={(v) =>
+                onChange(
+                  rows.map((x, j) => (j === i ? { ...x, color: v } : x)),
+                )
+              }
+            />
+            <Tooltip content="Remove slot">
+              <IconButton
+                variant="danger"
+                size="sm"
+                onClick={() => onChange(rows.filter((_, j) => j !== i))}
+              >
+                <Trash2 />
+              </IconButton>
+            </Tooltip>
+          </div>
+        ))}
+        <div className="pt-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            leftIcon={<Plus />}
+            onClick={() =>
+              onChange([...rows, { slot: "", color: "#888888" }])
+            }
+          >
+            Add slot
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
+
+// ── Texture slot bindings ───────────────────────────────────────────────────
+
+function TextureSlotsBinder({
+  supplierId,
+  variantId,
+  qc,
+}: {
+  supplierId: string;
+  variantId: string;
+  qc: ReturnType<typeof useQueryClient>;
+}) {
+  const slots = useQuery({
+    queryKey: ["supplier", "variant", variantId, "texture-slots"],
+    queryFn: () => api.listVariantTextureSlots(variantId),
+  });
+  const textures = useQuery({
+    queryKey: ["supplier", supplierId, "textures"],
+    queryFn: () => api.listSupplierTextures(supplierId),
+  });
+
+  const [draft, setDraft] = useState<
+    { slotName: string; supplierTextureId: string; isDefault: boolean }[]
+  >([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (slots.data) {
+      setDraft(
+        slots.data.map((s) => ({
+          slotName: s.slotName,
+          supplierTextureId: s.supplierTextureId,
+          isDefault: s.isDefault,
+        })),
+      );
+    }
+  }, [slots.data]);
+
+  const save = useMutation({
+    mutationFn: () => {
+      const cleaned = draft.filter(
+        (r) => r.slotName.trim() && r.supplierTextureId,
+      );
+      return api.replaceVariantTextureSlots(variantId, cleaned);
+    },
+    onSuccess: () => {
+      setSaveError(null);
+      qc.invalidateQueries({
+        queryKey: ["supplier", "variant", variantId, "texture-slots"],
+      });
+    },
+    onError: (e: Error) => setSaveError(e.message),
+  });
+
+  const labelRow = useMemo(
+    () => (
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <p className="text-[11px] font-medium uppercase tracking-label text-dizajno-muted flex items-center gap-1.5">
+          <Layers size={11} />
+          Texture slot bindings
+        </p>
+        <p className="text-[12px] text-dizajno-muted">
+          Maps slot names to textures from your library.
+        </p>
+      </div>
+    ),
+    [],
+  );
+
+  if (textures.isLoading || slots.isLoading) {
+    return (
+      <div>
+        {labelRow}
+        <div className="rounded-lg border border-dizajno-border bg-dizajno-bg/40 px-3 py-3 flex items-center gap-2 text-[12.5px] text-dizajno-muted">
+          <Spinner size={12} /> Loading textures…
+        </div>
+      </div>
+    );
+  }
+  if (!textures.data || textures.data.length === 0) {
+    return (
+      <div>
+        {labelRow}
+        <div className="rounded-lg border border-dashed border-dizajno-border bg-dizajno-bg/40 px-3 py-4 text-[12.5px] text-dizajno-muted text-center">
+          No textures in the library yet.{" "}
+          <a
+            href={`/supplier/${supplierId}/textures`}
+            className="text-dizajno-accent hover:underline font-medium"
+          >
+            Upload some via the Textures tab
+          </a>{" "}
+          to bind them here.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {labelRow}
+      <div className="rounded-lg border border-dizajno-border bg-dizajno-bg/40 px-3 py-3 space-y-2">
+        {draft.length === 0 && (
+          <p className="text-[12.5px] text-dizajno-muted">
+            No bindings yet. Add one per (slot, texture) pair; mark one default
+            per slot.
+          </p>
+        )}
+        {draft.map((row, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center"
+          >
+            <Input
+              size="sm"
+              value={row.slotName}
+              onChange={(e) =>
+                setDraft(
+                  draft.map((r, j) =>
+                    j === i ? { ...r, slotName: e.target.value } : r,
+                  ),
+                )
+              }
+              placeholder="Slot (e.g. Body)"
+            />
+            <Select
+              size="sm"
+              value={row.supplierTextureId}
+              onChange={(e) =>
+                setDraft(
+                  draft.map((r, j) =>
+                    j === i ? { ...r, supplierTextureId: e.target.value } : r,
+                  ),
+                )
+              }
+            >
+              <option value="">— Pick texture —</option>
+              {textures.data!.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </Select>
+            <label className="inline-flex items-center gap-1.5 text-[11.5px] text-dizajno-muted whitespace-nowrap select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={row.isDefault}
+                onChange={(e) =>
+                  setDraft(
+                    draft.map((r, j) =>
+                      j === i ? { ...r, isDefault: e.target.checked } : r,
+                    ),
+                  )
+                }
+                className="w-3.5 h-3.5 rounded border-dizajno-border text-dizajno-accent focus:ring-dizajno-accent/40"
+              />
+              Default
+            </label>
+            <Tooltip content="Remove binding">
+              <IconButton
+                variant="danger"
+                size="sm"
+                onClick={() => setDraft(draft.filter((_, j) => j !== i))}
+              >
+                <Trash2 />
+              </IconButton>
+            </Tooltip>
+          </div>
+        ))}
+        {saveError && (
+          <div className="rounded-md border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-1.5 text-[12px] text-dizajno-danger">
+            {saveError}
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            leftIcon={<Plus />}
+            onClick={() =>
+              setDraft([
+                ...draft,
+                { slotName: "", supplierTextureId: "", isDefault: false },
+              ])
+            }
+          >
+            Add binding
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={save.isPending}
+            onClick={() => save.mutate()}
+          >
+            Save bindings
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Parse / serialise helpers (unchanged from previous version) ─────────────
 
 function parseCollisionBoxes(json: string | null): CollisionRow[] {
   if (!json) return [];
   try {
     const arr = JSON.parse(json);
     if (!Array.isArray(arr)) return [];
-    return arr.map((b: { offsetX: number; offsetZ: number; width: number; depth: number }) => ({
-      offsetX: String(b.offsetX),
-      offsetZ: String(b.offsetZ),
-      width: String(b.width),
-      depth: String(b.depth),
-    }));
+    return arr.map(
+      (b: {
+        offsetX: number;
+        offsetZ: number;
+        width: number;
+        depth: number;
+      }) => ({
+        offsetX: String(b.offsetX),
+        offsetZ: String(b.offsetZ),
+        width: String(b.width),
+        depth: String(b.depth),
+      }),
+    );
   } catch {
     return [];
   }
@@ -443,83 +856,15 @@ function serializeCollisionBoxes(rows: CollisionRow[]): string | null {
   return valid.length > 0 ? JSON.stringify(valid) : null;
 }
 
-// ── Material slot defaults ──────────────────────────────────────────────────
-
-type MaterialRow = { slot: string; color: string };
-
-function MaterialSlotsEditor({
-  rows,
-  onChange,
-}: {
-  rows: MaterialRow[];
-  onChange: (rows: MaterialRow[]) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <label className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-          Material slot defaults (optional)
-        </label>
-        <span className="font-mono text-[10px] text-dizajno-muted/80">
-          Per-slot hex defaults. Surfaces in the customizer&apos;s slot picker.
-        </span>
-      </div>
-      <div className="rounded border border-white/10 bg-black/40 px-3 py-3 space-y-2">
-        {rows.length === 0 && (
-          <p className="font-mono text-[11px] text-dizajno-muted">
-            No slots. Add one for each named material on the GLB (e.g. Body, Pillows, Legs).
-          </p>
-        )}
-        {rows.map((r, i) => (
-          <div key={i} className="grid grid-cols-[1fr_8rem_auto] gap-2 items-center">
-            <input
-              type="text"
-              value={r.slot}
-              onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, slot: e.target.value } : x)))}
-              placeholder="Slot name (e.g. Body)"
-              className="portal-input"
-            />
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={r.color}
-                onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)))}
-                className="w-9 h-9 rounded border border-white/10 bg-black/30 cursor-pointer"
-              />
-              <input
-                type="text"
-                value={r.color}
-                onChange={(e) => onChange(rows.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)))}
-                className="portal-input font-mono text-xs"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => onChange(rows.filter((_, j) => j !== i))}
-              className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-            >
-              <Trash2 size={12} />
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => onChange([...rows, { slot: "", color: "#888888" }])}
-          className="flex items-center gap-1.5 rounded border border-white/10 px-2 py-1 font-mono text-[10px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text hover:border-white/20 transition"
-        >
-          <Plus size={12} /> Add slot
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function parseMaterialDefaults(json: string | null): MaterialRow[] {
   if (!json) return [];
   try {
     const obj = JSON.parse(json);
     if (typeof obj !== "object" || obj === null) return [];
-    return Object.entries(obj).map(([slot, color]) => ({ slot, color: String(color) }));
+    return Object.entries(obj).map(([slot, color]) => ({
+      slot,
+      color: String(color),
+    }));
   } catch {
     return [];
   }
@@ -531,166 +876,4 @@ function serializeMaterialDefaults(rows: MaterialRow[]): string | null {
   const obj: Record<string, string> = {};
   for (const r of valid) obj[r.slot.trim()] = r.color;
   return JSON.stringify(obj);
-}
-
-// ── Texture slot bindings ───────────────────────────────────────────────────
-
-function TextureSlotsBinder({
-  supplierId,
-  variantId,
-}: {
-  supplierId: string;
-  variantId: string;
-}) {
-  const qc = useQueryClient();
-
-  const slots = useQuery({
-    queryKey: ["supplier", "variant", variantId, "texture-slots"],
-    queryFn: () => api.listVariantTextureSlots(variantId),
-  });
-  const textures = useQuery({
-    queryKey: ["supplier", supplierId, "textures"],
-    queryFn: () => api.listSupplierTextures(supplierId),
-  });
-
-  // Edit state mirrors the server list so users can add/remove rows before
-  // saving in one shot.
-  const [draft, setDraft] = useState<
-    { slotName: string; supplierTextureId: string; isDefault: boolean }[]
-  >([]);
-
-  // Reset draft whenever the server state lands.
-  useEffect(() => {
-    if (slots.data) {
-      setDraft(
-        slots.data.map((s) => ({
-          slotName: s.slotName,
-          supplierTextureId: s.supplierTextureId,
-          isDefault: s.isDefault,
-        }))
-      );
-    }
-  }, [slots.data]);
-
-  const save = useMutation({
-    mutationFn: () => {
-      // Strip empty rows before sending so users can leave a half-edited row
-      // in-progress without the backend erroring on the empty values.
-      const cleaned = draft.filter((r) => r.slotName.trim() && r.supplierTextureId);
-      return api.replaceVariantTextureSlots(variantId, cleaned);
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["supplier", "variant", variantId, "texture-slots"] }),
-    onError: (e: Error) => alert(e.message),
-  });
-
-  if (textures.isLoading || slots.isLoading) {
-    return (
-      <div className="rounded border border-white/10 bg-black/40 px-3 py-3 font-mono text-[11px] text-dizajno-muted">
-        Loading textures…
-      </div>
-    );
-  }
-  if (!textures.data || textures.data.length === 0) {
-    return (
-      <div className="rounded border border-white/10 bg-black/40 px-3 py-3 font-mono text-[11px] text-dizajno-muted">
-        No textures in the library yet. Upload some via the{" "}
-        <a href={`/supplier/${supplierId}/textures`} className="text-emerald-300 hover:underline">
-          Textures tab
-        </a>{" "}
-        to bind them here.
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <label className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-          Texture slot bindings
-        </label>
-        <span className="font-mono text-[10px] text-dizajno-muted/80">
-          Maps slot names (Body, Pillows…) to textures from your library.
-        </span>
-      </div>
-      <div className="rounded border border-white/10 bg-black/40 px-3 py-3 space-y-2">
-        {draft.length === 0 && (
-          <p className="font-mono text-[11px] text-dizajno-muted">
-            No bindings yet. Add one per (slot, texture) pair; mark one default per slot.
-          </p>
-        )}
-        {draft.map((row, i) => (
-          <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center">
-            <input
-              type="text"
-              value={row.slotName}
-              onChange={(e) =>
-                setDraft(draft.map((r, j) => (j === i ? { ...r, slotName: e.target.value } : r)))
-              }
-              placeholder="Slot (e.g. Body)"
-              className="portal-input"
-            />
-            <select
-              value={row.supplierTextureId}
-              onChange={(e) =>
-                setDraft(draft.map((r, j) => (j === i ? { ...r, supplierTextureId: e.target.value } : r)))
-              }
-              className="portal-input"
-            >
-              <option value="">— Pick texture —</option>
-              {textures.data!.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <label className="flex items-center gap-1 font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-              <input
-                type="checkbox"
-                checked={row.isDefault}
-                onChange={(e) =>
-                  setDraft(draft.map((r, j) => (j === i ? { ...r, isDefault: e.target.checked } : r)))
-                }
-              />
-              Default
-            </label>
-            <button
-              type="button"
-              onClick={() => setDraft(draft.filter((_, j) => j !== i))}
-              className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-            >
-              <Trash2 size={12} />
-            </button>
-          </div>
-        ))}
-        <div className="flex items-center justify-between gap-2 pt-2">
-          <button
-            type="button"
-            onClick={() => setDraft([...draft, { slotName: "", supplierTextureId: "", isDefault: false }])}
-            className="flex items-center gap-1.5 rounded border border-white/10 px-2 py-1 font-mono text-[10px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text hover:border-white/20 transition"
-          >
-            <Plus size={12} /> Add binding
-          </button>
-          <button
-            type="button"
-            onClick={() => save.mutate()}
-            disabled={save.isPending}
-            className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 font-mono text-[10px] tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition disabled:opacity-50"
-          >
-            {save.isPending ? "Saving…" : "Save bindings"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LabeledInput({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
 }

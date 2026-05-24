@@ -4,10 +4,29 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Paperclip, Send, X } from "lucide-react";
+import {
+  AlertCircle,
+  Lock,
+  Paperclip,
+  Send,
+  Store,
+  X,
+} from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
-import { ConfirmDialog } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  FormField,
+  IconButton,
+  Input,
+  PageHeader,
+  Spinner,
+  Textarea,
+  TopBar,
+} from "@/components/ui";
 
 const POLL_MS = 30_000;
 
@@ -17,6 +36,8 @@ export default function SupplierQuoteDetailPage() {
   const requestId = params?.id ?? "";
   const queryClient = useQueryClient();
   const status = useAuthStore((s) => s.status);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -40,7 +61,6 @@ export default function SupplierQuoteDetailPage() {
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
 
-  // Hydrate form from existing response so suppliers can edit-in-place.
   useEffect(() => {
     if (!quote.data?.response) return;
     setPrice(quote.data.response.totalPrice.toString());
@@ -59,11 +79,11 @@ export default function SupplierQuoteDetailPage() {
         ownerSupplierId: quote.data!.supplierId,
         sortOrder: a.sortOrder,
         createdAt: new Date().toISOString(),
-      }))
+      })),
     );
-  }, [quote.data?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote.data?.id]);
 
-  // Broad ["supplier"] invalidation refreshes both the detail and inbox lists.
   const respond = useMutation({
     mutationFn: () =>
       api.respondToSupplierQuote(requestId, {
@@ -77,11 +97,14 @@ export default function SupplierQuoteDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["supplier"] });
     },
     onError: (err) =>
-      setRespondError(err instanceof Error ? err.message : "Failed to send response."),
+      setRespondError(
+        err instanceof Error ? err.message : "Failed to send response.",
+      ),
   });
 
   const decline = useMutation({
-    mutationFn: (reason: string) => api.declineSupplierQuote(requestId, reason || null),
+    mutationFn: (reason: string) =>
+      api.declineSupplierQuote(requestId, reason || null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["supplier"] });
       setDeclineOpen(false);
@@ -110,8 +133,13 @@ export default function SupplierQuoteDetailPage() {
         originalFileName: file.name,
       });
       const headers: Record<string, string> = {};
-      for (const [k, v] of Object.entries(presigned.requiredHeaders)) headers[k] = v;
-      const put = await fetch(presigned.uploadUrl, { method: "PUT", headers, body: file });
+      for (const [k, v] of Object.entries(presigned.requiredHeaders))
+        headers[k] = v;
+      const put = await fetch(presigned.uploadUrl, {
+        method: "PUT",
+        headers,
+        body: file,
+      });
       if (!put.ok) throw new Error(`Upload failed: ${put.status}`);
       const asset = await api.createSupplierAsset({
         supplierId: quote.data.supplierId,
@@ -128,10 +156,12 @@ export default function SupplierQuoteDetailPage() {
     }
   }
 
-  if (status !== "authenticated") {
+  if (status !== "authenticated" || !user) {
     return (
       <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg">
-        <p className="font-mono text-sm text-dizajno-muted">Loading…</p>
+        <div className="flex items-center gap-2 text-dizajno-muted text-sm">
+          <Spinner /> Loading…
+        </div>
       </main>
     );
   }
@@ -140,190 +170,296 @@ export default function SupplierQuoteDetailPage() {
   const locked = data?.quoteStatus === "Closed" || data?.quoteStatus === "Cancelled";
 
   return (
-    <main className="min-h-screen w-screen bg-dizajno-bg blueprint-grid">
-      <header className="flex items-center gap-4 px-8 py-5 border-b border-white/10 backdrop-blur">
-        <Link
-          href="/supplier/quotes"
-          className="text-dizajno-muted hover:text-dizajno-text transition"
-          aria-label="Back to inbox"
-        >
-          <ArrowLeft size={18} />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="font-mono text-lg tracking-[0.2em] text-dizajno-text truncate">
-            {data?.projectName ?? "Loading…"}
-          </h1>
-          <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-            {data
-              ? `From ${data.requesterDisplayName} · ${data.status} · ${new Date(data.createdAt).toLocaleString()}`
-              : "Loading…"}
-          </p>
-        </div>
-      </header>
-
-      <section className="max-w-3xl mx-auto px-8 py-10 space-y-8">
-        {quote.isLoading && (
-          <p className="font-mono text-sm text-dizajno-muted">Loading…</p>
-        )}
-        {quote.error && (
-          <p className="font-mono text-sm text-red-400 break-words">
-            {(quote.error as Error).message}
-          </p>
-        )}
-
-        {data?.message && (
-          <div className="rounded border border-white/10 bg-black/30 p-4">
-            <p className="font-mono text-[10px] tracking-widest uppercase text-dizajno-muted mb-1.5">
-              Customer message
-            </p>
-            <p className="font-mono text-sm text-dizajno-text whitespace-pre-wrap">
-              {data.message}
-            </p>
+    <div className="min-h-screen w-screen bg-dizajno-bg">
+      <TopBar
+        contextChip={
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded-md bg-dizajno-accent-soft text-dizajno-accent flex items-center justify-center shrink-0">
+              <Store size={13} />
+            </div>
+            <Link
+              href="/supplier"
+              className="text-[13px] font-medium text-dizajno-text truncate hover:text-dizajno-accent transition-colors"
+            >
+              Supplier portal
+            </Link>
           </div>
-        )}
+        }
+        user={{ displayName: user.displayName, email: user.email }}
+        onSignOut={async () => {
+          await logout();
+          router.push("/");
+        }}
+        userMenu={
+          <Link
+            href="/projects"
+            className="block w-full px-4 py-1.5 text-[13px] text-dizajno-text-subtle hover:bg-dizajno-elevated hover:text-dizajno-text transition-colors"
+          >
+            Back to projects
+          </Link>
+        }
+      />
 
-        {data && (
-          <div className="rounded border border-white/10 bg-black/30">
-            <header className="px-5 py-3 border-b border-white/10 font-mono text-[10px] tracking-widest uppercase text-dizajno-muted">
-              Lines
-            </header>
-            <ul className="divide-y divide-white/5">
-              {data.lines.map((line) => (
-                <li key={line.id} className="px-5 py-3 flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="font-mono text-sm text-dizajno-text truncate">
-                      {line.variantSnapshot.productName}
-                    </p>
-                    <p className="font-mono text-[10px] tracking-widest uppercase text-dizajno-muted mt-0.5">
-                      {line.isCustomSize && line.scaledWidth != null
-                        ? `${line.scaledWidth} × ${line.scaledDepth} × ${line.scaledHeight} m (custom)`
-                        : `${line.variantSnapshot.stockWidth} × ${line.variantSnapshot.stockDepth} × ${line.variantSnapshot.stockHeight} m`}
-                    </p>
-                  </div>
-                  <p className="font-mono text-xs text-dizajno-muted whitespace-nowrap">
-                    {line.suggestedPrice == null
-                      ? "—"
-                      : `~${formatPrice(line.suggestedPrice, line.currency)}`}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="rounded border border-white/10 bg-black/30 p-5 space-y-4">
-          <header>
-            <p className="font-mono text-[10px] tracking-widest uppercase text-dizajno-muted">
-              {data?.response ? "Update response" : "Respond"}
-            </p>
-            {locked && (
-              <p className="font-mono text-[11px] text-amber-400/80 mt-1">
-                Parent quote is {data?.quoteStatus.toLowerCase()}; responses are locked.
-              </p>
-            )}
-          </header>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Total price"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              disabled={locked}
-              className="flex-1 rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none disabled:opacity-50"
-            />
-            <input
-              type="text"
-              maxLength={3}
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-              disabled={locked}
-              className="w-20 rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none disabled:opacity-50"
-            />
-          </div>
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            disabled={locked}
-            rows={4}
-            placeholder="Notes for the customer (lead time, alternatives, etc.)"
-            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none disabled:opacity-50"
-          />
-
-          <div className="space-y-2">
-            <p className="font-mono text-[10px] tracking-widest uppercase text-dizajno-muted">
-              Attachments
-            </p>
-            <ul className="space-y-1">
-              {attachments.map((att) => (
-                <li
-                  key={att.id}
-                  className="flex items-center justify-between gap-2 rounded border border-white/10 bg-black/40 px-3 py-1.5"
-                >
-                  <a
-                    href={att.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 font-mono text-[11px] text-dizajno-muted hover:text-dizajno-text"
-                  >
-                    <Paperclip size={11} />
-                    {att.mimeType.split("/")[1]?.toUpperCase() ?? "FILE"} ·{" "}
-                    {formatBytes(att.sizeBytes)}
-                  </a>
-                  <button
-                    onClick={() => setAttachments((p) => p.filter((a) => a.id !== att.id))}
-                    disabled={locked}
-                    className="text-dizajno-muted hover:text-red-400 disabled:opacity-50"
-                    aria-label="Remove attachment"
-                  >
-                    <X size={12} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="file"
-                onChange={handleFileChange}
-                disabled={locked || uploading}
-                className="hidden"
-              />
-              <span className="inline-flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition">
-                <Paperclip size={12} />
-                {uploading ? "Uploading…" : "Add file"}
+      <div className="max-w-4xl mx-auto px-6">
+        <PageHeader
+          breadcrumbs={[
+            { label: "Quote inbox", href: "/supplier/quotes" },
+            { label: data?.projectName ?? "Request" },
+          ]}
+          title={data?.projectName ?? "Quote request"}
+          description={
+            data ? (
+              <span className="inline-flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-[12.5px] text-dizajno-muted">
+                  From{" "}
+                  <span className="text-dizajno-text-subtle font-medium">
+                    {data.requesterDisplayName}
+                  </span>
+                </span>
+                <span className="text-dizajno-muted-subtle">·</span>
+                <RequestStatusBadge
+                  status={data.status}
+                  hasResponse={data.response != null}
+                />
+                <span className="text-dizajno-muted-subtle">·</span>
+                <span className="text-[12.5px] text-dizajno-muted">
+                  {new Date(data.createdAt).toLocaleString()}
+                </span>
               </span>
-            </label>
-          </div>
+            ) : (
+              "Loading…"
+            )
+          }
+        />
 
-          {respondError && (
-            <p className="font-mono text-[11px] text-red-400">{respondError}</p>
+        <section className="py-6 space-y-6">
+          {quote.isLoading && (
+            <div className="flex items-center gap-2 text-dizajno-muted text-sm">
+              <Spinner /> Loading request…
+            </div>
+          )}
+          {quote.error && (
+            <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
+              {(quote.error as Error).message}
+            </div>
           )}
 
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={() => respond.mutate()}
-              disabled={locked || respond.isPending || !price}
-              className="flex-1 flex items-center justify-center gap-2 rounded bg-white/10 border border-white/20 hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed py-2.5 font-mono text-xs tracking-wider text-dizajno-text transition"
-            >
-              <Send size={12} />
-              {respond.isPending ? "Sending…" : data?.response ? "Update response" : "Send response"}
-            </button>
-            {data?.status !== "Declined" && (
-              <button
-                onClick={() => setDeclineOpen(true)}
-                disabled={locked || decline.isPending}
-                className="rounded border border-white/10 hover:bg-white/5 disabled:opacity-50 px-4 py-2.5 font-mono text-xs tracking-wider text-dizajno-muted hover:text-red-400 transition"
-              >
-                Decline
-              </button>
-            )}
-          </div>
-        </div>
-      </section>
+          {data?.message && (
+            <Card>
+              <header className="px-5 pt-4 pb-3 border-b border-dizajno-border">
+                <h3 className="text-[12.5px] font-semibold uppercase tracking-label text-dizajno-muted">
+                  Customer message
+                </h3>
+              </header>
+              <div className="px-5 py-4">
+                <p className="text-[13.5px] text-dizajno-text whitespace-pre-wrap leading-relaxed">
+                  {data.message}
+                </p>
+              </div>
+            </Card>
+          )}
+
+          {data && (
+            <Card flush>
+              <header className="px-5 pt-4 pb-3 border-b border-dizajno-border">
+                <h3 className="text-[14px] font-semibold text-dizajno-text">
+                  Lines
+                </h3>
+                <p className="text-[12.5px] text-dizajno-muted mt-0.5">
+                  {data.lines.length} item
+                  {data.lines.length === 1 ? "" : "s"} in this request
+                </p>
+              </header>
+              <ul className="divide-y divide-dizajno-border-subtle">
+                {data.lines.map((line) => (
+                  <li
+                    key={line.id}
+                    className="px-5 py-3 flex items-center justify-between gap-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[13.5px] font-medium text-dizajno-text truncate">
+                        {line.variantSnapshot.productName}
+                      </p>
+                      <p className="text-[12px] text-dizajno-muted font-mono mt-0.5">
+                        {line.isCustomSize && line.scaledWidth != null
+                          ? `${line.scaledWidth} × ${line.scaledDepth} × ${line.scaledHeight} m (custom)`
+                          : `${line.variantSnapshot.stockWidth} × ${line.variantSnapshot.stockDepth} × ${line.variantSnapshot.stockHeight} m`}
+                      </p>
+                    </div>
+                    <p className="text-[12.5px] text-dizajno-muted tabular-nums whitespace-nowrap shrink-0">
+                      {line.suggestedPrice == null
+                        ? "—"
+                        : `~${formatPrice(line.suggestedPrice, line.currency)}`}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {/* Response composer */}
+          {data && (
+            <Card>
+              <header className="px-5 pt-4 pb-3 border-b border-dizajno-border">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <h3 className="text-[14px] font-semibold text-dizajno-text">
+                      {data.response ? "Update response" : "Send response"}
+                    </h3>
+                    <p className="text-[12.5px] text-dizajno-muted mt-0.5">
+                      The customer sees this in their /quotes inbox.
+                    </p>
+                  </div>
+                  {locked && (
+                    <Badge tone="warning" dot>
+                      <Lock size={11} className="mr-1" />
+                      Parent quote {data.quoteStatus.toLowerCase()} — locked
+                    </Badge>
+                  )}
+                </div>
+              </header>
+              <div className="px-5 py-5 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_8rem] gap-3">
+                  <FormField label="Total price" required>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      disabled={locked}
+                    />
+                  </FormField>
+                  <FormField label="Currency">
+                    <Input
+                      value={currency}
+                      maxLength={3}
+                      onChange={(e) =>
+                        setCurrency(e.target.value.toUpperCase())
+                      }
+                      disabled={locked}
+                      className="font-mono"
+                    />
+                  </FormField>
+                </div>
+
+                <FormField
+                  label="Notes for the customer"
+                  hint="Lead time, alternatives, anything they should know"
+                >
+                  <Textarea
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    disabled={locked}
+                    rows={4}
+                  />
+                </FormField>
+
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-label text-dizajno-muted mb-2">
+                    Attachments
+                  </p>
+                  <ul className="space-y-1.5 mb-2">
+                    {attachments.map((att) => (
+                      <li
+                        key={att.id}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-dizajno-border bg-dizajno-bg/40 px-3 py-2"
+                      >
+                        <a
+                          href={att.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-[12.5px] text-dizajno-text-subtle hover:text-dizajno-accent transition-colors min-w-0"
+                        >
+                          <Paperclip
+                            size={13}
+                            className="shrink-0 text-dizajno-muted"
+                          />
+                          <span className="truncate font-medium">
+                            {att.mimeType.split("/")[1]?.toUpperCase() ?? "FILE"}
+                          </span>
+                          <span className="text-dizajno-muted-subtle whitespace-nowrap">
+                            {formatBytes(att.sizeBytes)}
+                          </span>
+                        </a>
+                        <IconButton
+                          variant="danger"
+                          size="sm"
+                          onClick={() =>
+                            setAttachments((p) =>
+                              p.filter((a) => a.id !== att.id),
+                            )
+                          }
+                          disabled={locked}
+                        >
+                          <X />
+                        </IconButton>
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="inline-flex">
+                    <span
+                      className={[
+                        "inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-[13px] font-medium transition-colors cursor-pointer",
+                        locked || uploading
+                          ? "border-dizajno-border bg-dizajno-elevated text-dizajno-muted cursor-wait"
+                          : "border-dizajno-border bg-dizajno-surface hover:bg-dizajno-elevated text-dizajno-text-subtle hover:text-dizajno-text",
+                      ].join(" ")}
+                    >
+                      {uploading ? <Spinner size={13} /> : <Paperclip size={13} />}
+                      {uploading ? "Uploading…" : "Add file"}
+                      <input
+                        type="file"
+                        onChange={handleFileChange}
+                        disabled={locked || uploading}
+                        className="hidden"
+                      />
+                    </span>
+                  </label>
+                </div>
+
+                {respondError && (
+                  <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger flex items-start gap-2">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                    <span>{respondError}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  {data.status !== "Declined" ? (
+                    <Button
+                      variant="danger-outline"
+                      onClick={() => setDeclineOpen(true)}
+                      disabled={locked || decline.isPending}
+                    >
+                      Decline request
+                    </Button>
+                  ) : (
+                    <span />
+                  )}
+                  <Button
+                    variant="primary"
+                    leftIcon={<Send />}
+                    loading={respond.isPending}
+                    disabled={locked || !price}
+                    onClick={() => respond.mutate()}
+                  >
+                    {respond.isPending
+                      ? "Sending…"
+                      : data.response
+                        ? "Update response"
+                        : "Send response"}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+        </section>
+      </div>
 
       <ConfirmDialog
         open={declineOpen}
-        title="Decline request"
+        title="Decline request?"
         description="The customer sees your reason in their quote inbox. The request status becomes Declined."
         confirmLabel="Decline request"
         confirmTone="danger"
@@ -334,21 +470,52 @@ export default function SupplierQuoteDetailPage() {
           setDeclineReason("");
         }}
       >
-        <div>
-          <label className="block font-mono text-[10px] tracking-widest uppercase text-dizajno-muted mb-2">
-            Reason (optional)
-          </label>
-          <textarea
+        <FormField label="Reason" hint="Optional — visible to the customer">
+          <Textarea
             value={declineReason}
             onChange={(e) => setDeclineReason(e.target.value)}
             rows={3}
             placeholder="Out of stock, custom size unavailable, lead time too long…"
-            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text focus:border-white/40 focus:outline-none"
           />
-        </div>
+        </FormField>
       </ConfirmDialog>
-    </main>
+    </div>
   );
+}
+
+function RequestStatusBadge({
+  status,
+  hasResponse,
+}: {
+  status: api.QuoteRequestStatus;
+  hasResponse: boolean;
+}) {
+  const label =
+    hasResponse && status === "Responded" ? "Replied" : prettyStatus(status);
+  const map = {
+    Pending: { tone: "warning" as const },
+    Responded: { tone: "success" as const },
+    Declined: { tone: "danger" as const },
+    Expired: { tone: "neutral" as const },
+  };
+  return (
+    <Badge tone={map[status].tone} size="sm" dot>
+      {label}
+    </Badge>
+  );
+}
+
+function prettyStatus(status: api.QuoteRequestStatus): string {
+  switch (status) {
+    case "Pending":
+      return "Awaiting reply";
+    case "Responded":
+      return "Replied";
+    case "Declined":
+      return "Declined";
+    case "Expired":
+      return "Expired";
+  }
 }
 
 function formatPrice(value: number, currency: string): string {

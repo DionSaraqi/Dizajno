@@ -9,12 +9,12 @@ const trackSizes = {
 
 const dotSizes = {
   sm: "w-3 h-3",
-  md: "w-3.5 h-3.5",
+  md: "w-4 h-4",
 } as const;
 
 const dotTranslate = {
   sm: "translate-x-3",
-  md: "translate-x-4",
+  md: "translate-x-[18px]",
 } as const;
 
 export interface ToggleProps {
@@ -49,20 +49,24 @@ export default function Toggle({
       <span
         className={[
           "relative inline-flex items-center rounded-full transition-colors",
+          "ring-1 ring-inset",
           trackSizes[size],
-          checked ? "bg-dizajno-accent" : "bg-dizajno-border",
+          checked
+            ? "bg-dizajno-accent ring-dizajno-accent"
+            : "bg-dizajno-elevated ring-dizajno-border",
         ].join(" ")}
       >
         <span
           className={[
             "absolute left-0.5 rounded-full bg-white transition-transform",
+            "shadow-card-sm",
             dotSizes[size],
             checked ? dotTranslate[size] : "translate-x-0",
           ].join(" ")}
         />
       </span>
       {label && (
-        <span className="text-xs text-dizajno-muted">{label}</span>
+        <span className="text-[13px] text-dizajno-text-subtle">{label}</span>
       )}
     </label>
   );

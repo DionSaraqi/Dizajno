@@ -6,17 +6,19 @@ import { Providers } from "./providers";
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap",
 });
 
 const jetBrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Dizajno - Room Designer",
+  title: "Dizajno — Room Designer",
   description:
-    "Design your rooms in 2D and 3D. Draw walls, place furniture, and visualize your space.",
+    "Design rooms in 2D and 3D. Draw walls, place furniture, source materials from suppliers.",
 };
 
 export default function RootLayout({
@@ -27,10 +29,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${inter.variable} ${jetBrainsMono.variable} antialiased`}
+        className={`${inter.variable} ${jetBrainsMono.variable} font-sans antialiased`}
       >
         <Providers>{children}</Providers>
-        <div className="grain-overlay" aria-hidden />
       </body>
     </html>
   );

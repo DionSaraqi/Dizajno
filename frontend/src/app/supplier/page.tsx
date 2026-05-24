@@ -3,19 +3,28 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Briefcase, Store } from "lucide-react";
+import {
+  Briefcase,
+  ChevronRight,
+  ShieldAlert,
+  ShieldCheck,
+  Store,
+} from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
+import {
+  Badge,
+  Card,
+  EmptyState,
+  PageHeader,
+  TopBar,
+  Button,
+} from "@/components/ui";
 
-/**
- * Supplier portal entry. Auto-redirects single-supplier users straight into
- * their portal; everyone else picks from a list. Suspended suppliers are
- * shown but greyed out — clicking them lands on a page that explains the
- * portal is locked, so users can still reach the membership listing.
- */
 export default function SupplierIndexPage() {
   const router = useRouter();
   const status = useAuthStore((s) => s.status);
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   const memberships = user?.supplierMemberships ?? [];
   const activeMemberships = memberships.filter((m) => !m.isSuspended);
@@ -30,86 +39,132 @@ export default function SupplierIndexPage() {
     }
   }, [status, activeMemberships, router]);
 
-  if (status !== "authenticated") {
+  if (status !== "authenticated" || !user) {
     return (
-      <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg blueprint-grid">
-        <p className="font-mono text-sm text-dizajno-muted tracking-wider">Loading…</p>
-      </main>
-    );
-  }
-
-  if (memberships.length === 0) {
-    return (
-      <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg blueprint-grid px-4">
-        <div className="max-w-md text-center space-y-4 rounded border border-white/15 bg-black/40 backdrop-blur px-8 py-10">
-          <Briefcase size={32} className="mx-auto text-dizajno-muted" />
-          <h1 className="font-mono text-lg tracking-widest uppercase text-dizajno-text">
-            No supplier memberships
-          </h1>
-          <p className="font-mono text-xs text-dizajno-muted">
-            Ask the admin to invite you to a supplier, then come back here.
-          </p>
-          <Link
-            href="/projects"
-            className="inline-block rounded border border-white/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
-          >
-            Back to projects
-          </Link>
-        </div>
+      <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg">
+        <p className="text-sm text-dizajno-muted">Loading…</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen w-screen bg-dizajno-bg blueprint-grid">
-      <header className="flex items-center gap-4 px-8 py-5 border-b border-white/10 backdrop-blur">
-        <Link
-          href="/projects"
-          className="text-dizajno-muted hover:text-dizajno-text transition"
-          aria-label="Back to projects"
-        >
-          <ArrowLeft size={18} />
-        </Link>
-        <Store size={18} className="text-emerald-300" />
-        <div>
-          <h1 className="font-mono text-lg tracking-[0.2em] text-dizajno-text">
-            SUPPLIER PORTAL
-          </h1>
-          <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-            Pick a supplier to manage
-          </p>
-        </div>
-      </header>
+    <div className="min-h-screen w-screen bg-dizajno-bg">
+      <TopBar
+        links={[
+          { label: "Projects", href: "/projects" },
+          { label: "Supplier portal", href: "/supplier", active: true },
+        ]}
+        user={{ displayName: user.displayName, email: user.email }}
+        onSignOut={async () => {
+          await logout();
+          router.push("/");
+        }}
+      />
 
-      <section className="max-w-3xl mx-auto px-8 py-10">
-        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {memberships.map((m) => (
-            <li key={m.supplierId}>
-              <Link
-                href={
-                  m.isSuspended
-                    ? "#"
-                    : `/supplier/${m.supplierId}/products`
-                }
-                onClick={(e) => {
-                  if (m.isSuspended) e.preventDefault();
-                }}
-                className={`block rounded border px-4 py-4 transition ${
-                  m.isSuspended
-                    ? "border-red-500/30 bg-red-500/5 text-dizajno-muted cursor-not-allowed"
-                    : "border-white/10 bg-black/30 hover:bg-black/50 hover:border-white/20 text-dizajno-text"
-                }`}
-              >
-                <p className="font-mono text-sm truncate">{m.supplierName}</p>
-                <p className="font-mono text-[10px] tracking-widest uppercase mt-1 text-dizajno-muted">
-                  /{m.supplierSlug} · {m.role}
-                  {m.isSuspended ? " · Suspended" : ""}
-                </p>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+      <div className="max-w-4xl mx-auto px-6">
+        <PageHeader
+          eyebrow="Supplier portal"
+          title="Pick a supplier"
+          description="You belong to multiple supplier organisations. Choose one to manage its products, textures, members, and profile."
+        />
+
+        <section className="py-8">
+          {memberships.length === 0 ? (
+            <EmptyState
+              icon={<Briefcase />}
+              title="No supplier memberships"
+              description="Ask an admin or a supplier owner to send you an invite, then come back here."
+              action={
+                <Link href="/projects">
+                  <Button variant="secondary">Back to projects</Button>
+                </Link>
+              }
+            />
+          ) : (
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {memberships.map((m) => {
+                const suspended = m.isSuspended;
+                return (
+                  <li key={m.supplierId}>
+                    <Link
+                      href={
+                        suspended
+                          ? "#"
+                          : `/supplier/${m.supplierId}/products`
+                      }
+                      onClick={(e) => suspended && e.preventDefault()}
+                      className={[
+                        "group block",
+                        suspended ? "cursor-not-allowed" : "",
+                      ].join(" ")}
+                      aria-disabled={suspended}
+                    >
+                      <Card
+                        flush
+                        className={[
+                          "p-5 transition-all",
+                          suspended
+                            ? "opacity-70 border-dizajno-danger/20 bg-dizajno-danger-soft/40"
+                            : "hover:shadow-card hover:-translate-y-px",
+                        ].join(" ")}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-3 min-w-0">
+                            <div
+                              className={[
+                                "w-9 h-9 rounded-lg flex items-center justify-center shrink-0",
+                                suspended
+                                  ? "bg-dizajno-danger-soft text-dizajno-danger"
+                                  : "bg-dizajno-accent-soft text-dizajno-accent",
+                              ].join(" ")}
+                            >
+                              <Store size={16} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[14.5px] font-semibold text-dizajno-text truncate">
+                                {m.supplierName}
+                              </p>
+                              <p className="text-[12px] text-dizajno-muted mt-0.5 font-mono">
+                                /{m.supplierSlug}
+                              </p>
+                            </div>
+                          </div>
+                          {!suspended && (
+                            <ChevronRight
+                              size={16}
+                              className="text-dizajno-muted-subtle group-hover:text-dizajno-text group-hover:translate-x-0.5 transition-all shrink-0 mt-1.5"
+                            />
+                          )}
+                        </div>
+                        <div className="mt-4 flex items-center gap-2">
+                          <Badge
+                            tone={m.role === "Owner" ? "accent" : "neutral"}
+                            dot
+                            size="sm"
+                          >
+                            {m.role}
+                          </Badge>
+                          {suspended ? (
+                            <Badge tone="danger" size="sm">
+                              <ShieldAlert size={10} className="mr-1" />
+                              Suspended
+                            </Badge>
+                          ) : (
+                            <Badge tone="success" size="sm">
+                              <ShieldCheck size={10} className="mr-1" />
+                              Active
+                            </Badge>
+                          )}
+                        </div>
+                      </Card>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
+    </div>
   );
 }

@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Send } from "lucide-react";
+import {
+  AlertCircle,
+  Lock,
+  MapPin,
+  MessageSquare,
+  Send,
+} from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 
@@ -12,9 +18,9 @@ interface CommentsPanelProps {
 }
 
 /**
- * Right-rail thread for /share/[token]. View mode → read-only. Comment mode →
- * read + post. Signed-in visitors post under their identity automatically;
- * everyone else picks a display name on their first reply.
+ * Right-rail thread for /share/[token]. Pinned to the dark canvas — uses a
+ * darker palette than the rest of the app so it sits flush with the designer
+ * surface.
  */
 export function CommentsPanel({ token, mode }: CommentsPanelProps) {
   const queryClient = useQueryClient();
@@ -32,7 +38,8 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
   });
 
   const postMutation = useMutation({
-    mutationFn: (input: api.PostCommentRequest) => api.postSharedComment(token, input),
+    mutationFn: (input: api.PostCommentRequest) =>
+      api.postSharedComment(token, input),
     onSuccess: () => {
       setBody("");
       setPostError(null);
@@ -43,7 +50,7 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
     },
   });
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPostError(null);
     const trimmed = body.trim();
@@ -62,28 +69,33 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
   }
 
   return (
-    <aside className="w-80 border-l border-white/10 bg-black/40 backdrop-blur flex flex-col">
-      <header className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
-        <MessageSquare size={14} className="text-dizajno-muted" />
-        <h3 className="font-mono text-xs tracking-widest uppercase text-dizajno-text">
-          Comments
-        </h3>
+    <aside className="w-80 border-l border-white/[0.07] bg-zinc-950 flex flex-col">
+      <header className="px-4 py-3 border-b border-white/[0.07] flex items-center gap-2">
+        <MessageSquare size={13} className="text-zinc-400" />
+        <h3 className="text-[13px] font-semibold text-zinc-100">Comments</h3>
         {comments.data && (
-          <span className="ml-auto font-mono text-[10px] text-dizajno-muted">
+          <span className="ml-auto text-[11px] text-zinc-400 tabular-nums">
             {comments.data.length}
           </span>
         )}
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
         {comments.isLoading && (
-          <p className="font-mono text-xs text-dizajno-muted">Loading…</p>
+          <p className="text-[12.5px] text-zinc-500">Loading…</p>
         )}
         {comments.data && comments.data.length === 0 && (
-          <p className="font-mono text-xs text-dizajno-muted">
-            No comments yet.{" "}
-            {mode === "Comment" && "Be the first to leave one below."}
-          </p>
+          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-4 text-center">
+            <p className="text-[12.5px] text-zinc-400">
+              No comments yet.
+              {mode === "Comment" && (
+                <>
+                  <br />
+                  Be the first below.
+                </>
+              )}
+            </p>
+          </div>
         )}
         {comments.data?.map((c) => (
           <CommentBubble key={c.id} comment={c} />
@@ -93,7 +105,7 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
       {mode === "Comment" ? (
         <form
           onSubmit={handleSubmit}
-          className="border-t border-white/10 p-3 space-y-2 bg-black/30"
+          className="border-t border-white/[0.07] p-3 space-y-2 bg-zinc-950"
         >
           {!isSignedIn && (
             <input
@@ -101,12 +113,15 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
               placeholder="Your name"
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
-              className="w-full rounded border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-dizajno-text focus:border-white/40 focus:outline-none"
+              className="w-full rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[12.5px] text-zinc-100 placeholder:text-zinc-500 focus:border-white/30 focus:outline-none focus:ring-2 focus:ring-white/10"
             />
           )}
           {isSignedIn && currentUser && (
-            <p className="font-mono text-[10px] text-dizajno-muted">
-              Posting as {currentUser.displayName || currentUser.email}
+            <p className="text-[11px] text-zinc-400">
+              Posting as{" "}
+              <span className="text-zinc-200">
+                {currentUser.displayName || currentUser.email}
+              </span>
             </p>
           )}
           <div className="flex gap-2">
@@ -115,26 +130,28 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={2}
-              className="flex-1 rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-dizajno-text resize-none focus:border-white/40 focus:outline-none"
+              className="flex-1 rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-100 placeholder:text-zinc-500 resize-none focus:border-white/30 focus:outline-none focus:ring-2 focus:ring-white/10"
             />
             <button
               type="submit"
               disabled={postMutation.isPending}
-              className="rounded bg-white/10 border border-white/20 hover:bg-white/20 disabled:opacity-50 px-3 self-end py-2 transition"
+              className="inline-flex items-center justify-center w-9 h-9 self-end rounded-md bg-white text-zinc-900 hover:bg-zinc-100 disabled:opacity-50 disabled:bg-white/20 disabled:text-zinc-500 transition-colors"
               aria-label="Post comment"
             >
-              <Send size={14} className="text-dizajno-text" />
+              <Send size={13} />
             </button>
           </div>
           {postError && (
-            <p className="font-mono text-[11px] text-red-400 break-words">{postError}</p>
+            <div className="flex items-start gap-1.5 text-[11.5px] text-red-400">
+              <AlertCircle size={12} className="mt-0.5 shrink-0" />
+              <span>{postError}</span>
+            </div>
           )}
         </form>
       ) : (
-        <div className="border-t border-white/10 p-3 bg-black/30">
-          <p className="font-mono text-[11px] text-dizajno-muted text-center">
-            This share is view-only.
-          </p>
+        <div className="border-t border-white/[0.07] p-3 bg-zinc-950 flex items-center justify-center gap-1.5 text-[11.5px] text-zinc-500">
+          <Lock size={11} />
+          This share is view-only.
         </div>
       )}
     </aside>
@@ -146,25 +163,26 @@ function CommentBubble({ comment }: { comment: api.CommentDto }) {
     comment.authorDisplayName ?? comment.guestName ?? "Anonymous";
   const isGuest = comment.authorUserId === null;
   return (
-    <div className="rounded border border-white/10 bg-black/30 p-3">
+    <div className="rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2.5">
       <div className="flex items-baseline gap-2">
-        <span className="font-mono text-xs text-dizajno-text font-medium">
+        <span className="text-[12.5px] font-semibold text-zinc-100 truncate">
           {author}
         </span>
         {isGuest && (
-          <span className="font-mono text-[9px] tracking-widest uppercase text-dizajno-muted/70">
-            guest
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium tracking-tight text-amber-300/90 bg-amber-300/10 border border-amber-300/20">
+            Guest
           </span>
         )}
-        <span className="ml-auto font-mono text-[10px] text-dizajno-muted/70">
-          {new Date(comment.createdAt).toLocaleString()}
+        <span className="ml-auto text-[10.5px] text-zinc-500 tabular-nums whitespace-nowrap">
+          {formatRelative(comment.createdAt)}
         </span>
       </div>
-      <p className="mt-1.5 text-sm text-dizajno-text whitespace-pre-wrap break-words">
+      <p className="mt-1 text-[13px] text-zinc-200 whitespace-pre-wrap break-words leading-relaxed">
         {comment.body}
       </p>
       {comment.anchor && (
-        <p className="mt-1 font-mono text-[10px] text-dizajno-muted/70">
+        <p className="mt-1.5 inline-flex items-center gap-1 text-[10.5px] text-zinc-400">
+          <MapPin size={10} />
           {anchorLabel(comment.anchor)}
         </p>
       )}
@@ -175,10 +193,21 @@ function CommentBubble({ comment }: { comment: api.CommentDto }) {
 function anchorLabel(anchor: api.CommentAnchor): string {
   switch (anchor.type) {
     case "item":
-      return `📌 pinned to item ${anchor.id.slice(0, 8)}`;
+      return `Item ${anchor.id.slice(0, 8)}`;
     case "wall":
-      return `📌 pinned to wall ${anchor.id.slice(0, 8)}`;
+      return `Wall ${anchor.id.slice(0, 8)}`;
     case "point":
-      return `📌 pinned at (${anchor.x.toFixed(1)}, ${anchor.z.toFixed(1)})`;
+      return `(${anchor.x.toFixed(1)}, ${anchor.z.toFixed(1)})`;
   }
+}
+
+function formatRelative(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = (now.getTime() - d.getTime()) / 1000;
+  if (diff < 60) return "now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d`;
+  return d.toLocaleDateString();
 }

@@ -4,15 +4,41 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, EyeOff, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import {
+  Boxes,
+  EyeOff,
+  Pencil,
+  Plus,
+  Send,
+  Trash2,
+} from "lucide-react";
 import * as api from "@/lib/api";
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  IconButton,
+  PageHeader,
+  SearchInput,
+  Select,
+  Skeleton,
+  Tooltip,
+} from "@/components/ui";
+
+type StatusFilter = api.ProductStatus | "All";
 
 export default function SupplierProductsPage() {
   const params = useParams<{ supplierId: string }>();
   const supplierId = params.supplierId;
   const qc = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<api.ProductStatus | "All">("All");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
   const [search, setSearch] = useState("");
+  const [removeTarget, setRemoveTarget] = useState<api.SupplierProductListItem | null>(
+    null,
+  );
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const products = useQuery({
     queryKey: ["supplier", supplierId, "products", statusFilter, search],
@@ -27,159 +53,252 @@ export default function SupplierProductsPage() {
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["supplier", supplierId, "products"] });
   }
+  function handleError(e: Error) {
+    setErrorMessage(e.message);
+  }
 
   const publish = useMutation({
     mutationFn: (id: string) => api.publishSupplierProduct(id),
     onSuccess: invalidate,
-    onError: (e: Error) => alert(e.message),
+    onError: handleError,
   });
   const hide = useMutation({
     mutationFn: (id: string) => api.hideSupplierProduct(id),
     onSuccess: invalidate,
-    onError: (e: Error) => alert(e.message),
+    onError: handleError,
   });
   const remove = useMutation({
     mutationFn: (id: string) => api.removeSupplierProduct(id),
-    onSuccess: invalidate,
-    onError: (e: Error) => alert(e.message),
+    onSuccess: () => {
+      invalidate();
+      setRemoveTarget(null);
+    },
+    onError: handleError,
   });
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or slug"
-            className="rounded border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-sm text-dizajno-text placeholder:text-dizajno-muted/40 focus:outline-none focus:border-white/30 w-60"
-          />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="rounded border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-dizajno-text focus:outline-none focus:border-white/30"
-          >
-            <option value="All">All</option>
-            <option value="Draft">Draft</option>
-            <option value="Pending">Pending</option>
-            <option value="Published">Published</option>
-            <option value="Hidden">Hidden</option>
-          </select>
-        </div>
-        <Link
-          href={`/supplier/${supplierId}/products/new`}
-          className="flex items-center gap-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition"
-        >
-          <Plus size={12} /> New product
-        </Link>
-      </div>
-
-      {products.isLoading && (
-        <p className="font-mono text-sm text-dizajno-muted">Loading…</p>
-      )}
-      {products.error && (
-        <p className="font-mono text-sm text-red-400">
-          {(products.error as Error).message}
-        </p>
-      )}
-      {products.data && products.data.length === 0 && (
-        <div className="rounded border border-white/10 bg-black/20 px-6 py-10 text-center">
-          <p className="font-mono text-sm text-dizajno-muted">
-            No products yet — click <span className="text-dizajno-text">New product</span> to add one.
-          </p>
-        </div>
-      )}
-
-      {products.data && products.data.length > 0 && (
-        <ul className="grid grid-cols-1 gap-2">
-          {products.data.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center justify-between gap-3 rounded border border-white/10 bg-black/30 px-4 py-3 hover:bg-black/40 transition"
+      <PageHeader
+        eyebrow="Catalog"
+        title="Products"
+        description="Manage your published catalog, drafts, and items still under admin review."
+        actions={
+          <Link href={`/supplier/${supplierId}/products/new`}>
+            <Button variant="primary" leftIcon={<Plus />}>
+              New product
+            </Button>
+          </Link>
+        }
+        bottom={
+          <div className="flex items-center gap-3 flex-wrap">
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Search by name or slug"
+              className="w-72"
+            />
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="w-44"
             >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Link
-                    href={`/supplier/${supplierId}/products/${p.id}`}
-                    className="font-mono text-sm text-dizajno-text hover:text-emerald-300 transition truncate"
-                  >
-                    {p.name}
-                  </Link>
-                  <StatusBadge status={p.status} />
-                </div>
-                <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase mt-0.5 truncate">
-                  /{p.slug} · {p.family} · {p.categoryName} · {p.variantCount} variant{p.variantCount === 1 ? "" : "s"}
-                  {p.basePrice != null
-                    ? ` · ${formatPrice(p.basePrice, p.currency)}`
-                    : ""}
-                </p>
-              </div>
+              <option value="All">All statuses</option>
+              <option value="Draft">Draft</option>
+              <option value="Pending">Pending review</option>
+              <option value="Published">Published</option>
+              <option value="Hidden">Hidden</option>
+            </Select>
+          </div>
+        }
+      />
 
-              <div className="flex items-center gap-1.5">
-                <Link
-                  href={`/supplier/${supplierId}/products/${p.id}`}
-                  title="Edit"
-                  className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-dizajno-text hover:border-white/30 transition"
-                >
-                  <Pencil size={14} />
+      <section className="py-6">
+        {errorMessage && (
+          <div className="mb-4 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger flex items-start justify-between gap-3">
+            <span>{errorMessage}</span>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="text-dizajno-danger/70 hover:text-dizajno-danger text-[12px] font-medium"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {products.isLoading && (
+          <Card flush>
+            <ul className="divide-y divide-dizajno-border">
+              {[0, 1, 2, 3].map((i) => (
+                <li key={i} className="px-5 py-4 flex items-center gap-4">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-4 w-16 ml-auto" />
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
+        {products.error && (
+          <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
+            {(products.error as Error).message}
+          </div>
+        )}
+
+        {products.data && products.data.length === 0 && (
+          <EmptyState
+            icon={<Boxes />}
+            title={
+              search || statusFilter !== "All"
+                ? "No products match this filter"
+                : "Your catalog is empty"
+            }
+            description={
+              search || statusFilter !== "All"
+                ? "Try a different search term or status."
+                : "Add your first product — variants, GLB files, and material slots all in one place."
+            }
+            action={
+              !search && statusFilter === "All" ? (
+                <Link href={`/supplier/${supplierId}/products/new`}>
+                  <Button variant="primary" leftIcon={<Plus />}>
+                    New product
+                  </Button>
                 </Link>
-                {p.status === "Draft" || p.status === "Hidden" ? (
-                  <button
-                    type="button"
-                    onClick={() => publish.mutate(p.id)}
-                    title={p.status === "Draft" ? "Publish (untrusted suppliers go to Pending review)" : "Re-publish"}
-                    className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-emerald-300 hover:border-emerald-500/40 transition"
-                  >
-                    <Send size={14} />
-                  </button>
-                ) : null}
-                {p.status === "Published" || p.status === "Pending" ? (
-                  <button
-                    type="button"
-                    onClick={() => hide.mutate(p.id)}
-                    title="Hide"
-                    className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-amber-300 hover:border-amber-500/40 transition"
-                  >
-                    <EyeOff size={14} />
-                  </button>
-                ) : null}
-                {p.status !== "Published" && p.status !== "Pending" ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm(`Remove "${p.name}"? This is terminal. Historical quotes already snapshot the variant data so past orders survive.`))
-                        remove.mutate(p.id);
-                    }}
-                    title="Remove (terminal)"
-                    className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+              ) : undefined
+            }
+          />
+        )}
+
+        {products.data && products.data.length > 0 && (
+          <Card flush>
+            <ul className="divide-y divide-dizajno-border">
+              {products.data.map((p) => (
+                <li
+                  key={p.id}
+                  className="group flex items-center gap-4 px-5 py-4 hover:bg-dizajno-bg/40 transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link
+                        href={`/supplier/${supplierId}/products/${p.id}`}
+                        className="text-[14px] font-medium text-dizajno-text truncate hover:text-dizajno-accent transition-colors"
+                      >
+                        {p.name}
+                      </Link>
+                      <StatusBadge status={p.status} />
+                    </div>
+                    <p className="mt-1 text-[12px] text-dizajno-muted truncate">
+                      <span className="font-mono">/{p.slug}</span>
+                      <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                      <span>{p.family}</span>
+                      <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                      <span>{p.categoryName}</span>
+                      <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                      <span>
+                        {p.variantCount} variant
+                        {p.variantCount === 1 ? "" : "s"}
+                      </span>
+                      {p.basePrice != null && (
+                        <>
+                          <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                          <span className="font-mono text-dizajno-text-subtle">
+                            {formatPrice(p.basePrice, p.currency)}
+                          </span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Tooltip content="Edit">
+                      <Link href={`/supplier/${supplierId}/products/${p.id}`}>
+                        <IconButton variant="ghost" size="sm">
+                          <Pencil />
+                        </IconButton>
+                      </Link>
+                    </Tooltip>
+                    {(p.status === "Draft" || p.status === "Hidden") && (
+                      <Tooltip
+                        content={
+                          p.status === "Draft"
+                            ? "Publish (may go to review)"
+                            : "Re-publish"
+                        }
+                      >
+                        <IconButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => publish.mutate(p.id)}
+                          disabled={publish.isPending}
+                          className="hover:text-dizajno-accent"
+                        >
+                          <Send />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {(p.status === "Published" || p.status === "Pending") && (
+                      <Tooltip content="Hide from catalog">
+                        <IconButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => hide.mutate(p.id)}
+                          disabled={hide.isPending}
+                          className="hover:text-dizajno-warning"
+                        >
+                          <EyeOff />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {p.status !== "Published" && p.status !== "Pending" && (
+                      <Tooltip content="Remove (terminal)">
+                        <IconButton
+                          variant="danger"
+                          size="sm"
+                          onClick={() => setRemoveTarget(p)}
+                        >
+                          <Trash2 />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </section>
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        title="Remove product?"
+        description={
+          removeTarget
+            ? `"${removeTarget.name}" will be permanently removed. Historical quotes already snapshot the variant data so past orders survive.`
+            : ""
+        }
+        confirmLabel="Remove product"
+        confirmTone="danger"
+        busy={remove.isPending}
+        onConfirm={() => removeTarget && remove.mutate(removeTarget.id)}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </>
   );
 }
 
 function StatusBadge({ status }: { status: api.ProductStatus }) {
-  const colour = {
-    Draft: "border-white/20 text-dizajno-muted bg-white/5",
-    Pending: "border-amber-500/40 text-amber-300 bg-amber-500/10",
-    Published: "border-emerald-500/40 text-emerald-300 bg-emerald-500/10",
-    Hidden: "border-white/15 text-dizajno-muted bg-black/20",
-    Removed: "border-red-500/40 text-red-300 bg-red-500/10",
-  }[status];
+  const map = {
+    Draft: { tone: "neutral", label: "Draft" },
+    Pending: { tone: "warning", label: "Pending review" },
+    Published: { tone: "success", label: "Published" },
+    Hidden: { tone: "outline", label: "Hidden" },
+    Removed: { tone: "danger", label: "Removed" },
+  } as const;
+  const entry = map[status];
   return (
-    <span
-      className={`rounded border px-1.5 py-0.5 font-mono text-[9px] tracking-widest uppercase ${colour}`}
-    >
-      {status}
-    </span>
+    <Badge tone={entry.tone} size="sm" dot>
+      {entry.label}
+    </Badge>
   );
 }
 

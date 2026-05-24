@@ -48,7 +48,7 @@ export default function ContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 min-w-[160px] bg-dizajno-elevated border border-dizajno-border rounded-lg shadow-xl py-1"
+      className="fixed z-50 min-w-[180px] bg-dizajno-surface border border-dizajno-border rounded-xl shadow-card-lg py-1.5 animate-scale-in origin-top-left"
       style={{ left: position.x, top: position.y }}
     >
       {items.map((item, i) => {
@@ -56,7 +56,7 @@ export default function ContextMenu({
           return (
             <div
               key={i}
-              className="h-px mx-2 my-1 bg-dizajno-border"
+              className="h-px mx-2 my-1.5 bg-dizajno-border-subtle"
             />
           );
         }
@@ -71,15 +71,16 @@ export default function ContextMenu({
               onClose();
             }}
             className={[
-              "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors",
+              "w-full flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-left transition-colors",
+              "[&_svg]:size-3.5 [&_svg]:shrink-0",
               item.danger
-                ? "text-dizajno-danger hover:bg-dizajno-surface"
-                : "text-dizajno-text hover:bg-dizajno-surface",
+                ? "text-dizajno-danger hover:bg-dizajno-danger-soft"
+                : "text-dizajno-text-subtle hover:bg-dizajno-elevated hover:text-dizajno-text",
               item.disabled ? "opacity-50 cursor-not-allowed" : "",
             ].join(" ")}
           >
             {item.icon && (
-              <span className="w-4 h-4 flex-shrink-0">{item.icon}</span>
+              <span className="text-dizajno-muted">{item.icon}</span>
             )}
             <span>{item.label}</span>
           </button>

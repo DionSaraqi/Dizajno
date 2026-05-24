@@ -4,7 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Cloud, CloudOff, FileText, Save, Share2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Cloud,
+  CloudOff,
+  FileText,
+  Save,
+  Share2,
+} from "lucide-react";
 import Sidebar from "@/components/designer/Sidebar";
 import Toolbar from "@/components/designer/Toolbar";
 import StatusBar from "@/components/designer/StatusBar";
@@ -19,6 +26,7 @@ import { useVariantLookup } from "@/hooks/useVariantLookup";
 import { mapApiSceneToStore, mapStoreToApiScene } from "@/utils/sceneMapper";
 import { captureCanvasThumbnail } from "@/utils/captureCanvas";
 import * as api from "@/lib/api";
+import { Logo, Spinner } from "@/components/ui";
 
 const DrawingSurface = dynamic(
   () => import("@/components/three/DrawingSurface"),
@@ -233,22 +241,29 @@ export default function ProjectDesignerPage() {
   if (authStatus !== "authenticated") {
     return (
       <main className="min-h-screen w-screen flex items-center justify-center bg-dizajno-bg">
-        <p className="font-mono text-sm text-dizajno-muted tracking-wider">
-          Loading…
-        </p>
+        <div className="flex items-center gap-2 text-dizajno-muted text-sm">
+          <Spinner /> Loading…
+        </div>
       </main>
     );
   }
 
   if (loadError) {
     return (
-      <main className="min-h-screen w-screen flex flex-col items-center justify-center gap-4 bg-dizajno-bg">
-        <p className="font-mono text-sm text-red-400">{loadError}</p>
+      <main className="min-h-screen w-screen flex flex-col items-center justify-center gap-4 bg-dizajno-bg px-6">
+        <div className="max-w-md w-full rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-5 py-4">
+          <p className="text-[13px] font-medium text-dizajno-danger">
+            Couldn&apos;t load this project.
+          </p>
+          <p className="text-[12.5px] text-dizajno-danger/80 mt-1 break-words">
+            {loadError}
+          </p>
+        </div>
         <Link
           href="/projects"
-          className="font-mono text-xs tracking-wider text-dizajno-muted underline"
+          className="text-[13px] text-dizajno-muted hover:text-dizajno-text transition-colors"
         >
-          Back to projects
+          ← Back to projects
         </Link>
       </main>
     );
@@ -256,36 +271,48 @@ export default function ProjectDesignerPage() {
 
   return (
     <DesignerProvider>
-      <div className="w-full h-screen flex flex-col bg-dizajno-bg overflow-hidden">
-        <div className="flex items-center gap-4 px-4 py-2 border-b border-white/10 bg-black/30 backdrop-blur">
+      <div className="w-full h-screen flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden">
+        <header className="flex items-center gap-3 px-4 h-12 border-b border-white/[0.07] bg-zinc-950/95 backdrop-blur">
           <Link
             href="/projects"
-            className="text-dizajno-muted hover:text-dizajno-text transition"
+            className="inline-flex items-center justify-center w-7 h-7 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors"
             aria-label="Back to projects"
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft size={15} />
           </Link>
-          <div className="flex-1 min-w-0">
-            <p className="font-mono text-sm text-dizajno-text truncate">
+          <div className="w-px h-5 bg-white/10" />
+          <Link
+            href="/projects"
+            className="inline-flex items-center gap-1.5 shrink-0 text-zinc-100"
+            aria-label="Dizajno"
+          >
+            <Logo size={18} />
+          </Link>
+          <div className="flex-1 min-w-0 flex items-baseline gap-2">
+            <span className="text-[13.5px] font-medium text-zinc-100 truncate">
               {projectName || "Loading…"}
-            </p>
+            </span>
+            <SaveBadge status={saveStatus} />
           </div>
-          <SaveBadge status={saveStatus} />
           <button
             onClick={() => setQuoteOpen(true)}
             disabled={!sceneHasContent}
-            title={!sceneHasContent ? "Add furniture, walls, or openings before requesting a quote" : undefined}
-            className="ml-2 flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
+            title={
+              !sceneHasContent
+                ? "Add furniture, walls, or openings before requesting a quote"
+                : undefined
+            }
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-[12.5px] text-zinc-200 transition-colors"
           >
-            <FileText size={12} /> Quote
+            <FileText size={13} /> Quote
           </button>
           <button
             onClick={() => setShareOpen(true)}
-            className="flex items-center gap-1.5 rounded border border-white/10 hover:bg-white/5 px-3 py-1.5 font-mono text-[11px] tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md bg-white text-zinc-900 hover:bg-zinc-100 text-[12.5px] font-medium transition-colors"
           >
-            <Share2 size={12} /> Share
+            <Share2 size={13} /> Share
           </button>
-        </div>
+        </header>
         <ShareDialog
           projectId={projectId}
           open={shareOpen}
@@ -312,22 +339,22 @@ export default function ProjectDesignerPage() {
 function SaveBadge({ status }: { status: SaveStatus }) {
   if (status === "saving") {
     return (
-      <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest uppercase text-dizajno-muted">
-        <Save size={12} className="animate-pulse" /> Saving…
+      <span className="inline-flex items-center gap-1.5 text-[11.5px] text-zinc-400">
+        <Save size={11} className="animate-pulse" /> Saving…
       </span>
     );
   }
   if (status === "saved") {
     return (
-      <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest uppercase text-emerald-400/80">
-        <Cloud size={12} /> Saved
+      <span className="inline-flex items-center gap-1.5 text-[11.5px] text-emerald-400/90">
+        <Cloud size={11} /> Saved
       </span>
     );
   }
   if (status === "error") {
     return (
-      <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest uppercase text-red-400">
-        <CloudOff size={12} /> Save failed
+      <span className="inline-flex items-center gap-1.5 text-[11.5px] text-red-400">
+        <CloudOff size={11} /> Save failed
       </span>
     );
   }
