@@ -3,16 +3,12 @@
 import React, { useState, useRef } from "react";
 
 export interface TooltipProps {
-  content: string;
+  content: React.ReactNode;
   children: React.ReactElement;
   side?: "top" | "bottom" | "left" | "right";
   delay?: number;
 }
 
-/**
- * Lightweight CSS-only Tooltip wrapper.
- * Wraps a single child element and shows a tooltip on hover.
- */
 export default function Tooltip({
   content,
   children,
@@ -32,10 +28,10 @@ export default function Tooltip({
   };
 
   const positionClasses: Record<NonNullable<TooltipProps["side"]>, string> = {
-    top: "bottom-full left-1/2 -translate-x-1/2 mb-1.5",
-    bottom: "top-full left-1/2 -translate-x-1/2 mt-1.5",
-    left: "right-full top-1/2 -translate-y-1/2 mr-1.5",
-    right: "left-full top-1/2 -translate-y-1/2 ml-1.5",
+    top: "bottom-full left-1/2 -translate-x-1/2 mb-2",
+    bottom: "top-full left-1/2 -translate-x-1/2 mt-2",
+    left: "right-full top-1/2 -translate-y-1/2 mr-2",
+    right: "left-full top-1/2 -translate-y-1/2 ml-2",
   };
 
   return (
@@ -52,8 +48,9 @@ export default function Tooltip({
           role="tooltip"
           className={[
             "pointer-events-none absolute z-50 whitespace-nowrap",
-            "rounded px-2 py-1 text-[11px] font-medium",
-            "bg-gray-100 text-gray-900 shadow-lg border border-gray-200",
+            "rounded-md px-2 py-1 text-[11px] font-medium",
+            "bg-dizajno-text text-white shadow-card-lg",
+            "animate-fade-in",
             positionClasses[side],
           ].join(" ")}
         >

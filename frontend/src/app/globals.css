@@ -3,27 +3,122 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    color-scheme: light;
+  }
   body {
-    @apply bg-dizajno-bg text-dizajno-text;
+    @apply bg-dizajno-bg text-dizajno-text antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  ::selection {
+    background: rgba(94, 99, 212, 0.18);
+    color: #18181b;
+  }
+  /* Default outline = subtle ring on focus-visible only */
+  *:focus {
+    outline: none;
+  }
+  *:focus-visible {
+    @apply ring-2 ring-dizajno-accent/40;
   }
 }
 
-/* Blueprint grid background for landing page */
+/* ---------- Surfaces & patterns ---------------------------------- */
+
+/* Hairline grid — for marketing/auth backdrop. Much subtler than the old blueprint look. */
+.hairline-grid {
+  background-color: #fafafa;
+  background-image:
+    linear-gradient(to right, rgba(24, 24, 27, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(24, 24, 27, 0.045) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+
+.hairline-grid-fine {
+  background-color: #fafafa;
+  background-image:
+    linear-gradient(to right, rgba(24, 24, 27, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(24, 24, 27, 0.025) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Soft radial glow for auth/marketing — single warm light source */
+.spotlight {
+  background:
+    radial-gradient(
+      ellipse 60% 50% at 50% 0%,
+      rgba(94, 99, 212, 0.08) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 80% 40% at 80% 100%,
+      rgba(94, 99, 212, 0.04) 0%,
+      transparent 60%
+    ),
+    #fafafa;
+}
+
+/* Architectural crosshair — used at corner intersections on key surfaces */
+.corner-cross::before {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  background:
+    linear-gradient(currentColor, currentColor) center / 1px 100% no-repeat,
+    linear-gradient(currentColor, currentColor) center / 100% 1px no-repeat;
+  color: rgba(24, 24, 27, 0.25);
+  pointer-events: none;
+}
+
+/* ---------- Designer page (stays dark) --------------------------- */
+
+.designer-dark {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(94, 99, 212, 0.06) 0%, transparent 60%),
+    #0a0a0c;
+  color: #fafafa;
+}
+
+/* ---------- Slider thumb ----------------------------------------- */
+
+.slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1.5px solid #5e63d4;
+  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.12);
+  cursor: pointer;
+}
+
+.slider-input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1.5px solid #5e63d4;
+  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.12);
+  cursor: pointer;
+}
+
+/* ---------- Designer "blueprint grid" --------------------------------
+ * Kept for the landing page's 3D scene; not used in app UI anymore. */
+
 .blueprint-grid {
   --mouse-x: 50%;
   --mouse-y: 50%;
   background-color: #e8ecf0;
   background-image:
-    /* Fine grid */
     linear-gradient(rgba(100, 116, 139, 0.12) 1px, transparent 1px),
     linear-gradient(90deg, rgba(100, 116, 139, 0.12) 1px, transparent 1px),
-    /* Major grid (every 5th line) */
     linear-gradient(rgba(100, 116, 139, 0.22) 1px, transparent 1px),
     linear-gradient(90deg, rgba(100, 116, 139, 0.22) 1px, transparent 1px);
   background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
 }
 
-/* Cursor glow — brightens grid lines around the mouse */
 .blueprint-grid::after {
   content: "";
   position: absolute;
@@ -31,10 +126,8 @@
   pointer-events: none;
   z-index: 0;
   background-image:
-    /* Fine grid (dark near cursor) */
     linear-gradient(rgba(50, 50, 80, 0.25) 1px, transparent 1px),
     linear-gradient(90deg, rgba(50, 50, 80, 0.25) 1px, transparent 1px),
-    /* Major grid (dark near cursor) */
     linear-gradient(rgba(50, 50, 80, 0.4) 1px, transparent 1px),
     linear-gradient(90deg, rgba(50, 50, 80, 0.4) 1px, transparent 1px);
   background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
@@ -50,7 +143,6 @@
   );
 }
 
-/* Chalk dust — small corner smudges only */
 .blueprint-grid::before {
   content: "";
   position: absolute;
@@ -64,37 +156,33 @@
     radial-gradient(ellipse at 100% 100%, rgba(100, 110, 130, 0.05) 0%, transparent 14%);
 }
 
-/* Slider thumb styling */
-.slider-input::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #1a1a2e;
-  border: 2px solid #6366f1;
-  cursor: pointer;
-}
-
-.slider-input::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #1a1a2e;
-  border: 2px solid #6366f1;
-  cursor: pointer;
-}
-
-/* Film grain overlay — applied via .grain-overlay div, not pseudo-element,
-   because CSS pseudo-elements render behind the WebGL <canvas>. */
+/* Film grain — only used by the landing page's 3D scene now */
 .grain-overlay {
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 9999;
-  opacity: 0.06;
+  opacity: 0.04;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 200px 200px;
-  mix-blend-mode: soft-light;
+  mix-blend-mode: multiply;
+}
+
+/* ---------- Scrollbar (Webkit) ----------------------------------- */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #e4e4e7;
+  border-radius: 999px;
+  border: 2px solid #fafafa;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d8;
 }
