@@ -3,161 +3,263 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, BadgeCheck, Plus, RotateCcw, ShieldCheck, ShieldOff } from "lucide-react";
+import {
+  Ban,
+  ChevronRight,
+  Plus,
+  RotateCcw,
+  ShieldCheck,
+  ShieldOff,
+  Store,
+} from "lucide-react";
 import * as api from "@/lib/api";
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  FormField,
+  IconButton,
+  Input,
+  Modal,
+  PageHeader,
+  SearchInput,
+  Skeleton,
+  Textarea,
+  Tooltip,
+} from "@/components/ui";
 
 export default function AdminSuppliersPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [suspendTarget, setSuspendTarget] = useState<api.AdminSupplierListItem | null>(
+    null,
+  );
 
   const suppliers = useQuery({
     queryKey: ["admin", "suppliers", { search }],
     queryFn: () => api.listAdminSuppliers({ search: search || undefined }),
   });
 
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ["admin", "suppliers"] });
+  }
   const suspend = useMutation({
     mutationFn: (id: string) => api.suspendSupplier(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "suppliers"] }),
+    onSuccess: () => {
+      invalidate();
+      setSuspendTarget(null);
+    },
   });
   const restore = useMutation({
     mutationFn: (id: string) => api.restoreSupplier(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "suppliers"] }),
+    onSuccess: invalidate,
   });
   const trust = useMutation({
     mutationFn: (id: string) => api.trustSupplier(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "suppliers"] }),
+    onSuccess: invalidate,
   });
   const untrust = useMutation({
     mutationFn: (id: string) => api.untrustSupplier(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "suppliers"] }),
+    onSuccess: invalidate,
   });
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name or slug"
-          className="rounded border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-sm text-dizajno-text placeholder:text-dizajno-muted/40 focus:outline-none focus:border-white/30 w-72"
-        />
-        <button
-          type="button"
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-amber-300 hover:bg-amber-500/20 transition"
-        >
-          <Plus size={12} /> New supplier
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Marketplace"
+        title="Suppliers"
+        description="Curate the suppliers that show up in the catalog. Suspended suppliers vanish from buyers; trusted suppliers' new products auto-publish without review."
+        actions={
+          <Button
+            variant="primary"
+            leftIcon={<Plus />}
+            onClick={() => setShowCreate(true)}
+          >
+            New supplier
+          </Button>
+        }
+        bottom={
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search by name or slug"
+            className="w-80"
+          />
+        }
+      />
 
-      {suppliers.isLoading && (
-        <p className="font-mono text-sm text-dizajno-muted">Loading suppliers…</p>
-      )}
-      {suppliers.error && (
-        <p className="font-mono text-sm text-red-400">
-          {(suppliers.error as Error).message}
-        </p>
-      )}
-      {suppliers.data && suppliers.data.length === 0 && (
-        <p className="font-mono text-sm text-dizajno-muted">No suppliers match.</p>
-      )}
+      <section className="py-6">
+        {suppliers.isLoading && (
+          <Card flush>
+            <ul className="divide-y divide-dizajno-border">
+              {[0, 1, 2].map((i) => (
+                <li key={i} className="px-5 py-4 flex items-center gap-4">
+                  <Skeleton shape="circle" className="w-9 h-9" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-1/3" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
-      {suppliers.data && suppliers.data.length > 0 && (
-        <ul className="grid grid-cols-1 gap-3">
-          {suppliers.data.map((s) => (
-            <li
-              key={s.id}
-              className="flex items-center justify-between gap-4 rounded border border-white/10 bg-black/30 px-4 py-3 hover:bg-black/40 transition"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/admin/suppliers/${s.id}`}
-                    className="font-mono text-sm text-dizajno-text hover:text-amber-300 transition truncate"
-                  >
-                    {s.name}
-                  </Link>
-                  {s.isTrusted && (
-                    <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[9px] tracking-widest uppercase text-emerald-300">
-                      Trusted
-                    </span>
-                  )}
-                  {s.suspendedAt && (
-                    <span className="rounded border border-red-500/40 bg-red-500/10 px-1.5 py-0.5 font-mono text-[9px] tracking-widest uppercase text-red-300">
-                      Suspended
-                    </span>
-                  )}
-                </div>
-                <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase mt-0.5 truncate">
-                  /{s.slug} · {s.productCount} products · {s.memberCount} members
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {s.isTrusted ? (
-                  <button
-                    type="button"
-                    onClick={() => untrust.mutate(s.id)}
-                    title="Untrust (new products go Pending)"
-                    className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-amber-300 hover:border-amber-500/40 transition"
-                  >
-                    <ShieldOff size={14} />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => trust.mutate(s.id)}
-                    title="Trust (new products auto-publish)"
-                    className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-emerald-300 hover:border-emerald-500/40 transition"
-                  >
-                    <ShieldCheck size={14} />
-                  </button>
-                )}
-                {s.suspendedAt ? (
-                  <button
-                    type="button"
-                    onClick={() => restore.mutate(s.id)}
-                    title="Restore supplier"
-                    className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-emerald-300 hover:border-emerald-500/40 transition"
-                  >
-                    <RotateCcw size={14} />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm(`Suspend "${s.name}"? Their products hide from catalog and any pending quote requests auto-expire.`))
-                        suspend.mutate(s.id);
-                    }}
-                    title="Suspend supplier"
-                    className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-                  >
-                    <Ban size={14} />
-                  </button>
-                )}
-                <Link
-                  href={`/admin/suppliers/${s.id}`}
-                  title="View detail"
-                  className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-dizajno-text hover:border-white/30 transition"
+        {suppliers.error && (
+          <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
+            {(suppliers.error as Error).message}
+          </div>
+        )}
+
+        {suppliers.data && suppliers.data.length === 0 && (
+          <EmptyState
+            icon={<Store />}
+            title={search ? "No suppliers match" : "No suppliers yet"}
+            description={
+              search
+                ? "Try a different search term."
+                : "Create the first supplier — once it has at least one product, it shows up in the catalog filter."
+            }
+            action={
+              !search ? (
+                <Button
+                  variant="primary"
+                  leftIcon={<Plus />}
+                  onClick={() => setShowCreate(true)}
                 >
-                  <BadgeCheck size={14} />
-                </Link>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+                  New supplier
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
+
+        {suppliers.data && suppliers.data.length > 0 && (
+          <Card flush>
+            <ul className="divide-y divide-dizajno-border">
+              {suppliers.data.map((s) => (
+                <li
+                  key={s.id}
+                  className="group flex items-center gap-4 px-5 py-4 hover:bg-dizajno-bg/40 transition-colors"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-dizajno-elevated text-dizajno-muted flex items-center justify-center shrink-0">
+                    <Store size={16} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Link
+                        href={`/admin/suppliers/${s.id}`}
+                        className="text-[14px] font-medium text-dizajno-text truncate hover:text-dizajno-accent transition-colors"
+                      >
+                        {s.name}
+                      </Link>
+                      {s.isTrusted && (
+                        <Badge tone="success" size="sm" dot>
+                          Trusted
+                        </Badge>
+                      )}
+                      {s.suspendedAt && (
+                        <Badge tone="danger" size="sm" dot>
+                          Suspended
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-1 text-[12px] text-dizajno-muted truncate">
+                      <span className="font-mono">/{s.slug}</span>
+                      <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                      {s.productCount} product{s.productCount === 1 ? "" : "s"}
+                      <span className="mx-1.5 text-dizajno-muted-subtle">·</span>
+                      {s.memberCount} member{s.memberCount === 1 ? "" : "s"}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {s.isTrusted ? (
+                      <Tooltip content="Untrust — new products will go through review">
+                        <IconButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => untrust.mutate(s.id)}
+                          className="hover:text-dizajno-warning"
+                        >
+                          <ShieldOff />
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip content="Trust — new products auto-publish">
+                        <IconButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => trust.mutate(s.id)}
+                          className="hover:text-dizajno-success"
+                        >
+                          <ShieldCheck />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {s.suspendedAt ? (
+                      <Tooltip content="Restore">
+                        <IconButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => restore.mutate(s.id)}
+                          className="hover:text-dizajno-success"
+                        >
+                          <RotateCcw />
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip content="Suspend">
+                        <IconButton
+                          variant="danger"
+                          size="sm"
+                          onClick={() => setSuspendTarget(s)}
+                        >
+                          <Ban />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    <Link href={`/admin/suppliers/${s.id}`}>
+                      <IconButton variant="ghost" size="sm">
+                        <ChevronRight />
+                      </IconButton>
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </section>
 
       {showCreate && (
         <CreateSupplierModal
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
-            qc.invalidateQueries({ queryKey: ["admin", "suppliers"] });
+            invalidate();
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!suspendTarget}
+        title="Suspend supplier?"
+        description={
+          suspendTarget
+            ? `"${suspendTarget.name}" will be hidden from the catalog, all members will lose portal access, and any pending quote requests for them auto-expire with reason "supplier_suspended".`
+            : ""
+        }
+        confirmLabel="Suspend"
+        confirmTone="danger"
+        busy={suspend.isPending}
+        onConfirm={() => suspendTarget && suspend.mutate(suspendTarget.id)}
+        onCancel={() => setSuspendTarget(null)}
+      />
     </>
   );
 }
@@ -186,71 +288,68 @@ function CreateSupplierModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur">
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="New supplier"
+      description="Suppliers start untrusted — new products land in moderation. Toggle trust on the supplier list once they're vetted."
+      size="md"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={create.isPending}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="supplier-create-form"
+            variant="primary"
+            loading={create.isPending}
+          >
+            Create
+          </Button>
+        </>
+      }
+    >
       <form
+        id="supplier-create-form"
         onSubmit={(e) => {
           e.preventDefault();
           setError(null);
           create.mutate();
         }}
-        className="w-full max-w-md rounded border border-white/15 bg-dizajno-bg px-6 py-6 space-y-4"
+        className="space-y-3"
       >
-        <h2 className="font-mono text-sm tracking-widest text-dizajno-text uppercase">
-          New supplier
-        </h2>
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-            Slug (URL-safe)
-          </label>
-          <input
+        <FormField label="Slug" hint="URL-safe, lowercase, dashes" required>
+          <Input
             required
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             placeholder="acme-furniture"
-            className="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-sm text-dizajno-text focus:outline-none focus:border-white/30"
+            pattern="^[a-z0-9-]+$"
+            className="font-mono"
           />
-        </div>
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-            Display name
-          </label>
-          <input
+        </FormField>
+        <FormField label="Display name" required>
+          <Input
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Acme Furniture"
-            className="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-sm text-dizajno-text focus:outline-none focus:border-white/30"
           />
-        </div>
-        <div className="space-y-1">
-          <label className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-            Description (optional)
-          </label>
-          <textarea
+        </FormField>
+        <FormField label="Description" hint="Optional">
+          <Textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            className="w-full rounded border border-white/10 bg-black/30 px-3 py-1.5 font-mono text-sm text-dizajno-text focus:outline-none focus:border-white/30 resize-none"
+            rows={3}
           />
-        </div>
-        {error && <p className="font-mono text-xs text-red-400">{error}</p>}
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-white/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={create.isPending}
-            className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-amber-300 hover:bg-amber-500/20 transition disabled:opacity-50"
-          >
-            {create.isPending ? "Creating…" : "Create"}
-          </button>
-        </div>
+        </FormField>
+        {error && (
+          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger">
+            {error}
+          </div>
+        )}
       </form>
-    </div>
+    </Modal>
   );
 }
