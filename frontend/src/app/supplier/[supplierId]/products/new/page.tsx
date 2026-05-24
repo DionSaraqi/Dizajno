@@ -4,8 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { Plus, Lightbulb } from "lucide-react";
 import * as api from "@/lib/api";
+import {
+  Button,
+  Card,
+  CardBody,
+  FormField,
+  Input,
+  Modal,
+  PageHeader,
+  Select,
+  Textarea,
+} from "@/components/ui";
 
 const FAMILIES: api.ProductFamily[] = [
   "Furniture",
@@ -23,15 +34,6 @@ const UNITS: api.UnitOfSale[] = [
   "Kilogram",
 ];
 
-/**
- * Product create form. Family + category drive a few conditional fields:
- *   - BuildingMaterial w/ Liter unit → CoverageRate (m² per liter) is meaningful for paints.
- *   - BuildingMaterial → TextureUrl shows the wall/floor designer skin hint.
- *
- * Categories load fresh whenever family changes. Suppliers can suggest a new
- * category inline — the row lands in admin moderation (Phase 7a) and isn't
- * pickable until approved.
- */
 export default function NewProductPage() {
   const params = useParams<{ supplierId: string }>();
   const supplierId = params.supplierId;
@@ -57,14 +59,18 @@ export default function NewProductPage() {
   });
 
   const categoryOptions = useMemo(
-    () => (categories.data ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
-    [categories.data]
+    () =>
+      (categories.data ?? [])
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [categories.data],
   );
 
   useEffect(() => {
-    // Reset selected category when family changes; the previous pick is now
-    // foreign and would be rejected by the API.
-    if (categoryOptions.length > 0 && !categoryOptions.some((c) => c.id === categoryId)) {
+    if (
+      categoryOptions.length > 0 &&
+      !categoryOptions.some((c) => c.id === categoryId)
+    ) {
       setCategoryId("");
     }
   }, [categoryOptions, categoryId]);
@@ -99,19 +105,14 @@ export default function NewProductPage() {
 
   return (
     <>
-      <Link
-        href={`/supplier/${supplierId}/products`}
-        className="inline-flex items-center gap-2 text-dizajno-muted hover:text-dizajno-text font-mono text-xs tracking-widest uppercase mb-6"
-      >
-        <ArrowLeft size={12} /> Back to products
-      </Link>
-
-      <h2 className="font-mono text-2xl tracking-wide text-dizajno-text mb-1">
-        New product
-      </h2>
-      <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase mb-6">
-        Saves as Draft. Add a variant + publish to send to review (or auto-publish if trusted).
-      </p>
+      <PageHeader
+        breadcrumbs={[
+          { label: "Products", href: `/supplier/${supplierId}/products` },
+          { label: "New" },
+        ]}
+        title="Create a product"
+        description="Saves as a Draft. Once you add a variant and publish, trusted suppliers go live immediately; new suppliers route through admin review first."
+      />
 
       <form
         onSubmit={(e) => {
@@ -119,164 +120,185 @@ export default function NewProductPage() {
           setError(null);
           create.mutate();
         }}
-        className="space-y-5 max-w-2xl"
+        className="py-6 max-w-3xl space-y-6"
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Family">
-            <select
-              value={family}
-              onChange={(e) => setFamily(e.target.value as api.ProductFamily)}
-              className="portal-input"
-            >
-              {FAMILIES.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Unit of sale">
-            <select
-              value={unitOfSale}
-              onChange={(e) => setUnitOfSale(e.target.value as api.UnitOfSale)}
-              className="portal-input"
-            >
-              {UNITS.map((u) => (
-                <option key={u} value={u}>
-                  {u}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
+        <Card>
+          <CardBody className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Family" htmlFor="family" required>
+                <Select
+                  id="family"
+                  value={family}
+                  onChange={(e) => setFamily(e.target.value as api.ProductFamily)}
+                >
+                  {FAMILIES.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+              <FormField label="Unit of sale" htmlFor="unit" required>
+                <Select
+                  id="unit"
+                  value={unitOfSale}
+                  onChange={(e) => setUnitOfSale(e.target.value as api.UnitOfSale)}
+                >
+                  {UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            </div>
 
-        <Field
-          label="Category"
-          hint={
-            <button
-              type="button"
-              onClick={() => setShowSuggest(true)}
-              className="text-emerald-300 hover:underline"
-            >
-              Suggest a new category
-            </button>
-          }
-        >
-          <select
-            required
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="portal-input"
-          >
-            <option value="">— Pick one —</option>
-            {categoryOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Slug (URL fragment, lowercase)">
-            <input
+            <FormField
+              label="Category"
+              htmlFor="category"
               required
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
-              placeholder="acme-lounge-sofa"
-              pattern="^[a-z0-9-]+$"
-              className="portal-input"
-            />
-          </Field>
-          <Field label="Display name">
-            <input
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Acme Lounge Sofa"
-              className="portal-input"
-            />
-          </Field>
-        </div>
+              rightLabel={
+                <button
+                  type="button"
+                  onClick={() => setShowSuggest(true)}
+                  className="inline-flex items-center gap-1 text-dizajno-accent hover:text-dizajno-accent-hover transition-colors"
+                >
+                  <Lightbulb size={11} />
+                  Suggest a new one
+                </button>
+              }
+            >
+              <Select
+                id="category"
+                required
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                <option value="">— Pick one —</option>
+                {categoryOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
 
-        <Field label="Description (optional)">
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            className="portal-input resize-none"
-          />
-        </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField
+                label="Slug"
+                htmlFor="slug"
+                required
+                hint="URL fragment, lowercase, dashes"
+              >
+                <Input
+                  id="slug"
+                  required
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder="acme-lounge-sofa"
+                  pattern="^[a-z0-9-]+$"
+                />
+              </FormField>
+              <FormField label="Display name" htmlFor="name" required>
+                <Input
+                  id="name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Acme Lounge Sofa"
+                />
+              </FormField>
+            </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {isBuildingMaterial && isLiter && (
-            <Field label="Coverage rate (m² per liter)">
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={coverageRate}
-                onChange={(e) => setCoverageRate(e.target.value)}
-                placeholder="10"
-                className="portal-input"
+            <FormField label="Description" htmlFor="description" hint="Optional">
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
               />
-            </Field>
-          )}
-          <Field label="Waste factor (0.10 = 10%)">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              max="1"
-              value={wasteFactor}
-              onChange={(e) => setWasteFactor(e.target.value)}
-              className="portal-input"
-            />
-          </Field>
-          <Field label="Lead time (days, optional)">
-            <input
-              type="number"
-              min="0"
-              value={leadTimeDays}
-              onChange={(e) => setLeadTimeDays(e.target.value)}
-              className="portal-input"
-            />
-          </Field>
-        </div>
+            </FormField>
+          </CardBody>
+        </Card>
 
-        {isBuildingMaterial && (
-          <Field
-            label="Texture URL (optional)"
-            hint="Tileable JPG/PNG. Lets walls + floors in the designer skin themselves with this finish."
-          >
-            <input
-              type="url"
-              value={textureUrl}
-              onChange={(e) => setTextureUrl(e.target.value)}
-              placeholder="/textures/your-paint.jpg"
-              className="portal-input"
-            />
-          </Field>
-        )}
+        <Card>
+          <CardBody className="space-y-5">
+            <div>
+              <h3 className="text-[14px] font-semibold text-dizajno-text">
+                Commerce
+              </h3>
+              <p className="text-[12.5px] text-dizajno-muted mt-0.5">
+                Coverage + waste are used by the quote calculator when this is a
+                paint or flooring product.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {isBuildingMaterial && isLiter && (
+                <FormField label="Coverage rate" hint="m² per liter">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={coverageRate}
+                    onChange={(e) => setCoverageRate(e.target.value)}
+                    placeholder="10"
+                  />
+                </FormField>
+              )}
+              <FormField label="Waste factor" hint="0.10 = 10% overage">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  value={wasteFactor}
+                  onChange={(e) => setWasteFactor(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Lead time" hint="Days, optional">
+                <Input
+                  type="number"
+                  min="0"
+                  value={leadTimeDays}
+                  onChange={(e) => setLeadTimeDays(e.target.value)}
+                />
+              </FormField>
+            </div>
+
+            {isBuildingMaterial && (
+              <FormField
+                label="Texture URL"
+                hint="Tileable JPG/PNG. Walls + floors in the designer skin with this finish."
+              >
+                <Input
+                  type="url"
+                  value={textureUrl}
+                  onChange={(e) => setTextureUrl(e.target.value)}
+                  placeholder="/textures/your-paint.jpg"
+                />
+              </FormField>
+            )}
+          </CardBody>
+        </Card>
 
         {error && (
-          <p className="font-mono text-xs text-red-400 break-words">{error}</p>
+          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
+            {error}
+          </div>
         )}
 
         <div className="flex justify-end gap-2">
-          <Link
-            href={`/supplier/${supplierId}/products`}
-            className="rounded border border-white/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
-          >
-            Cancel
+          <Link href={`/supplier/${supplierId}/products`}>
+            <Button variant="ghost">Cancel</Button>
           </Link>
-          <button
+          <Button
             type="submit"
-            disabled={create.isPending}
-            className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition disabled:opacity-50"
+            variant="primary"
+            loading={create.isPending}
+            leftIcon={!create.isPending ? <Plus /> : undefined}
           >
             {create.isPending ? "Saving…" : "Create draft"}
-          </button>
+          </Button>
         </div>
       </form>
 
@@ -285,56 +307,9 @@ export default function NewProductPage() {
           supplierId={supplierId}
           family={family}
           onClose={() => setShowSuggest(false)}
-          onSuggested={() => {
-            setShowSuggest(false);
-            alert(
-              "Category suggested. It needs admin approval before products can attach to it."
-            );
-          }}
         />
       )}
-
-      <style jsx global>{`
-        .portal-input {
-          width: 100%;
-          border-radius: 4px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          background: rgba(0, 0, 0, 0.3);
-          padding: 0.375rem 0.75rem;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-          font-size: 0.875rem;
-          color: rgb(229 231 235);
-        }
-        .portal-input:focus {
-          outline: none;
-          border-color: rgba(255, 255, 255, 0.3);
-        }
-      `}</style>
     </>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <label className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-          {label}
-        </label>
-        {hint && (
-          <span className="font-mono text-[10px] text-dizajno-muted/80">{hint}</span>
-        )}
-      </div>
-      {children}
-    </div>
   );
 }
 
@@ -342,15 +317,14 @@ function SuggestCategoryModal({
   supplierId,
   family,
   onClose,
-  onSuggested,
 }: {
   supplierId: string;
   family: api.ProductFamily;
   onClose: () => void;
-  onSuggested: () => void;
 }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const suggest = useMutation({
     mutationFn: () =>
       api.suggestCategory({
@@ -359,52 +333,62 @@ function SuggestCategoryModal({
         parentCategoryId: null,
         name: name.trim(),
       }),
-    onSuccess: () => onSuggested(),
+    onSuccess: () => setDone(true),
     onError: (e: Error) => setError(e.message),
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur px-4">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError(null);
-          suggest.mutate();
-        }}
-        className="w-full max-w-md rounded border border-white/15 bg-dizajno-bg px-6 py-6 space-y-4"
-      >
-        <h2 className="font-mono text-sm tracking-widest text-dizajno-text uppercase">
-          Suggest category — {family}
-        </h2>
-        <Field label="Display name">
-          <input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Pendant Lights"
-            className="portal-input"
-          />
-        </Field>
-        {error && (
-          <p className="font-mono text-xs text-red-400 break-words">{error}</p>
-        )}
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-white/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={suggest.isPending}
-            className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition disabled:opacity-50"
-          >
-            {suggest.isPending ? "Sending…" : "Submit for review"}
-          </button>
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={done ? "Submitted for review" : `Suggest a new ${family} category`}
+      description={
+        done
+          ? "An admin needs to approve it before products can attach. We'll show it in the picker once it's approved."
+          : "We'll send it to admin moderation. While it's pending, you can't attach products to it."
+      }
+      size="sm"
+      footer={
+        done ? (
+          <Button variant="primary" onClick={onClose}>
+            Got it
+          </Button>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={onClose} disabled={suggest.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={suggest.isPending}
+              onClick={() => {
+                setError(null);
+                suggest.mutate();
+              }}
+            >
+              Submit
+            </Button>
+          </>
+        )
+      }
+    >
+      {!done && (
+        <div className="space-y-3">
+          <FormField label="Display name" htmlFor="cat-name">
+            <Input
+              id="cat-name"
+              autoFocus
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Pendant Lights"
+            />
+          </FormField>
+          {error && (
+            <p className="text-[12px] text-dizajno-danger">{error}</p>
+          )}
         </div>
-      </form>
-    </div>
+      )}
+    </Modal>
   );
 }

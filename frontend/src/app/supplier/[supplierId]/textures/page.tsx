@@ -3,23 +3,30 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Upload } from "lucide-react";
+import { ImageOff, Palette, Plus, Trash2, Upload } from "lucide-react";
 import * as api from "@/lib/api";
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  FormField,
+  IconButton,
+  Input,
+  Modal,
+  PageHeader,
+  Skeleton,
+  Tooltip,
+} from "@/components/ui";
 
-/**
- * Supplier-owned texture library. Each texture references an Asset of
- * kind Image; suppliers upload the image, give it a name + tags + repeat
- * settings, and then bind it to variant slots from the product editor.
- *
- * Deletion is refused if any slot binding still references the texture —
- * surfaces a clear 409 message from the backend rather than a cryptic FK
- * error.
- */
 export default function SupplierTexturesPage() {
   const params = useParams<{ supplierId: string }>();
   const supplierId = params.supplierId;
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<api.SupplierTexture | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const textures = useQuery({
     queryKey: ["supplier", supplierId, "textures"],
@@ -28,83 +35,149 @@ export default function SupplierTexturesPage() {
 
   const remove = useMutation({
     mutationFn: (id: string) => api.deleteSupplierTexture(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["supplier", supplierId, "textures"] }),
-    onError: (e: Error) => alert(e.message),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["supplier", supplierId, "textures"] });
+      setDeleteTarget(null);
+    },
+    onError: (e: Error) => setErrorMessage(e.message),
   });
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-          {textures.data?.length ?? 0} textures
-        </p>
-        <button
-          type="button"
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition"
-        >
-          <Plus size={12} /> New texture
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Customizer"
+        title="Texture library"
+        description="Upload tileable images, name and tag them, then bind them to variant slots from the product editor."
+        actions={
+          <Button
+            variant="primary"
+            leftIcon={<Plus />}
+            onClick={() => setShowCreate(true)}
+          >
+            New texture
+          </Button>
+        }
+      />
 
-      {textures.isLoading && (
-        <p className="font-mono text-sm text-dizajno-muted">Loading…</p>
-      )}
-
-      {textures.data && textures.data.length === 0 && (
-        <p className="font-mono text-sm text-dizajno-muted">
-          No textures yet. Upload your first finish to start binding it to variant slots.
-        </p>
-      )}
-
-      {textures.data && textures.data.length > 0 && (
-        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {textures.data.map((t) => (
-            <li
-              key={t.id}
-              className="rounded border border-white/10 bg-black/30 overflow-hidden hover:border-white/20 transition"
+      <section className="py-6">
+        {errorMessage && (
+          <div className="mb-4 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger flex items-start justify-between gap-3">
+            <span>{errorMessage}</span>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="text-dizajno-danger/70 hover:text-dizajno-danger text-[12px] font-medium"
             >
-              <div className="aspect-square relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={t.thumbnailAssetUrl ?? t.assetUrl}
-                  alt={t.name}
-                  className="absolute inset-0 w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              </div>
-              <div className="px-3 py-2 border-t border-white/5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-mono text-sm text-dizajno-text truncate">{t.name}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm(`Delete texture "${t.name}"?`)) remove.mutate(t.id);
-                    }}
-                    className="rounded border border-white/10 px-2 py-1 text-dizajno-muted hover:text-red-300 hover:border-red-500/40 transition"
-                    title={t.slotBindingCount > 0
-                      ? `Bound to ${t.slotBindingCount} variant slot(s) — remove bindings first.`
-                      : "Delete"}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-                <p className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase mt-1">
-                  repeat {t.repeatU}×{t.repeatV}
-                  {t.slotBindingCount > 0 ? ` · used by ${t.slotBindingCount} slot${t.slotBindingCount === 1 ? "" : "s"}` : ""}
-                </p>
-                {t.tags.length > 0 && (
-                  <p className="font-mono text-[10px] text-dizajno-muted mt-1 truncate">
-                    {t.tags.join(", ")}
-                  </p>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {textures.isLoading && (
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[0, 1, 2].map((i) => (
+              <li key={i}>
+                <Card flush>
+                  <Skeleton className="aspect-square rounded-t-xl" />
+                  <div className="px-4 py-3 space-y-2">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {textures.data && textures.data.length === 0 && (
+          <EmptyState
+            icon={<Palette />}
+            title="No textures uploaded yet"
+            description="Add fabric, wood, paint, and finish swatches. Once they're in the library, you can bind them to material slots on any variant."
+            action={
+              <Button
+                variant="primary"
+                leftIcon={<Plus />}
+                onClick={() => setShowCreate(true)}
+              >
+                Upload texture
+              </Button>
+            }
+          />
+        )}
+
+        {textures.data && textures.data.length > 0 && (
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {textures.data.map((t) => (
+              <li key={t.id}>
+                <Card flush className="overflow-hidden group hover:shadow-card transition-shadow">
+                  <div className="aspect-square relative bg-dizajno-elevated border-b border-dizajno-border">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={t.thumbnailAssetUrl ?? t.assetUrl}
+                      alt={t.name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onError={(e) => {
+                        const img = e.currentTarget as HTMLImageElement;
+                        img.style.display = "none";
+                        const fallback = img.nextElementSibling as HTMLElement;
+                        if (fallback) fallback.style.display = "flex";
+                      }}
+                    />
+                    <div
+                      style={{ display: "none" }}
+                      className="absolute inset-0 items-center justify-center text-dizajno-muted-subtle flex-col gap-1.5"
+                    >
+                      <ImageOff size={20} strokeWidth={1.5} />
+                      <span className="text-[10px] uppercase tracking-label font-medium">
+                        Missing asset
+                      </span>
+                    </div>
+                  </div>
+                  <div className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[13.5px] font-medium text-dizajno-text truncate">
+                        {t.name}
+                      </p>
+                      <Tooltip
+                        content={
+                          t.slotBindingCount > 0
+                            ? `Bound to ${t.slotBindingCount} variant slot${t.slotBindingCount === 1 ? "" : "s"}`
+                            : "Delete texture"
+                        }
+                      >
+                        <IconButton
+                          variant="danger"
+                          size="sm"
+                          onClick={() => setDeleteTarget(t)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Trash2 />
+                        </IconButton>
+                      </Tooltip>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                      <Badge tone="neutral" size="sm" mono>
+                        {t.repeatU}×{t.repeatV}
+                      </Badge>
+                      {t.slotBindingCount > 0 && (
+                        <Badge tone="accent" size="sm">
+                          {t.slotBindingCount} binding
+                          {t.slotBindingCount === 1 ? "" : "s"}
+                        </Badge>
+                      )}
+                    </div>
+                    {t.tags.length > 0 && (
+                      <p className="mt-2 text-[11.5px] text-dizajno-muted truncate">
+                        {t.tags.join(" · ")}
+                      </p>
+                    )}
+                  </div>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {showCreate && (
         <CreateTextureModal
@@ -112,10 +185,30 @@ export default function SupplierTexturesPage() {
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
-            qc.invalidateQueries({ queryKey: ["supplier", supplierId, "textures"] });
+            qc.invalidateQueries({
+              queryKey: ["supplier", supplierId, "textures"],
+            });
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete texture?"
+        description={
+          deleteTarget
+            ? deleteTarget.slotBindingCount > 0
+              ? `"${deleteTarget.name}" is bound to ${deleteTarget.slotBindingCount} variant slot${deleteTarget.slotBindingCount === 1 ? "" : "s"}. Remove those bindings first.`
+              : `"${deleteTarget.name}" will be removed from your library.`
+            : ""
+        }
+        confirmLabel="Delete"
+        confirmTone="danger"
+        busy={remove.isPending}
+        confirmDisabled={deleteTarget?.slotBindingCount ? deleteTarget.slotBindingCount > 0 : false}
+        onConfirm={() => deleteTarget && remove.mutate(deleteTarget.id)}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </>
   );
 }
@@ -151,7 +244,10 @@ function CreateTextureModal({
         supplierId,
         name: name.trim(),
         assetId: asset.id,
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
         repeatU,
         repeatV,
       });
@@ -164,109 +260,103 @@ function CreateTextureModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur px-4">
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Upload texture"
+      description="JPEG or PNG, tileable. Use repeats to control how often the image tiles across a surface."
+      size="md"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={uploading}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="texture-upload-form"
+            variant="primary"
+            loading={uploading}
+            leftIcon={!uploading ? <Upload /> : undefined}
+          >
+            {uploading ? "Uploading…" : "Upload"}
+          </Button>
+        </>
+      }
+    >
       <form
+        id="texture-upload-form"
         onSubmit={handleSubmit}
-        className="w-full max-w-md rounded border border-white/15 bg-dizajno-bg px-6 py-6 space-y-4"
+        className="space-y-4"
       >
-        <h2 className="font-mono text-sm tracking-widest text-dizajno-text uppercase">
-          New texture
-        </h2>
+        <FormField label="Image file" required>
+          <label className="block">
+            <div className="relative rounded-lg border-2 border-dashed border-dizajno-border hover:border-dizajno-accent/50 transition-colors bg-dizajno-bg/40 px-4 py-6 cursor-pointer">
+              <div className="flex flex-col items-center text-center">
+                <Upload className="text-dizajno-muted mb-2" size={20} />
+                <p className="text-[13px] font-medium text-dizajno-text">
+                  {file ? file.name : "Choose an image"}
+                </p>
+                <p className="text-[11.5px] text-dizajno-muted mt-0.5">
+                  {file
+                    ? `${(file.size / 1024).toFixed(0)} KB`
+                    : "PNG, JPEG, or WebP"}
+                </p>
+              </div>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                required
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+            </div>
+          </label>
+        </FormField>
 
-        <label className="block space-y-1">
-          <span className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-            Image
-          </span>
-          <div className="flex items-center gap-2 rounded border border-white/10 bg-black/30 px-3 py-2">
-            <Upload size={14} className="text-dizajno-muted" />
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              required
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="flex-1 font-mono text-xs text-dizajno-text file:hidden"
-            />
-          </div>
-          {file && (
-            <p className="font-mono text-[10px] text-dizajno-muted mt-1">
-              {file.name} · {Math.round(file.size / 1024)} KB
-            </p>
-          )}
-        </label>
-
-        <label className="block space-y-1">
-          <span className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-            Name
-          </span>
-          <input
+        <FormField label="Name" required>
+          <Input
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Walnut"
-            className="portal-input"
+            placeholder="e.g. Walnut veneer"
           />
-        </label>
+        </FormField>
 
-        <label className="block space-y-1">
-          <span className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-            Tags (comma-separated)
-          </span>
-          <input
+        <FormField label="Tags" hint="Comma-separated">
+          <Input
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             placeholder="wood, dark, matte"
-            className="portal-input"
           />
-        </label>
+        </FormField>
 
         <div className="grid grid-cols-2 gap-3">
-          <label className="block space-y-1">
-            <span className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-              Repeat U
-            </span>
-            <input
+          <FormField label="Repeat U">
+            <Input
               type="number"
               min={1}
               max={32}
               value={repeatU}
               onChange={(e) => setRepeatU(Number(e.target.value))}
-              className="portal-input"
             />
-          </label>
-          <label className="block space-y-1">
-            <span className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-              Repeat V
-            </span>
-            <input
+          </FormField>
+          <FormField label="Repeat V">
+            <Input
               type="number"
               min={1}
               max={32}
               value={repeatV}
               onChange={(e) => setRepeatV(Number(e.target.value))}
-              className="portal-input"
             />
-          </label>
+          </FormField>
         </div>
 
-        {error && <p className="font-mono text-xs text-red-400 break-words">{error}</p>}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-white/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={uploading}
-            className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition disabled:opacity-50"
-          >
-            {uploading ? "Uploading…" : "Upload"}
-          </button>
-        </div>
+        {error && (
+          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger">
+            {error}
+          </div>
+        )}
       </form>
-    </div>
+    </Modal>
   );
 }

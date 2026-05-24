@@ -2,15 +2,19 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import * as api from "@/lib/api";
+import {
+  Button,
+  Card,
+  CardBody,
+  EmptyState,
+  FormField,
+  Input,
+} from "@/components/ui";
+import { Boxes } from "lucide-react";
 import VariantRowEditor from "./VariantRowEditor";
 
-/**
- * Variants tab. Inline grid of one card per variant. Adding a variant pops a
- * minimal new-variant form at the top; the rest of the page keeps showing the
- * existing variants so the supplier can copy SKUs/dimensions across by eye.
- */
 export default function VariantsTab({
   supplierId,
   product,
@@ -24,7 +28,7 @@ export default function VariantsTab({
   const [showAdd, setShowAdd] = useState(product.variants.length === 0);
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-4xl space-y-5">
       {showAdd ? (
         <NewVariantForm
           productId={product.id}
@@ -35,19 +39,37 @@ export default function VariantsTab({
           }}
         />
       ) : (
-        <button
-          type="button"
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition"
-        >
-          <Plus size={12} /> Add variant
-        </button>
+        <div className="flex items-center justify-between">
+          <p className="text-[13px] text-dizajno-muted">
+            {product.variants.length} variant
+            {product.variants.length === 1 ? "" : "s"} attached
+          </p>
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={<Plus />}
+            onClick={() => setShowAdd(true)}
+          >
+            Add variant
+          </Button>
+        </div>
       )}
 
       {product.variants.length === 0 && !showAdd && (
-        <p className="font-mono text-sm text-dizajno-muted">
-          Add at least one variant — products can&apos;t be published without one.
-        </p>
+        <EmptyState
+          icon={<Boxes />}
+          title="No variants yet"
+          description="Products need at least one variant before they can be published."
+          action={
+            <Button
+              variant="primary"
+              leftIcon={<Plus />}
+              onClick={() => setShowAdd(true)}
+            >
+              Add variant
+            </Button>
+          }
+        />
       )}
 
       {product.variants.map((v) => (
@@ -58,7 +80,9 @@ export default function VariantsTab({
           variant={v}
           onChanged={onChanged}
           onDeleted={() => {
-            qc.invalidateQueries({ queryKey: ["supplier", supplierId, "products", product.id] });
+            qc.invalidateQueries({
+              queryKey: ["supplier", supplierId, "products", product.id],
+            });
             onChanged();
           }}
         />
@@ -102,96 +126,117 @@ function NewVariantForm({
   });
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        setError(null);
-        create.mutate();
-      }}
-      className="rounded border border-emerald-500/30 bg-emerald-500/5 px-4 py-4 space-y-4"
-    >
-      <h3 className="font-mono text-xs tracking-widest text-emerald-300 uppercase">
-        New variant
-      </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <input
-          required
-          value={sku}
-          onChange={(e) => setSku(e.target.value)}
-          placeholder="SKU"
-          className="portal-input"
-        />
-        <input
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Name"
-          className="portal-input"
-        />
-        <input
-          type="text"
-          value={color}
-          onChange={(e) => setColor(e.target.value)}
-          placeholder="#999999"
-          className="portal-input"
-        />
-        <input
-          type="number"
-          step="0.01"
-          min="0.01"
-          required
-          value={width}
-          onChange={(e) => setWidth(e.target.value)}
-          placeholder="Width (m)"
-          className="portal-input"
-        />
-        <input
-          type="number"
-          step="0.01"
-          min="0.01"
-          required
-          value={depth}
-          onChange={(e) => setDepth(e.target.value)}
-          placeholder="Depth (m)"
-          className="portal-input"
-        />
-        <input
-          type="number"
-          step="0.01"
-          min="0.01"
-          required
-          value={height}
-          onChange={(e) => setHeight(e.target.value)}
-          placeholder="Height (m)"
-          className="portal-input"
-        />
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={basePrice}
-          onChange={(e) => setBasePrice(e.target.value)}
-          placeholder="Base price (EUR, optional)"
-          className="portal-input col-span-1 sm:col-span-2"
-        />
-      </div>
-      {error && <p className="font-mono text-xs text-red-400">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded border border-white/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-dizajno-muted hover:text-dizajno-text transition"
+    <Card accentStripe>
+      <CardBody>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError(null);
+            create.mutate();
+          }}
+          className="space-y-4"
         >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={create.isPending}
-          className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition disabled:opacity-50"
-        >
-          {create.isPending ? "Adding…" : "Add variant"}
-        </button>
-      </div>
-    </form>
+          <div>
+            <h3 className="text-[14px] font-semibold text-dizajno-text">
+              New variant
+            </h3>
+            <p className="text-[12.5px] text-dizajno-muted mt-0.5">
+              The SKU stays with this row forever — pick carefully.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <FormField label="SKU" required>
+              <Input
+                required
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                placeholder="ACME-LS-2S"
+              />
+            </FormField>
+            <FormField label="Variant name" required>
+              <Input
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </FormField>
+            <FormField label="Color" hint="Hex">
+              <Input
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                placeholder="#999999"
+              />
+            </FormField>
+
+            <FormField label="Width" hint="metres" required>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                value={width}
+                onChange={(e) => setWidth(e.target.value)}
+              />
+            </FormField>
+            <FormField label="Depth" hint="metres" required>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                value={depth}
+                onChange={(e) => setDepth(e.target.value)}
+              />
+            </FormField>
+            <FormField label="Height" hint="metres" required>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                value={height}
+                onChange={(e) => setHeight(e.target.value)}
+              />
+            </FormField>
+
+            <FormField
+              label="Base price"
+              hint="EUR, optional"
+              className="sm:col-span-2"
+            >
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={basePrice}
+                onChange={(e) => setBasePrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </FormField>
+          </div>
+
+          {error && (
+            <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={onCancel} type="button">
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={create.isPending}
+              leftIcon={!create.isPending ? <Plus /> : undefined}
+            >
+              {create.isPending ? "Adding…" : "Add variant"}
+            </Button>
+          </div>
+        </form>
+      </CardBody>
+    </Card>
   );
 }

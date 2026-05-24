@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { Check } from "lucide-react";
 import * as api from "@/lib/api";
+import {
+  Button,
+  Card,
+  CardBody,
+  FormField,
+  Input,
+  Select,
+  Textarea,
+} from "@/components/ui";
 
 const UNITS: api.UnitOfSale[] = [
   "Piece",
@@ -12,11 +22,6 @@ const UNITS: api.UnitOfSale[] = [
   "Kilogram",
 ];
 
-/**
- * Edit-in-place product info form. Family + slug are immutable (slug for URL
- * stability + audit-log entity-id semantics, family because changing it would
- * scramble the catalog).
- */
 export default function ProductInfoTab({
   supplierId,
   product,
@@ -26,14 +31,18 @@ export default function ProductInfoTab({
   product: api.SupplierProductDetail;
   onSaved: () => void;
 }) {
-  void supplierId; // future: used for permission-aware rendering
+  void supplierId;
   const [categoryId, setCategoryId] = useState(product.categoryId);
   const [name, setName] = useState(product.name);
   const [description, setDescription] = useState(product.description ?? "");
   const [unitOfSale, setUnitOfSale] = useState<api.UnitOfSale>(product.unitOfSale);
-  const [coverageRate, setCoverageRate] = useState(product.coverageRate?.toString() ?? "");
+  const [coverageRate, setCoverageRate] = useState(
+    product.coverageRate?.toString() ?? "",
+  );
   const [wasteFactor, setWasteFactor] = useState(product.wasteFactor.toString());
-  const [leadTimeDays, setLeadTimeDays] = useState(product.leadTimeDays?.toString() ?? "");
+  const [leadTimeDays, setLeadTimeDays] = useState(
+    product.leadTimeDays?.toString() ?? "",
+  );
   const [previewSvg, setPreviewSvg] = useState(product.previewSvg ?? "");
   const [textureUrl, setTextureUrl] = useState(product.textureUrl ?? "");
   const [attributes, setAttributes] = useState(product.attributes);
@@ -45,8 +54,11 @@ export default function ProductInfoTab({
     queryFn: () => api.listCategories(product.family),
   });
   const categoryOptions = useMemo(
-    () => (categories.data ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
-    [categories.data]
+    () =>
+      (categories.data ?? [])
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [categories.data],
   );
 
   useEffect(() => {
@@ -86,178 +98,181 @@ export default function ProductInfoTab({
         setError(null);
         save.mutate();
       }}
-      className="space-y-5 max-w-2xl"
+      className="max-w-3xl space-y-6"
     >
-      <Field label="Family / slug (read-only)">
-        <div className="font-mono text-sm text-dizajno-muted">
-          {product.family} · /{product.slug}
-        </div>
-      </Field>
+      <Card>
+        <CardBody className="space-y-5">
+          <FormField label="Family / slug" hint="Read-only">
+            <div className="text-[13px] font-mono text-dizajno-text-subtle">
+              {product.family} <span className="text-dizajno-muted-subtle">·</span>{" "}
+              /{product.slug}
+            </div>
+          </FormField>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Field label="Category">
-          <select
-            required
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="portal-input"
-          >
-            {categoryOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Unit of sale">
-          <select
-            value={unitOfSale}
-            onChange={(e) => setUnitOfSale(e.target.value as api.UnitOfSale)}
-            className="portal-input"
-          >
-            {UNITS.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Category">
+              <Select
+                required
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                {categoryOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField label="Unit of sale">
+              <Select
+                value={unitOfSale}
+                onChange={(e) => setUnitOfSale(e.target.value as api.UnitOfSale)}
+              >
+                {UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          </div>
 
-      <Field label="Display name">
-        <input
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="portal-input"
-        />
-      </Field>
-
-      <Field label="Description">
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={3}
-          className="portal-input resize-none"
-        />
-      </Field>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {isBuildingMaterial && isLiter && (
-          <Field label="Coverage rate (m²/L)">
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={coverageRate}
-              onChange={(e) => setCoverageRate(e.target.value)}
-              className="portal-input"
+          <FormField label="Display name">
+            <Input
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
-          </Field>
-        )}
-        <Field label="Waste factor (0.10 = 10%)">
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            max="1"
-            value={wasteFactor}
-            onChange={(e) => setWasteFactor(e.target.value)}
-            className="portal-input"
-          />
-        </Field>
-        <Field label="Lead time (days)">
-          <input
-            type="number"
-            min="0"
-            value={leadTimeDays}
-            onChange={(e) => setLeadTimeDays(e.target.value)}
-            className="portal-input"
-          />
-        </Field>
-      </div>
+          </FormField>
 
-      {isBuildingMaterial && (
-        <Field
-          label="Texture URL"
-          hint="Tileable image used by FloorMesh + WallMesh in the designer."
-        >
-          <input
-            type="url"
-            value={textureUrl}
-            onChange={(e) => setTextureUrl(e.target.value)}
-            placeholder="/textures/your-paint.jpg"
-            className="portal-input"
-          />
-        </Field>
+          <FormField label="Description">
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </FormField>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardBody className="space-y-5">
+          <div>
+            <h3 className="text-[14px] font-semibold text-dizajno-text">
+              Commerce
+            </h3>
+            <p className="text-[12.5px] text-dizajno-muted mt-0.5">
+              Drives quote calculations for paints (coverage), flooring (waste),
+              and lead-time hints across all variants.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {isBuildingMaterial && isLiter && (
+              <FormField label="Coverage rate" hint="m²/L">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={coverageRate}
+                  onChange={(e) => setCoverageRate(e.target.value)}
+                />
+              </FormField>
+            )}
+            <FormField label="Waste factor" hint="0.10 = 10%">
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={wasteFactor}
+                onChange={(e) => setWasteFactor(e.target.value)}
+              />
+            </FormField>
+            <FormField label="Lead time" hint="Days">
+              <Input
+                type="number"
+                min="0"
+                value={leadTimeDays}
+                onChange={(e) => setLeadTimeDays(e.target.value)}
+              />
+            </FormField>
+          </div>
+
+          {isBuildingMaterial && (
+            <FormField
+              label="Texture URL"
+              description="Tileable image used by FloorMesh + WallMesh in the designer to skin walls and floors."
+            >
+              <Input
+                type="url"
+                value={textureUrl}
+                onChange={(e) => setTextureUrl(e.target.value)}
+                placeholder="/textures/your-paint.jpg"
+              />
+            </FormField>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardBody className="space-y-5">
+          <div>
+            <h3 className="text-[14px] font-semibold text-dizajno-text">
+              Catalog assets
+            </h3>
+            <p className="text-[12.5px] text-dizajno-muted mt-0.5">
+              SVG preview is the top-down icon shown in the designer's catalog
+              sidebar. Attributes is family-specific JSON.
+            </p>
+          </div>
+          <FormField
+            label="Preview SVG"
+            description="Raw markup. Pasted directly into the catalog DTO."
+          >
+            <Textarea
+              value={previewSvg}
+              onChange={(e) => setPreviewSvg(e.target.value)}
+              rows={4}
+              spellCheck={false}
+              className="font-mono text-[11.5px]"
+            />
+          </FormField>
+
+          <FormField
+            label="Attributes"
+            description="Family-specific JSON — {icon, lumen, energyClass, …}. Defaults to {}."
+          >
+            <Textarea
+              value={attributes}
+              onChange={(e) => setAttributes(e.target.value)}
+              rows={3}
+              spellCheck={false}
+              className="font-mono text-[11.5px]"
+            />
+          </FormField>
+        </CardBody>
+      </Card>
+
+      {error && (
+        <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
+          {error}
+        </div>
       )}
 
-      <Field
-        label="Preview SVG (raw markup)"
-        hint="Top-down 2D thumbnail shown in the designer sidebar."
-      >
-        <textarea
-          value={previewSvg}
-          onChange={(e) => setPreviewSvg(e.target.value)}
-          rows={3}
-          spellCheck={false}
-          className="portal-input resize-none font-mono text-[11px]"
-        />
-      </Field>
-
-      <Field
-        label="Attributes (JSON)"
-        hint="Family-specific fields like {icon, lumen, energyClass}. Defaults to {}."
-      >
-        <textarea
-          value={attributes}
-          onChange={(e) => setAttributes(e.target.value)}
-          rows={3}
-          spellCheck={false}
-          className="portal-input resize-none font-mono text-[11px]"
-        />
-      </Field>
-
-      {error && <p className="font-mono text-xs text-red-400 break-words">{error}</p>}
-
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-3">
         {savedAt && (
-          <span className="font-mono text-[10px] tracking-widest text-emerald-300 uppercase">
-            Saved
+          <span className="inline-flex items-center gap-1.5 text-[12.5px] text-dizajno-success">
+            <Check size={14} /> Saved
           </span>
         )}
-        <button
+        <Button
           type="submit"
-          disabled={save.isPending}
-          className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 font-mono text-xs tracking-widest uppercase text-emerald-300 hover:bg-emerald-500/20 transition disabled:opacity-50"
+          variant="primary"
+          loading={save.isPending}
         >
-          {save.isPending ? "Saving…" : "Save info"}
-        </button>
+          Save changes
+        </Button>
       </div>
     </form>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <label className="font-mono text-[10px] tracking-widest text-dizajno-muted uppercase">
-          {label}
-        </label>
-        {hint && (
-          <span className="font-mono text-[10px] text-dizajno-muted/80">{hint}</span>
-        )}
-      </div>
-      {children}
-    </div>
   );
 }
