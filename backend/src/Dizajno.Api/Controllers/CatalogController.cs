@@ -114,7 +114,7 @@ public sealed class CatalogController : ControllerBase
             .OrderBy(c => c.Family)
             .ThenBy(c => c.SortOrder)
             .ThenBy(c => c.Name)
-            .Select(c => new CategoryDto(c.Slug, c.Name, c.Family.ToString()))
+            .Select(c => new CategoryDto(c.Id, c.Slug, c.Name, c.Family.ToString()))
             .ToListAsync(cancellationToken);
         return Ok(list);
     }

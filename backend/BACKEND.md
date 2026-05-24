@@ -456,6 +456,24 @@ directive to promote another member first.
   contactPhone, logoAssetId? }`. Slug is immutable; `IsTrusted` + `SuspendedAt`
   stay admin-only. Logo asset must be `Kind = Image` owned by the same supplier.
 
+### Supplier invites (`/api/supplier/invites`, Owner-only create/revoke) — Phase 7c
+
+Owner-side mirror of `/api/admin/invites`. Same tokenized flow: 32 random bytes
+base64url-encoded, only SHA-256 hash persisted, raw token + `acceptUrl`
+returned exactly once. Audit-log actions are `supplier_invite.create_by_owner`
++ `supplier_invite.revoke_by_owner` so admins can tell apart admin-issued vs
+supplier-issued invites in the trail.
+
+- `GET /?supplierId=&includeRevoked=&includeAccepted=` — visible to any active
+  member.
+- `POST /` — `{ supplierId, email, role: Owner|Staff, expiresInDays?: 1–90 }`.
+  Owner role required.
+- `DELETE /{id}` — revoke. Owner role required. Already-accepted invites are
+  no-op (204).
+
+The accept side of the flow (`/api/invites/{token}/accept`) is the same Phase
+7a endpoint — works for both admin-issued and supplier-issued invites.
+
 ### Migrating the Phase 1 seed assets to R2
 
 The Phase 1 seeder stores frontend-relative URLs (e.g. `/models/sofa.glb`) on

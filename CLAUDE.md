@@ -7,7 +7,7 @@ A browser-based 2D/3D room designer where users draw walls, place furniture via 
 The repository is a pnpm workspace split into two top-level packages:
 
 - `frontend/` — Next.js 14 application (the existing codebase). All paths in this document are relative to `frontend/` unless prefixed otherwise.
-- `backend/` — .NET 8 Web API. Through Phase 7b: catalog + auth + R2 + projects/scene + sharing + customizer textures + quoting + branded fixtures + scene-assigned materials + admin dashboard + supplier portal backend (product/variant/texture/category/member/profile CRUD with status transitions, trust-gated moderation, last-Owner protection). See [backend/BACKEND.md](backend/BACKEND.md) for the full backend reference (endpoints, env vars, migrations, troubleshooting).
+- `backend/` — .NET 8 Web API. Through Phase 7c: catalog + auth + R2 + projects/scene + sharing + customizer textures + quoting + branded fixtures + scene-assigned materials + admin dashboard + supplier portal backend + Owner-side invites. See [backend/BACKEND.md](backend/BACKEND.md) for the full backend reference (endpoints, env vars, migrations, troubleshooting).
 - `docs/` — product + schema master plan. **[docs/PLAN.md](docs/PLAN.md)** is the source of truth for design decisions and the 7-phase roadmap — read it first when picking up the project cold or starting a new chat.
 
 Root-level convenience scripts re-export the frontend's most common commands so you can run them from the repo root.
@@ -84,7 +84,8 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 │       │   ├── designer/                  # Designer page (room editor)
 │       │   ├── invite/[token]/            # Public invite accept (Phase 7a)
 │       │   ├── login/                     # Login page
-│       │   └── profile/                   # Profile page (placeholder)
+│       │   ├── profile/                   # Profile page (placeholder)
+│       │   └── supplier/                  # /supplier/* — portal: picker + per-supplier products/textures/members/profile (Phase 7c)
 │       ├── components/
 │       │   ├── designer/                  # Sidebar, Toolbar, PropertiesPanel, StatusBar
 │       │   ├── three/                     # R3F 3D components
@@ -174,7 +175,15 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 - `SupplierMembershipExtensions` gained `IsActiveMemberOf(supplierId)` + `IsActiveOwnerOf(supplierId)` helpers used across all the new controllers.
 - Publish on a `Draft` product lands in `Pending` for untrusted suppliers (admin moderation picks up) or `Published` for trusted. Publish on `Hidden` always goes to `Published` — already moderated once. Variant delete refuses if any `PlacedItem` / `Opening` / `Wall` / `Floor` references it (preserve existing project scenes). Cross-supplier asset attaches + cross-supplier texture-slot references both fail fast with 400 before reaching the DB trigger.
 - Migration `0010_AssetOwnerNonUnique` fixes a Phase-1 schema bug: EF was auto-pairing `Asset.OwnerSupplier` (single nav) with `Supplier.LogoAsset` (single nav) and inferring a 1:1, which made `ix_assets_owner_supplier_id` UNIQUE — every supplier was limited to one owned asset. Fixed by adding `Supplier.OwnedAssets` collection + `HasMany().WithOne()` so EF tracks it as 1:N, then dropping + recreating the index as non-unique.
-- Phase 7c will plug the frontend UI on top of these endpoints.
+
+### Supplier portal UI (Phase 7c)
+- Full self-serve UI at `/supplier/[supplierId]/{products,products/new,products/[id],textures,members,profile}` + a `/supplier` picker that auto-redirects single-supplier users. Layout enforces active membership, gates Owner-only tabs (Members + Profile), and shows a polite block screen for suspended suppliers.
+- Product editor has tabbed Info + Variants. Variants tab includes numeric collision-box rows (defaults to empty for rectangular furniture per the planning decision), material-slot defaults rows (slot name + hex color), per-variant GLB + SVG-preview upload via the three-step presign helper, and a texture-slot binder that picks from the supplier's library.
+- Inline "Suggest a new category" modal on the product create form fires off `POST /api/supplier/categories`. The suggested row lands in admin moderation; until approved it doesn't appear in the picker.
+- Owners can issue tokenized member invites from `/supplier/[supplierId]/members` via a new backend endpoint `POST /api/supplier/invites` (mirrors the admin one but Owner-gated; audit log uses `supplier_invite.create_by_owner` to differentiate).
+- `lib/api.ts` got `uploadSupplierFile(supplierId, file, kind)` which wraps presign → PUT to R2 → finalize into one call. Used by all four file-upload entry points (variant GLB, variant SVG preview, texture image, supplier logo). R2-misconfigured errors surface as a regular `Error` so the UI can alert gracefully.
+- `CategoryDto` (public catalog DTO) gained `id` so the create-product form can drive its category picker by id instead of string-matching by name. Additive, no migration.
+- `/projects` nav button "Supplier portal" routes to `/supplier` for users with memberships (replaces the old "Inbox" link).
 
 ### Catalog families & scene materials (Phase 6 + 6.5)
 - The catalog covers five families (`Furniture`, `Lighting`, `Appliance`, `BuildingMaterial`, `Fixture`). Today the seed ships 12 furniture rows + 2 fixtures + 6 building materials (3 paint tiers + 3 flooring tiers); lighting and appliance entries are deferred until GLB models exist.

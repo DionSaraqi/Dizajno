@@ -41,6 +41,7 @@ public sealed record CollisionBoxDto(
     decimal Depth);
 
 public sealed record CategoryDto(
+    Guid Id,
     string Slug,
     string Name,
     string Family);

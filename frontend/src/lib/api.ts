@@ -100,6 +100,7 @@ async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise<T> {
 // ── Catalog ───────────────────────────────────────────────────────────────
 
 export interface CategoryDto {
+  id: string;
   slug: string;
   name: string;
   family: string;
@@ -823,9 +824,15 @@ export function declineSupplierQuote(
 
 // ── Supplier-scoped asset uploads (for response attachments) ──────────────
 
+/**
+ * Phase 7b added Glb + SvgPreview to the supplier-side allow-list so suppliers
+ * can upload their own 3D models and 2D floor-plan previews.
+ */
+export type SupplierAssetKindWire = "Image" | "Doc" | "Attachment" | "Glb" | "SvgPreview";
+
 export interface PresignSupplierAssetInput {
   supplierId: string;
-  kind: "Image" | "Doc" | "Attachment";
+  kind: SupplierAssetKindWire;
   contentType: string;
   sizeBytes: number;
   originalFileName?: string | null;
@@ -835,7 +842,7 @@ export interface PresignSupplierAssetInput {
 export interface CreateSupplierAssetInput {
   supplierId: string;
   key: string;
-  kind: "Image" | "Doc" | "Attachment";
+  kind: SupplierAssetKindWire;
   mimeType: string;
   sizeBytes: number;
   checksumSha256?: string | null;
@@ -1181,4 +1188,488 @@ export function searchAuditLog(filters: AuditLogFilters = {}): Promise<AuditLogP
   return apiFetch<AuditLogPage>(`/api/admin/audit-log${query ? `?${query}` : ""}`, {
     auth: true,
   });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Phase 7b/c — Supplier portal client
+// ══════════════════════════════════════════════════════════════════════════
+
+export type ProductStatus = "Draft" | "Pending" | "Published" | "Hidden" | "Removed";
+export type CategoryStatus = "Pending" | "Approved";
+export type ProductFamily = "Furniture" | "Lighting" | "Appliance" | "BuildingMaterial" | "Fixture";
+export type UnitOfSale = "Piece" | "SquareMeter" | "Liter" | "LinearMeter" | "Kilogram";
+
+// ── Products ──
+
+export interface SupplierProductSummary {
+  id: string;
+  slug: string;
+  name: string;
+  family: ProductFamily;
+  categoryId: string;
+  categoryName: string;
+  status: ProductStatus;
+  unitOfSale: UnitOfSale;
+  basePrice: number | null;
+  currency: string;
+  variantCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierVariant {
+  id: string;
+  productId: string;
+  sku: string;
+  name: string;
+  width: number;
+  depth: number;
+  height: number;
+  color: string;
+  basePrice: number | null;
+  currency: string;
+  glbAssetId: string | null;
+  glbAssetUrl: string | null;
+  svgPreviewAssetId: string | null;
+  svgPreviewAssetUrl: string | null;
+  /** jsonb string: [{ offsetX, offsetZ, width, depth }, …] */
+  collisionBoxes: string | null;
+  /** jsonb string: {slotName: hexColor} */
+  materialDefaults: string | null;
+  attributes: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierProductDetail {
+  id: string;
+  supplierId: string;
+  slug: string;
+  name: string;
+  family: ProductFamily;
+  categoryId: string;
+  categoryName: string;
+  status: ProductStatus;
+  unitOfSale: UnitOfSale;
+  coverageRate: number | null;
+  wasteFactor: number;
+  leadTimeDays: number | null;
+  description: string | null;
+  previewSvg: string | null;
+  textureUrl: string | null;
+  attributes: string;
+  variants: SupplierVariant[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductInput {
+  supplierId: string;
+  family: ProductFamily;
+  categoryId: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  unitOfSale: UnitOfSale;
+  coverageRate?: number | null;
+  wasteFactor: number;
+  leadTimeDays?: number | null;
+  previewSvg?: string | null;
+  textureUrl?: string | null;
+  attributes?: string | null;
+}
+
+export interface UpdateProductInput {
+  categoryId: string;
+  name: string;
+  description?: string | null;
+  unitOfSale: UnitOfSale;
+  coverageRate?: number | null;
+  wasteFactor: number;
+  leadTimeDays?: number | null;
+  previewSvg?: string | null;
+  textureUrl?: string | null;
+  attributes?: string | null;
+}
+
+export function listSupplierProducts(filters: {
+  supplierId?: string;
+  status?: ProductStatus;
+  search?: string;
+} = {}): Promise<SupplierProductSummary[]> {
+  const q = new URLSearchParams();
+  if (filters.supplierId) q.set("supplierId", filters.supplierId);
+  if (filters.status) q.set("status", filters.status);
+  if (filters.search) q.set("search", filters.search);
+  const query = q.toString();
+  return apiFetch<SupplierProductSummary[]>(
+    `/api/supplier/products${query ? `?${query}` : ""}`,
+    { auth: true }
+  );
+}
+
+export function getSupplierProduct(id: string): Promise<SupplierProductDetail> {
+  return apiFetch<SupplierProductDetail>(`/api/supplier/products/${id}`, { auth: true });
+}
+
+export function createSupplierProduct(input: CreateProductInput): Promise<SupplierProductDetail> {
+  return apiFetch<SupplierProductDetail>("/api/supplier/products", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function updateSupplierProduct(id: string, input: UpdateProductInput): Promise<SupplierProductDetail> {
+  return apiFetch<SupplierProductDetail>(`/api/supplier/products/${id}`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function publishSupplierProduct(id: string): Promise<void> {
+  return apiFetch<void>(`/api/supplier/products/${id}/publish`, { method: "POST", auth: true });
+}
+
+export function hideSupplierProduct(id: string): Promise<void> {
+  return apiFetch<void>(`/api/supplier/products/${id}/hide`, { method: "POST", auth: true });
+}
+
+export function removeSupplierProduct(id: string): Promise<void> {
+  return apiFetch<void>(`/api/supplier/products/${id}/remove`, { method: "POST", auth: true });
+}
+
+// ── Variants ──
+
+export interface CreateVariantInput {
+  sku: string;
+  name: string;
+  width: number;
+  depth: number;
+  height: number;
+  color: string;
+  basePrice?: number | null;
+  currency: string;
+  collisionBoxes?: string | null;
+  materialDefaults?: string | null;
+  attributes?: string | null;
+  sortOrder?: number | null;
+}
+
+export interface UpdateVariantInput {
+  name: string;
+  width: number;
+  depth: number;
+  height: number;
+  color: string;
+  basePrice?: number | null;
+  currency: string;
+  collisionBoxes?: string | null;
+  materialDefaults?: string | null;
+  attributes?: string | null;
+  sortOrder?: number | null;
+}
+
+export function createVariant(productId: string, input: CreateVariantInput): Promise<SupplierVariant> {
+  return apiFetch<SupplierVariant>(`/api/supplier/products/${productId}/variants`, {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function updateVariant(id: string, input: UpdateVariantInput): Promise<SupplierVariant> {
+  return apiFetch<SupplierVariant>(`/api/supplier/variants/${id}`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function deleteVariant(id: string): Promise<void> {
+  return apiFetch<void>(`/api/supplier/variants/${id}`, { method: "DELETE", auth: true });
+}
+
+export function attachVariantGlb(id: string, assetId: string): Promise<void> {
+  return apiFetch<void>(`/api/supplier/variants/${id}/attach-glb`, {
+    method: "POST",
+    auth: true,
+    jsonBody: { assetId },
+  });
+}
+
+export function attachVariantPreview(id: string, assetId: string): Promise<void> {
+  return apiFetch<void>(`/api/supplier/variants/${id}/attach-preview`, {
+    method: "POST",
+    auth: true,
+    jsonBody: { assetId },
+  });
+}
+
+// ── Textures ──
+
+export interface SupplierTextureRow {
+  id: string;
+  supplierId: string;
+  name: string;
+  assetId: string;
+  assetUrl: string;
+  thumbnailAssetId: string | null;
+  thumbnailAssetUrl: string | null;
+  tags: string[];
+  repeatU: number;
+  repeatV: number;
+  slotBindingCount: number;
+  createdAt: string;
+}
+
+export interface CreateTextureInput {
+  supplierId: string;
+  name: string;
+  assetId: string;
+  thumbnailAssetId?: string | null;
+  tags?: string[];
+  repeatU?: number;
+  repeatV?: number;
+}
+
+export interface UpdateTextureInput {
+  name: string;
+  thumbnailAssetId?: string | null;
+  tags?: string[];
+  repeatU?: number;
+  repeatV?: number;
+}
+
+export interface VariantTextureSlot {
+  id: string;
+  variantId: string;
+  slotName: string;
+  supplierTextureId: string;
+  supplierTextureName: string;
+  assetUrl: string;
+  isDefault: boolean;
+}
+
+export function listSupplierTextures(supplierId?: string): Promise<SupplierTextureRow[]> {
+  const q = supplierId ? `?supplierId=${supplierId}` : "";
+  return apiFetch<SupplierTextureRow[]>(`/api/supplier/textures${q}`, { auth: true });
+}
+
+export function createSupplierTexture(input: CreateTextureInput): Promise<SupplierTextureRow> {
+  return apiFetch<SupplierTextureRow>("/api/supplier/textures", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function updateSupplierTexture(id: string, input: UpdateTextureInput): Promise<SupplierTextureRow> {
+  return apiFetch<SupplierTextureRow>(`/api/supplier/textures/${id}`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function deleteSupplierTexture(id: string): Promise<void> {
+  return apiFetch<void>(`/api/supplier/textures/${id}`, { method: "DELETE", auth: true });
+}
+
+export function listVariantTextureSlots(variantId: string): Promise<VariantTextureSlot[]> {
+  return apiFetch<VariantTextureSlot[]>(`/api/supplier/variants/${variantId}/texture-slots`, { auth: true });
+}
+
+export function replaceVariantTextureSlots(
+  variantId: string,
+  slots: { slotName: string; supplierTextureId: string; isDefault: boolean }[]
+): Promise<VariantTextureSlot[]> {
+  return apiFetch<VariantTextureSlot[]>(`/api/supplier/variants/${variantId}/texture-slots`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: { slots },
+  });
+}
+
+// ── Categories (supplier-suggested) ──
+
+export interface SuggestedCategoryRow {
+  id: string;
+  family: ProductFamily;
+  parentCategoryId: string | null;
+  slug: string;
+  name: string;
+  path: string;
+  status: CategoryStatus;
+  suggestedBySupplierId: string | null;
+}
+
+export function listSuggestedCategories(supplierId?: string): Promise<SuggestedCategoryRow[]> {
+  const q = supplierId ? `?supplierId=${supplierId}` : "";
+  return apiFetch<SuggestedCategoryRow[]>(`/api/supplier/categories${q}`, { auth: true });
+}
+
+export function suggestCategory(input: {
+  supplierId: string;
+  family: ProductFamily;
+  parentCategoryId?: string | null;
+  name: string;
+}): Promise<SuggestedCategoryRow> {
+  return apiFetch<SuggestedCategoryRow>("/api/supplier/categories", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+// ── Members + Owner-side invites ──
+
+export interface SupplierMemberRow {
+  id: string;
+  supplierId: string;
+  userId: string;
+  userEmail: string;
+  userDisplayName: string | null;
+  role: SupplierMemberRole;
+  createdAt: string;
+}
+
+export function listSupplierPortalMembers(supplierId: string): Promise<SupplierMemberRow[]> {
+  return apiFetch<SupplierMemberRow[]>(`/api/supplier/members?supplierId=${supplierId}`, { auth: true });
+}
+
+export function changeSupplierMemberRole(memberId: string, role: SupplierMemberRole): Promise<void> {
+  return apiFetch<void>(`/api/supplier/members/${memberId}/role`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: { role },
+  });
+}
+
+export function removeSupplierMember(memberId: string): Promise<void> {
+  return apiFetch<void>(`/api/supplier/members/${memberId}`, { method: "DELETE", auth: true });
+}
+
+export function listSupplierPortalInvites(
+  supplierId: string,
+  opts: { includeRevoked?: boolean; includeAccepted?: boolean } = {}
+): Promise<SupplierInvite[]> {
+  const q = new URLSearchParams({ supplierId });
+  if (opts.includeRevoked !== undefined) q.set("includeRevoked", String(opts.includeRevoked));
+  if (opts.includeAccepted !== undefined) q.set("includeAccepted", String(opts.includeAccepted));
+  return apiFetch<SupplierInvite[]>(`/api/supplier/invites?${q}`, { auth: true });
+}
+
+export function createSupplierPortalInvite(input: CreateSupplierInviteInput): Promise<SupplierInvite> {
+  return apiFetch<SupplierInvite>("/api/supplier/invites", {
+    method: "POST",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+export function revokeSupplierPortalInvite(id: string): Promise<void> {
+  return apiFetch<void>(`/api/supplier/invites/${id}`, { method: "DELETE", auth: true });
+}
+
+// ── Profile (Owner-only edit) ──
+
+export interface SupplierProfile {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  websiteUrl: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  logoAssetId: string | null;
+  logoAssetUrl: string | null;
+  isTrusted: boolean;
+  suspendedAt: string | null;
+}
+
+export interface UpdateProfileInput {
+  name: string;
+  description?: string | null;
+  websiteUrl?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  logoAssetId?: string | null;
+}
+
+export function getSupplierProfile(supplierId: string): Promise<SupplierProfile> {
+  return apiFetch<SupplierProfile>(`/api/supplier/profile/${supplierId}`, { auth: true });
+}
+
+export function updateSupplierProfile(
+  supplierId: string,
+  input: UpdateProfileInput
+): Promise<SupplierProfile> {
+  return apiFetch<SupplierProfile>(`/api/supplier/profile/${supplierId}`, {
+    method: "PUT",
+    auth: true,
+    jsonBody: input,
+  });
+}
+
+// ── Upload helper: presign → PUT to R2 → finalize ──────────────────────────
+//
+// Wraps the three-step asset upload flow into a single async call that returns
+// the new asset row. Callers pass the supplier id + a File and pick the right
+// AssetKind; the helper figures out content type + size from the File metadata.
+//
+// Throws ApiError if presign or finalize fails. If the R2 PUT itself fails
+// (e.g. dev environment has no real bucket), the error surfaces as a regular
+// Error from fetch — the UI should handle both gracefully.
+
+export interface UploadedAsset {
+  id: string;
+  url: string;
+  kind: SupplierAssetKindWire;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export async function uploadSupplierFile(
+  supplierId: string,
+  file: File,
+  kind: SupplierAssetKindWire
+): Promise<UploadedAsset> {
+  const contentType = file.type || "application/octet-stream";
+  const presign = await presignSupplierAsset({
+    supplierId,
+    kind,
+    contentType,
+    sizeBytes: file.size,
+    originalFileName: file.name,
+  });
+
+  const putResponse = await fetch(presign.uploadUrl, {
+    method: "PUT",
+    headers: presign.requiredHeaders,
+    body: file,
+  });
+  if (!putResponse.ok) {
+    throw new Error(
+      `Upload to object storage failed (${putResponse.status}). ` +
+        `If this is local dev, R2 may not be configured.`
+    );
+  }
+
+  const asset = await createSupplierAsset({
+    supplierId,
+    key: presign.key,
+    kind,
+    mimeType: contentType,
+    sizeBytes: file.size,
+  });
+  return {
+    id: asset.id,
+    url: asset.url,
+    kind: kind,
+    mimeType: contentType,
+    sizeBytes: file.size,
+  };
 }

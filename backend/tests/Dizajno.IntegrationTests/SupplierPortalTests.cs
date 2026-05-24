@@ -716,6 +716,66 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
         dto.Name.Should().Be("Acme Renamed");
     }
 
+    // ── Owner-side invites (Phase 7c) ─────────────────────────────────────
+
+    [Fact]
+    public async Task Invites_OwnerCanIssueLink_StaffCannot()
+    {
+        var (ownerClient, ownerAuth) = await NewUserClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        var (staffClient, staffAuth) = await NewUserClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        var supplierId = await SeedSupplierWithMemberAsync("ownerinv", ownerAuth.User.Id, SupplierMemberRole.Owner);
+        // Bind staff.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DizajnoDbContext>();
+            db.SupplierMembers.Add(new SupplierMember
+            {
+                Id = Guid.NewGuid(),
+                SupplierId = supplierId,
+                UserId = staffAuth.User.Id,
+                Role = SupplierMemberRole.Staff,
+                CreatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        // Staff cannot issue invites.
+        var staffAttempt = await staffClient.PostAsJsonAsync("/api/supplier/invites",
+            new CreateSupplierInviteRequest(supplierId, "newhire@example.com", SupplierMemberRole.Staff, null),
+            JsonOpts);
+        staffAttempt.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        // Owner can.
+        var ownerIssue = await ownerClient.PostAsJsonAsync("/api/supplier/invites",
+            new CreateSupplierInviteRequest(supplierId, "newhire@example.com", SupplierMemberRole.Staff, 7),
+            JsonOpts);
+        ownerIssue.StatusCode.Should().Be(HttpStatusCode.Created);
+        var dto = (await ownerIssue.Content.ReadFromJsonAsync<SupplierInviteDto>(JsonOpts))!;
+        dto.Token.Should().NotBeNullOrWhiteSpace();
+        dto.AcceptUrl.Should().Contain(dto.Token!);
+
+        // List returns the row but not the plaintext token.
+        var list = await ownerClient.GetFromJsonAsync<List<SupplierInviteDto>>(
+            $"/api/supplier/invites?supplierId={supplierId}", JsonOpts);
+        list!.Should().HaveCount(1);
+        list![0].Token.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Invites_ForeignSupplier_Returns403()
+    {
+        var (ownerClient, ownerAuth) = await NewUserClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        await SeedSupplierWithMemberAsync("ownA", ownerAuth.User.Id, SupplierMemberRole.Owner);
+        var (_, authB) = await NewUserClientAsync(Guid.NewGuid().ToString("N")[..8]);
+        var supplierB = await SeedSupplierWithMemberAsync("ownB", authB.User.Id, SupplierMemberRole.Owner);
+
+        // ownerClient is an Owner of A, not B.
+        var attempt = await ownerClient.PostAsJsonAsync("/api/supplier/invites",
+            new CreateSupplierInviteRequest(supplierB, "x@example.com", SupplierMemberRole.Staff, null),
+            JsonOpts);
+        attempt.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     // ── Asset uploads accept GLB + SVG kinds ─────────────────────────────
 
     [Fact]
