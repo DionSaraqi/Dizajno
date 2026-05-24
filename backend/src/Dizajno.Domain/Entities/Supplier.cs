@@ -29,4 +29,11 @@ public sealed class Supplier
     public ICollection<SupplierMember> Members { get; set; } = new List<SupplierMember>();
     public ICollection<SupplierTexture> Textures { get; set; } = new List<SupplierTexture>();
     public ICollection<SupplierInvite> Invites { get; set; } = new List<SupplierInvite>();
+    /// <summary>
+    /// Inverse of <see cref="Asset.OwnerSupplier"/>. Exposed mostly so EF
+    /// stops inferring a 1:1 relationship between Supplier and Asset off the
+    /// <see cref="LogoAsset"/> single-nav pair (which caused
+    /// <c>ix_assets_owner_supplier_id</c> to be UNIQUE through migration 0009).
+    /// </summary>
+    public ICollection<Asset> OwnedAssets { get; set; } = new List<Asset>();
 }

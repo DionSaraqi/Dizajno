@@ -379,6 +379,83 @@ Tokenized supplier-member invites. The raw token + `acceptUrl` are returned
   → `AuditLogPageDto`. Page size capped at 200; actor email is joined from
   Identity in a single second trip.
 
+### Supplier products (`/api/supplier/products`) — Phase 7b
+
+All endpoints require an active membership in the target supplier (suspended
+members get 403). Lifecycle is supplier-driven: `Draft → Pending|Published →
+Hidden ↔ Published → Removed`. Publish on a `Draft` lands in `Pending` for
+untrusted suppliers (admin moderation queue picks up) or `Published` for
+trusted suppliers. Publish on `Hidden` always goes to `Published` — already
+moderated once. Removed is terminal; historical `QuoteLine.variant_snapshot`
+preserves past quotes.
+
+- `GET /?supplierId=&status=&search=` — list owned products (any status except
+  Removed by default).
+- `GET /{id}` — full detail with eager-loaded variants + assets.
+- `POST /` — create as `Draft`. Slug must be unique across the catalog; category
+  must be in the same `Family` + `Status = Approved`.
+- `PUT /{id}` — update profile fields; family is immutable.
+- `POST /{id}/publish` — Draft → Pending|Published (see lifecycle); 409 if no
+  variants.
+- `POST /{id}/hide` — Published → Hidden.
+- `POST /{id}/remove` — terminal.
+
+### Supplier variants (`/api/supplier/products/{productId}/variants` + `/api/supplier/variants/{id}`) — Phase 7b
+
+- `POST /products/{productId}/variants` — create. SKU global-unique; SortOrder
+  auto-increments.
+- `PUT /variants/{id}` — update dimensions, color, base price, JSON fields.
+- `DELETE /variants/{id}` — hard delete; 409 if any `PlacedItem` / `Opening` /
+  `Wall.paint_product_variant_id` / `Floor.flooring_product_variant_id`
+  references it.
+- `POST /variants/{id}/attach-glb` — `{ assetId }`. Asset must be
+  `Kind = Glb` AND `OwnerSupplierId = variant.product.supplierId`. Pass
+  `Guid.Empty` to detach.
+- `POST /variants/{id}/attach-preview` — same shape, expects `Kind = SvgPreview`.
+
+### Supplier textures (`/api/supplier/textures` + `/api/supplier/variants/{id}/texture-slots`) — Phase 7b
+
+Library entries reference an `Asset` of `Kind = Image` owned by the same
+supplier. Per-variant slot bindings (e.g. `Body`, `Pillows` → which textures
+are picker options) are stored as a list; the PUT endpoint replaces all
+existing rows in one transaction.
+
+- `GET /textures?supplierId=` — list.
+- `POST /textures` — `{ supplierId, name, assetId, thumbnailAssetId?, tags[],
+  repeatU, repeatV }`. `(supplierId, name)` unique.
+- `PUT /textures/{id}` — update name/tags/repeat/thumbnail.
+- `DELETE /textures/{id}` — 409 if any variant slot still references it.
+- `GET /variants/{id}/texture-slots` — list slot bindings for one variant.
+- `PUT /variants/{id}/texture-slots` — `{ slots: [{ slotName, supplierTextureId,
+  isDefault }] }`. Full replacement. Cross-supplier texture refs 400 fail fast
+  (DB trigger `trg_pv_texture_slot_supplier_match` is the belt-and-suspenders).
+
+### Supplier categories (`/api/supplier/categories`) — Phase 7b
+
+- `GET /?supplierId=` — list the supplier's suggestions (Pending + Approved).
+- `POST /` — `{ supplierId, family, parentCategoryId?, name }`. Slug derived
+  from name (`Pendant Lights` → `pendant-lights`); 409 on collision within the
+  family. Parent (if specified) must already be `Approved` + same family.
+  Lands as `CategoryStatus.Pending` with `SuggestedBySupplierId = supplierId`;
+  admin moderation queue picks up.
+
+### Supplier members (`/api/supplier/members`, Owner-only mutations) — Phase 7b
+
+Both Owner and Staff can `GET`; only Owners can mutate. **Last-Owner
+protection**: demoting or removing the last remaining Owner returns 409 with a
+directive to promote another member first.
+
+- `GET /?supplierId=` — roster.
+- `PUT /{id}/role` — `{ role: Owner|Staff }`.
+- `DELETE /{id}` — remove member.
+
+### Supplier profile (`/api/supplier/profile/{supplierId}`, Owner-only edit) — Phase 7b
+
+- `GET /{supplierId}` — visible to any active member.
+- `PUT /{supplierId}` — `{ name, description, websiteUrl, contactEmail,
+  contactPhone, logoAssetId? }`. Slug is immutable; `IsTrusted` + `SuspendedAt`
+  stay admin-only. Logo asset must be `Kind = Image` owned by the same supplier.
+
 ### Migrating the Phase 1 seed assets to R2
 
 The Phase 1 seeder stores frontend-relative URLs (e.g. `/models/sofa.glb`) on

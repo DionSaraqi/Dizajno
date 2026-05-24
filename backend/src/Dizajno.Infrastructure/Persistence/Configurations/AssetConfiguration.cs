@@ -29,8 +29,13 @@ public sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
             .HasForeignKey(x => x.VariantId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Use the explicit inverse navigation Supplier.OwnedAssets so EF
+        // doesn't pair Asset.OwnerSupplier with Supplier.LogoAsset and infer
+        // a 1:1 relationship — that's what made ix_assets_owner_supplier_id
+        // UNIQUE through migration 0009 and limited each supplier to one
+        // asset.
         b.HasOne(x => x.OwnerSupplier)
-            .WithMany()
+            .WithMany(s => s.OwnedAssets)
             .HasForeignKey(x => x.OwnerSupplierId)
             .OnDelete(DeleteBehavior.SetNull);
     }

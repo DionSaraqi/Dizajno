@@ -45,10 +45,15 @@ public sealed class SupplierAssetsController : ControllerBase
         var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
         if (!memberships.Any(m => m.SupplierId == request.SupplierId && !m.IsSuspended)) return Forbid();
 
-        if (request.Kind is not (AssetKind.Image or AssetKind.Doc or AssetKind.Attachment))
+        // Phase 7b: Glb + SvgPreview added so suppliers can upload their own
+        // GLB models and floor-plan SVGs. CadSource is still admin-only —
+        // converting DXF/DWG → GLB is a future pipeline (see PLAN.md).
+        if (request.Kind is not (
+            AssetKind.Image or AssetKind.Doc or AssetKind.Attachment or
+            AssetKind.Glb or AssetKind.SvgPreview))
         {
             return Problem(
-                "Supplier uploads accept Image, Doc, or Attachment kinds.",
+                "Supplier uploads accept Image, Doc, Attachment, Glb, or SvgPreview kinds.",
                 statusCode: StatusCodes.Status400BadRequest);
         }
         if (string.IsNullOrWhiteSpace(request.ContentType))
