@@ -7,7 +7,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   Trash2,
-  FileText,
   Briefcase,
   ShieldCheck,
   Frame,
@@ -103,14 +102,12 @@ export default function ProjectsPage() {
   return (
     <div className="min-h-screen w-screen bg-dizajno-bg">
       <TopBar
-        links={[{ label: "Projects", href: "/projects", active: true }]}
+        links={[
+          { label: "Projects", href: "/projects", active: true },
+          { label: "Quotes", href: "/quotes" },
+        ]}
         actions={
           <>
-            <Link href="/quotes">
-              <Button variant="ghost" size="sm" leftIcon={<FileText />}>
-                Quotes
-              </Button>
-            </Link>
             {hasSupplier && (
               <Link href="/supplier">
                 <Button variant="secondary" size="sm" leftIcon={<Briefcase />}>

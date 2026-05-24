@@ -6,9 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  Briefcase,
   Check,
   Inbox,
   Paperclip,
+  ShieldCheck,
   Store,
   X,
 } from "lucide-react";
@@ -92,6 +94,24 @@ export default function QuoteDetailPage() {
           { label: "Projects", href: "/projects" },
           { label: "Quotes", href: "/quotes", active: true },
         ]}
+        actions={
+          <>
+            {(user.supplierMemberships?.length ?? 0) > 0 && (
+              <Link href="/supplier">
+                <Button variant="secondary" size="sm" leftIcon={<Briefcase />}>
+                  Supplier portal
+                </Button>
+              </Link>
+            )}
+            {user.roles.includes("Admin") && (
+              <Link href="/admin">
+                <Button variant="secondary" size="sm" leftIcon={<ShieldCheck />}>
+                  Admin
+                </Button>
+              </Link>
+            )}
+          </>
+        }
         user={{ displayName: user.displayName, email: user.email }}
         onSignOut={async () => {
           await logout();

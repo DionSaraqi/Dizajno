@@ -4,7 +4,14 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, FileText, Inbox, LayoutGrid } from "lucide-react";
+import {
+  Briefcase,
+  ChevronRight,
+  FileText,
+  Inbox,
+  LayoutGrid,
+  ShieldCheck,
+} from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
@@ -53,6 +60,24 @@ export default function QuotesListPage() {
           { label: "Projects", href: "/projects" },
           { label: "Quotes", href: "/quotes", active: true },
         ]}
+        actions={
+          <>
+            {(user.supplierMemberships?.length ?? 0) > 0 && (
+              <Link href="/supplier">
+                <Button variant="secondary" size="sm" leftIcon={<Briefcase />}>
+                  Supplier portal
+                </Button>
+              </Link>
+            )}
+            {user.roles.includes("Admin") && (
+              <Link href="/admin">
+                <Button variant="secondary" size="sm" leftIcon={<ShieldCheck />}>
+                  Admin
+                </Button>
+              </Link>
+            )}
+          </>
+        }
         user={{ displayName: user.displayName, email: user.email }}
         onSignOut={async () => {
           await logout();
