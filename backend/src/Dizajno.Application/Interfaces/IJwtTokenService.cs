@@ -1,4 +1,4 @@
-namespace Dizajno.Application.Auth;
+﻿namespace Dizajno.Application.Interfaces;
 
 public interface IJwtTokenService
 {

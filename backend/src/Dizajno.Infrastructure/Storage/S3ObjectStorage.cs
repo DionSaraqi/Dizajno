@@ -1,7 +1,8 @@
-using Amazon.Runtime;
+﻿using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
-using Dizajno.Application.Storage;
+using Dizajno.Application.Interfaces;
+using Dizajno.Application.Options;
 using Microsoft.Extensions.Options;
 
 namespace Dizajno.Infrastructure.Storage;

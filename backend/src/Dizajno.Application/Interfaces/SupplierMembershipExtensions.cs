@@ -1,6 +1,6 @@
 using Dizajno.Domain.Enums;
 
-namespace Dizajno.Application.Suppliers;
+namespace Dizajno.Application.Interfaces;
 
 public static class SupplierMembershipExtensions
 {

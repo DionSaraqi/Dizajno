@@ -1,6 +1,5 @@
-using Dizajno.Application.Seed;
-using Dizajno.Data.Identity;
 using Dizajno.Data.Seed;
+using Dizajno.Data.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;

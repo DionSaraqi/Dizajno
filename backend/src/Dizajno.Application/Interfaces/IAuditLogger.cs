@@ -1,4 +1,4 @@
-namespace Dizajno.Application.Audit;
+﻿namespace Dizajno.Application.Interfaces;
 
 /// <summary>
 /// Writes one row to the audit_log table per sensitive action. The infrastructure

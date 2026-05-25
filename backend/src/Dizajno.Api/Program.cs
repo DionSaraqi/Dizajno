@@ -1,8 +1,9 @@
 using System.Text;
 using Dizajno.Api.Controllers;
-using Dizajno.Application.Auth;
-using Dizajno.Application.Seed;
-using Dizajno.Application.Storage;
+using Dizajno.Application.Interfaces;
+using Dizajno.Application.Options;
+using Dizajno.Data.Seed;
+using Dizajno.Application;
 using Dizajno.Data;
 using Dizajno.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -14,16 +15,17 @@ var builder = WebApplication.CreateBuilder(args);
 
 const string FrontendCorsPolicy = "FrontendDev";
 
-// ── Configuration ──────────────────────────────────────────────────────────
+// â”€â”€ Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<R2Options>(builder.Configuration.GetSection(R2Options.SectionName));
 builder.Services.Configure<InviteOptions>(builder.Configuration.GetSection("Invites"));
 
-// ── Services ───────────────────────────────────────────────────────────────
+// â”€â”€ Services â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 builder.Services.AddData();
+builder.Services.AddApplication();
 builder.Services.AddInfrastructure();
 
 builder.Services
@@ -107,7 +109,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// ── Pipeline ───────────────────────────────────────────────────────────────
+// â”€â”€ Pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 if (app.Environment.IsDevelopment())
 {

@@ -2,7 +2,8 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Dizajno.Application.Auth;
+using Dizajno.Application.Interfaces;
+using Dizajno.Application.Options;
 using Dizajno.Data.Identity;
 using Dizajno.Data;
 using Microsoft.EntityFrameworkCore;

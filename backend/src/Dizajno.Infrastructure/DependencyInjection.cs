@@ -1,7 +1,5 @@
-using Dizajno.Application.Audit;
-using Dizajno.Application.Auth;
-using Dizajno.Application.Storage;
-using Dizajno.Application.Suppliers;
+using Dizajno.Application.Interfaces;
+using Dizajno.Application.Options;
 using Dizajno.Infrastructure.Audit;
 using Dizajno.Infrastructure.Auth;
 using Dizajno.Infrastructure.Storage;

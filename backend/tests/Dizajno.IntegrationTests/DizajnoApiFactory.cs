@@ -1,4 +1,5 @@
-﻿using Dizajno.Application.Storage;
+﻿using Dizajno.Application.Interfaces;
+using Dizajno.Application.Options;
 using Dizajno.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

@@ -1,4 +1,4 @@
-﻿using Dizajno.Application.Suppliers;
+﻿using Dizajno.Application.Interfaces;
 using Dizajno.Data;
 using Microsoft.EntityFrameworkCore;
 

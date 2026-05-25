@@ -1,4 +1,4 @@
-﻿using Dizajno.Dto.Admin;
+using Dizajno.Dto.Admin;
 using Dizajno.Dto.Asset;
 using Dizajno.Dto.Auth;
 using Dizajno.Dto.Catalog;
@@ -6,8 +6,8 @@ using Dizajno.Dto.Project;
 using Dizajno.Dto.Quote;
 using Dizajno.Dto.Share;
 using Dizajno.Dto.Supplier;
-using Dizajno.Application.Auth;
-using Dizajno.Application.Suppliers;
+using Dizajno.Application.Interfaces;
+using Dizajno.Application.Options;
 using Dizajno.Data.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;

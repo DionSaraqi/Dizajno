@@ -1,4 +1,4 @@
-namespace Dizajno.Application.Storage;
+﻿namespace Dizajno.Application.Interfaces;
 
 /// <summary>
 /// Abstraction over the configured object store (Cloudflare R2 in production,

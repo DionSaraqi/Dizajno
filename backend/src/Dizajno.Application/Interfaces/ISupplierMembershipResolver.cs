@@ -1,6 +1,6 @@
-using Dizajno.Domain.Enums;
+﻿using Dizajno.Domain.Enums;
 
-namespace Dizajno.Application.Suppliers;
+namespace Dizajno.Application.Interfaces;
 
 /// <summary>
 /// Resolves which suppliers a given user is a member of. Used by the Phase 5

@@ -1,5 +1,5 @@
 ﻿using System.Text.Json;
-using Dizajno.Application.Seed;
+using Dizajno.Data.Seed;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
 using Dizajno.Data.Identity;

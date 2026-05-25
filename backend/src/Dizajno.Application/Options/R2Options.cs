@@ -1,8 +1,8 @@
-namespace Dizajno.Application.Storage;
+﻿namespace Dizajno.Application.Options;
 
 /// <summary>
 /// Cloudflare R2 connection settings. Bound from configuration section "R2".
-/// In Development, may be empty — the S3 client lazily validates on first use.
+/// In Development, may be empty â€” the S3 client lazily validates on first use.
 /// </summary>
 public sealed class R2Options
 {

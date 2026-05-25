@@ -7,7 +7,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Dizajno.Application\Dizajno.Application.csproj" />
     <ProjectReference Include="..\Dizajno.Domain\Dizajno.Domain.csproj" />
   </ItemGroup>
 

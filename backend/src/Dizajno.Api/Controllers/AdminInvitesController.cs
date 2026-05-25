@@ -8,7 +8,8 @@ using Dizajno.Dto.Project;
 using Dizajno.Dto.Quote;
 using Dizajno.Dto.Share;
 using Dizajno.Dto.Supplier;
-using Dizajno.Application.Audit;
+using Dizajno.Application.Interfaces;
+using Dizajno.Application.Options;
 using Dizajno.Domain.Entities;
 using Dizajno.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -114,14 +115,6 @@ public sealed class AdminInvitesController : ControllerBase
 
     private string BuildAcceptUrl(string rawToken) =>
         _options.AcceptUrlTemplate.Replace("{token}", rawToken);
-}
-
-/// <summary>Configuration for invite URLs and default lifetimes. Bound from <c>Invites</c> in appsettings.</summary>
-public sealed class InviteOptions
-{
-    /// <summary>URL template containing the literal <c>{token}</c> placeholder; defaults to the frontend dev port.</summary>
-    public string AcceptUrlTemplate { get; set; } = "http://localhost:3000/invite/{token}";
-    public int DefaultLifetimeDays { get; set; } = 14;
 }
 
 internal static class InviteTokenFactory

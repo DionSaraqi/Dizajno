@@ -1,4 +1,4 @@
-namespace Dizajno.Application.Seed;
+﻿namespace Dizajno.Data.Seed;
 
 public sealed class SeedOptions
 {
