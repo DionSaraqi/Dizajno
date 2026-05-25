@@ -1,4 +1,11 @@
-using Dizajno.Api.Contracts;
+﻿using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Audit;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
@@ -146,7 +153,7 @@ public sealed class AdminSuppliersController : ControllerBase
     {
         var supplier = await _db.Suppliers.FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
         if (supplier is null) return NotFound();
-        if (supplier.SuspendedAt is not null) return NoContent(); // already suspended → idempotent
+        if (supplier.SuspendedAt is not null) return NoContent(); // already suspended â†’ idempotent
 
         supplier.SuspendedAt = DateTime.UtcNow;
 

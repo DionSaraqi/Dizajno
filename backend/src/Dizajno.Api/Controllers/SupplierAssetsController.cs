@@ -1,5 +1,12 @@
-using System.Security.Claims;
-using Dizajno.Api.Contracts;
+﻿using System.Security.Claims;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Storage;
 using Dizajno.Application.Suppliers;
 using Dizajno.Domain.Entities;
@@ -11,7 +18,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 5 — supplier-scoped wrapper around the R2 presign + finalize flow.
+/// Phase 5 â€” supplier-scoped wrapper around the R2 presign + finalize flow.
 /// Mirrors <see cref="AssetsController"/> but takes the supplier id from the
 /// request and validates it against the caller's <see cref="ISupplierMembershipResolver"/>
 /// results instead of requiring the Admin role. Phase 7's portal reuses this
@@ -46,8 +53,8 @@ public sealed class SupplierAssetsController : ControllerBase
         if (!memberships.Any(m => m.SupplierId == request.SupplierId && !m.IsSuspended)) return Forbid();
 
         // Phase 7b: Glb + SvgPreview added so suppliers can upload their own
-        // GLB models and floor-plan SVGs. CadSource is still admin-only —
-        // converting DXF/DWG → GLB is a future pipeline (see PLAN.md).
+        // GLB models and floor-plan SVGs. CadSource is still admin-only â€”
+        // converting DXF/DWG â†’ GLB is a future pipeline (see PLAN.md).
         if (request.Kind is not (
             AssetKind.Image or AssetKind.Doc or AssetKind.Attachment or
             AssetKind.Glb or AssetKind.SvgPreview))

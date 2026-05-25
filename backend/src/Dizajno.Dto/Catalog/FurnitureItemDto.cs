@@ -1,4 +1,4 @@
-namespace Dizajno.Api.Contracts;
+namespace Dizajno.Dto.Catalog;
 
 /// <summary>
 /// Shape designed to drop into the frontend's FurnitureCatalogItem TypeScript type
@@ -33,20 +33,3 @@ public sealed record FurnitureItemDto(
     decimal? CoverageRate,
     decimal WasteFactor,
     string? TextureUrl);
-
-public sealed record CollisionBoxDto(
-    decimal OffsetX,
-    decimal OffsetZ,
-    decimal Width,
-    decimal Depth);
-
-public sealed record CategoryDto(
-    Guid Id,
-    string Slug,
-    string Name,
-    string Family);
-
-public sealed record SupplierDto(
-    string Slug,
-    string Name,
-    string? LogoUrl);

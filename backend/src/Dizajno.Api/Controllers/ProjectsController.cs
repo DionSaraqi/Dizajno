@@ -1,6 +1,13 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text.Json;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Storage;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
@@ -253,7 +260,7 @@ public sealed class ProjectsController : ControllerBase
             "image/webp" => ".webp",
             _ => ".png"
         };
-        // One key per upload — old thumbnails remain in R2 until garbage collected.
+        // One key per upload â€” old thumbnails remain in R2 until garbage collected.
         var key = $"projects/{id}/thumbnail-{Guid.NewGuid():N}{extension}";
 
         PresignedUploadUrl presigned;
@@ -264,7 +271,7 @@ public sealed class ProjectsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            // R2 not configured in this environment — surface as 503 so the
+            // R2 not configured in this environment â€” surface as 503 so the
             // client can degrade gracefully.
             return Problem(
                 ex.Message,
@@ -333,7 +340,7 @@ public sealed class ProjectsController : ControllerBase
             project.Id, project.Name, asset.Url, project.CreatedAt, project.UpdatedAt));
     }
 
-    // ── Shares (owner-side) ────────────────────────────────────────────────
+    // â”€â”€ Shares (owner-side) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [HttpGet("{id:guid}/shares")]
     public async Task<ActionResult<IReadOnlyList<ShareSummaryDto>>> ListShares(
@@ -427,7 +434,7 @@ public sealed class ProjectsController : ControllerBase
         return NoContent();
     }
 
-    // ── Comments (owner inbox) ─────────────────────────────────────────────
+    // â”€â”€ Comments (owner inbox) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [HttpGet("{id:guid}/comments")]
     public async Task<ActionResult<IReadOnlyList<CommentDto>>> ListComments(
@@ -583,7 +590,7 @@ public sealed class ProjectsController : ControllerBase
         return Ok(BuildDetail(project, scene, versions));
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private bool TryGetUserId(out Guid userId)
     {
@@ -706,7 +713,7 @@ public sealed class ProjectsController : ControllerBase
 
     private async Task ReplaceSceneAsync(Guid projectId, SceneDto scene, CancellationToken cancellationToken)
     {
-        // Cascade FK from walls → openings: deleting walls also removes openings.
+        // Cascade FK from walls â†’ openings: deleting walls also removes openings.
         await _db.PlacedItems.Where(p => p.ProjectId == projectId).ExecuteDeleteAsync(cancellationToken);
         await _db.Floors.Where(f => f.ProjectId == projectId).ExecuteDeleteAsync(cancellationToken);
         await _db.Openings.Where(o => o.ProjectId == projectId).ExecuteDeleteAsync(cancellationToken);

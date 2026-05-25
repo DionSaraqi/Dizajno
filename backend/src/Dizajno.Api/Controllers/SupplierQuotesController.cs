@@ -1,6 +1,13 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text.Json;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Suppliers;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
@@ -12,7 +19,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 5 — supplier-facing endpoints. Gated by <see cref="ISupplierMembershipResolver"/>:
+/// Phase 5 â€” supplier-facing endpoints. Gated by <see cref="ISupplierMembershipResolver"/>:
 /// every action validates that the signed-in user is a member of at least one supplier
 /// (for list views) or of the specific supplier addressed by the target QuoteRequest.
 /// </summary>

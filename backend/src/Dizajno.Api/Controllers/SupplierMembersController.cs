@@ -1,5 +1,12 @@
-using System.Security.Claims;
-using Dizajno.Api.Contracts;
+﻿using System.Security.Claims;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Audit;
 using Dizajno.Application.Suppliers;
 using Dizajno.Domain.Entities;
@@ -12,7 +19,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 7b — Owner-only member management. Staff can do everything else in
+/// Phase 7b â€” Owner-only member management. Staff can do everything else in
 /// the portal (catalog edits, quote responses) but cannot promote/demote/remove
 /// other members or change the supplier profile.
 ///

@@ -1,8 +1,15 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
 using Dizajno.Infrastructure.Persistence;
@@ -261,7 +268,7 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
     public async Task IsCustomSize_FlipsTrueWhenScaledDifferFromStock()
     {
         var (client, _) = await NewAuthedClientAsync($"size-{Guid.NewGuid():N}"[..18]);
-        // Stock sofa is 2.0 x 0.9 x 0.8 — shrink width to 1.0.
+        // Stock sofa is 2.0 x 0.9 x 0.8 â€” shrink width to 1.0.
         var projectId = await CreateProjectWithPlacedItemAsync(
             client, "Shrunk", "sofa", scaleW: 1.0m);
 
@@ -432,7 +439,7 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // ── Phase 6 ────────────────────────────────────────────────────────────
+    // â”€â”€ Phase 6 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async Task<Guid> GetVariantIdBySlugAsync(string slug)
     {
@@ -451,7 +458,7 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
         var (client, _) = await NewAuthedClientAsync($"open-{Guid.NewGuid():N}"[..18]);
         var doorVariantId = await GetVariantIdBySlugAsync("solid-oak-door");
 
-        // Create a project with one wall + one branded door — no placed items.
+        // Create a project with one wall + one branded door â€” no placed items.
         var create = await client.PostAsJsonAsync("/api/projects",
             new CreateProjectRequest("Branded door"), JsonOpts);
         var project = (await create.Content.ReadFromJsonAsync<ProjectDetailDto>(JsonOpts))!;
@@ -508,7 +515,7 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var detail = (await response.Content.ReadFromJsonAsync<QuoteDetailDto>(JsonOpts))!;
 
-        // Single supplier (dizajno) — sofa + paint + flooring should all land in the
+        // Single supplier (dizajno) â€” sofa + paint + flooring should all land in the
         // same QuoteRequest.
         detail.Requests.Should().ContainSingle();
         var lines = detail.Requests[0].Lines;
@@ -542,10 +549,10 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
-    // ── Phase 6.5 — scene-assigned materials ───────────────────────────────
+    // â”€â”€ Phase 6.5 â€” scene-assigned materials â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
-    /// Builds a 4 × 5 m room (single floor polygon, four walls) with an optional
+    /// Builds a 4 Ã— 5 m room (single floor polygon, four walls) with an optional
     /// floor flooring + per-wall paint assignment. Returns the new project id.
     /// </summary>
     private async Task<Guid> CreateRoomAsync(
@@ -609,7 +616,7 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
         lines.Should().ContainSingle()
             .Which.VariantSnapshot.GetProperty("productSlug").GetString()
             .Should().Be("oak-laminate-flooring");
-        // 4 × 5 = 20 m² × (1 + 0.05) = 21.00 m²
+        // 4 Ã— 5 = 20 mÂ² Ã— (1 + 0.05) = 21.00 mÂ²
         lines[0].Quantity.Should().Be(21.00m);
         lines[0].QuantityUnit.Should().Be("m2");
     }
@@ -632,9 +639,9 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
         lines.Should().ContainSingle()
             .Which.VariantSnapshot.GetProperty("productSlug").GetString()
             .Should().Be("interior-matt-paint");
-        // Perimeter 18 m × 2.5 m = 45 m² wall surface
+        // Perimeter 18 m Ã— 2.5 m = 45 mÂ² wall surface
         // (4 walls aggregate into a single line)
-        // ceil(45 / 10 × 1.10) = ceil(4.95) = 5 L
+        // ceil(45 / 10 Ã— 1.10) = ceil(4.95) = 5 L
         lines[0].Quantity.Should().Be(5m);
         lines[0].QuantityUnit.Should().Be("L");
     }
@@ -642,9 +649,9 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
     [Fact]
     public async Task Create_WithPaintAndOpening_SubtractsOpeningAreaFromPaintableSurface()
     {
-        // Same 4 × 5 room, but one wall gets a 2 m × 2 m door cut into it.
-        // Paintable area drops by 4 m² → 41 m² total → ceil(41/10 × 1.10) = 5 L
-        // (same as the previous test result — verifies subtraction happens).
+        // Same 4 Ã— 5 room, but one wall gets a 2 m Ã— 2 m door cut into it.
+        // Paintable area drops by 4 mÂ² â†’ 41 mÂ² total â†’ ceil(41/10 Ã— 1.10) = 5 L
+        // (same as the previous test result â€” verifies subtraction happens).
         var (client, _) = await NewAuthedClientAsync($"sub-{Guid.NewGuid():N}"[..18]);
         var paintVariantId = await GetVariantIdBySlugAsync("interior-matt-paint");
 
@@ -683,7 +690,7 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
 
         var lines = detail.Requests[0].Lines;
         lines.Should().ContainSingle();
-        // 10 × 2.5 = 25 m² gross − 4 m² opening = 21 m² × 1.10 / 10 = 2.31 → ceil = 3 L
+        // 10 Ã— 2.5 = 25 mÂ² gross âˆ’ 4 mÂ² opening = 21 mÂ² Ã— 1.10 / 10 = 2.31 â†’ ceil = 3 L
         lines[0].Quantity.Should().Be(3m);
         lines[0].QuantityUnit.Should().Be("L");
     }

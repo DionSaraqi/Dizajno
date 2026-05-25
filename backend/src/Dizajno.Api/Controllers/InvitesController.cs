@@ -1,5 +1,12 @@
-using System.Security.Claims;
-using Dizajno.Api.Contracts;
+﻿using System.Security.Claims;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Audit;
 using Dizajno.Domain.Entities;
 using Dizajno.Infrastructure.Persistence;
@@ -13,7 +20,7 @@ namespace Dizajno.Api.Controllers;
 /// Public-side invite handling. Preview is anonymous (so the invite-accept
 /// page can render the supplier name + role before forcing login); accept
 /// requires a signed-in user and binds them as a <see cref="SupplierMember"/>.
-/// Existing memberships are honoured idempotently — re-accepting an already
+/// Existing memberships are honoured idempotently â€” re-accepting an already
 /// accepted invite is a no-op.
 /// </summary>
 [ApiController]
@@ -81,7 +88,7 @@ public sealed class InvitesController : ControllerBase
 
         if (invite.AcceptedAt is not null)
         {
-            // Already accepted by somebody — make sure that somebody is the caller.
+            // Already accepted by somebody â€” make sure that somebody is the caller.
             if (invite.AcceptedByUserId != userId)
                 return Problem("Invite has already been accepted by a different user.",
                     statusCode: StatusCodes.Status409Conflict);

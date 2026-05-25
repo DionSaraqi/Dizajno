@@ -1,5 +1,12 @@
-using System.Security.Claims;
-using Dizajno.Api.Contracts;
+﻿using System.Security.Claims;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Audit;
 using Dizajno.Application.Suppliers;
 using Dizajno.Domain.Entities;
@@ -12,19 +19,19 @@ using Microsoft.EntityFrameworkCore;
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 7b — supplier-facing product CRUD + status transitions.
+/// Phase 7b â€” supplier-facing product CRUD + status transitions.
 ///
 /// Lifecycle the supplier controls:
 /// <list type="bullet">
-///   <item><c>Draft</c> ← create. Hidden from public catalog; freely editable.</item>
-///   <item><c>Draft → Pending</c> via <c>POST /{id}/publish</c> for untrusted suppliers; admin moderation queue picks it up.</item>
-///   <item><c>Draft → Published</c> via the same endpoint for trusted suppliers (<see cref="Supplier.IsTrusted"/>).</item>
-///   <item><c>Published → Hidden</c> via <c>POST /{id}/hide</c>. Supplier-initiated unpublish.</item>
-///   <item><c>Hidden → Published</c> via <c>POST /{id}/publish</c>. Never re-triggers Pending — already moderated once.</item>
-///   <item><c>* → Removed</c> via <c>POST /{id}/remove</c>. Historical <c>QuoteLine.variant_snapshot</c> still protects past quotes.</item>
+///   <item><c>Draft</c> â† create. Hidden from public catalog; freely editable.</item>
+///   <item><c>Draft â†’ Pending</c> via <c>POST /{id}/publish</c> for untrusted suppliers; admin moderation queue picks it up.</item>
+///   <item><c>Draft â†’ Published</c> via the same endpoint for trusted suppliers (<see cref="Supplier.IsTrusted"/>).</item>
+///   <item><c>Published â†’ Hidden</c> via <c>POST /{id}/hide</c>. Supplier-initiated unpublish.</item>
+///   <item><c>Hidden â†’ Published</c> via <c>POST /{id}/publish</c>. Never re-triggers Pending â€” already moderated once.</item>
+///   <item><c>* â†’ Removed</c> via <c>POST /{id}/remove</c>. Historical <c>QuoteLine.variant_snapshot</c> still protects past quotes.</item>
 /// </list>
 ///
-/// Editing a Published product (name/description/etc.) does <em>not</em> re-trigger Pending — by design, decided in Phase 7
+/// Editing a Published product (name/description/etc.) does <em>not</em> re-trigger Pending â€” by design, decided in Phase 7
 /// planning. Future moderation needs (e.g. flagging post-publish edits) would slot in via a separate audit-driven workflow.
 /// </summary>
 [ApiController]
@@ -119,7 +126,7 @@ public sealed class SupplierProductsController : ControllerBase
         var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
         if (!memberships.IsActiveMemberOf(request.SupplierId)) return Forbid();
 
-        // Category must belong to the same family + be Approved (or supplier-suggested-pending that they own —
+        // Category must belong to the same family + be Approved (or supplier-suggested-pending that they own â€”
         // but suggested ones can't take products until approved, so just require Approved).
         var category = await _db.Categories.FirstOrDefaultAsync(c => c.Id == request.CategoryId, cancellationToken);
         if (category is null) return Problem("Category not found.", statusCode: StatusCodes.Status400BadRequest);
@@ -127,7 +134,7 @@ public sealed class SupplierProductsController : ControllerBase
             return Problem($"Category {category.Name} is in family {category.Family}, not {request.Family}.",
                 statusCode: StatusCodes.Status400BadRequest);
         if (category.Status != CategoryStatus.Approved)
-            return Problem("Category is not yet approved — cannot attach products.",
+            return Problem("Category is not yet approved â€” cannot attach products.",
                 statusCode: StatusCodes.Status400BadRequest);
 
         var slug = request.Slug.Trim().ToLowerInvariant();
@@ -244,7 +251,7 @@ public sealed class SupplierProductsController : ControllerBase
 
         var from = product.Status;
         var trustedAutoPublish = product.Supplier.IsTrusted;
-        // Already-Published products coming back via Hidden never re-enter Pending — already moderated once.
+        // Already-Published products coming back via Hidden never re-enter Pending â€” already moderated once.
         var target = from switch
         {
             ProductStatus.Draft => trustedAutoPublish ? ProductStatus.Published : ProductStatus.Pending,

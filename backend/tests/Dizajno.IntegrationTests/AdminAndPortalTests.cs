@@ -1,8 +1,15 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
 using Dizajno.Infrastructure.Persistence;
@@ -14,7 +21,7 @@ using Xunit;
 namespace Dizajno.IntegrationTests;
 
 /// <summary>
-/// Phase 7a — admin tooling + invite flow. Covers supplier suspend/trust
+/// Phase 7a â€” admin tooling + invite flow. Covers supplier suspend/trust
 /// toggles + their side-effects, invite create/preview/accept + idempotency,
 /// product/category moderation queues, and audit-log search.
 /// </summary>
@@ -82,7 +89,7 @@ public sealed class AdminAndPortalTests : IClassFixture<DizajnoApiFactory>
         return await db.Suppliers.Where(s => s.Slug == "dizajno").Select(s => s.Id).SingleAsync();
     }
 
-    // ── Suppliers: list + suspend + restore + trust flips ─────────────────
+    // â”€â”€ Suppliers: list + suspend + restore + trust flips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task AdminSuppliers_List_RequiresAdminRole()
@@ -178,7 +185,7 @@ public sealed class AdminAndPortalTests : IClassFixture<DizajnoApiFactory>
     {
         var supplierId = await SeedSupplierAsync($"susp-{Guid.NewGuid():N}"[..14], "Suspend Pending Co.");
 
-        // Drop a Pending QuoteRequest in directly — building a real fan-out
+        // Drop a Pending QuoteRequest in directly â€” building a real fan-out
         // would need a placed item for this supplier and skips the point.
         Guid requestId;
         using (var scope = _factory.Services.CreateScope())
@@ -188,7 +195,7 @@ public sealed class AdminAndPortalTests : IClassFixture<DizajnoApiFactory>
             var quote = new Quote
             {
                 Id = Guid.NewGuid(),
-                ProjectId = Guid.NewGuid(), // dangling FK is fine — no FK enforcement in this slice
+                ProjectId = Guid.NewGuid(), // dangling FK is fine â€” no FK enforcement in this slice
                 RequesterUserId = auth.User.Id,
                 Status = QuoteStatus.Open,
                 CreatedAt = DateTime.UtcNow
@@ -246,12 +253,12 @@ public sealed class AdminAndPortalTests : IClassFixture<DizajnoApiFactory>
         var suspend = await admin.PostAsync($"/api/admin/suppliers/{supplierId}/suspend", null);
         suspend.EnsureSuccessStatusCode();
 
-        // The only membership is suspended now → endpoint forbids.
+        // The only membership is suspended now â†’ endpoint forbids.
         var forbidden = await client.GetAsync("/api/supplier/quotes");
         forbidden.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // ── Invites ───────────────────────────────────────────────────────────
+    // â”€â”€ Invites â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Invite_Create_ReturnsTokenOnceAndAcceptUrl()
@@ -350,7 +357,7 @@ public sealed class AdminAndPortalTests : IClassFixture<DizajnoApiFactory>
         blocked.StatusCode.Should().Be(HttpStatusCode.Gone);
     }
 
-    // ── Moderation: products ─────────────────────────────────────────────
+    // â”€â”€ Moderation: products â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async Task<(Guid productId, Guid supplierId, Guid categoryId)> CreatePendingProductAsync()
     {
@@ -382,9 +389,9 @@ public sealed class AdminAndPortalTests : IClassFixture<DizajnoApiFactory>
             UpdatedAt = DateTime.UtcNow
         };
         db.Products.Add(product);
-        // Real supplier-portal products always have ≥1 variant (a variant is
+        // Real supplier-portal products always have â‰¥1 variant (a variant is
         // the SKU). Without one the catalog projection's First() on Variants
-        // throws when the product later gets approved → Published.
+        // throws when the product later gets approved â†’ Published.
         db.ProductVariants.Add(new ProductVariant
         {
             Id = Guid.NewGuid(),
@@ -451,7 +458,7 @@ public sealed class AdminAndPortalTests : IClassFixture<DizajnoApiFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
-    // ── Moderation: categories ───────────────────────────────────────────
+    // â”€â”€ Moderation: categories â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Moderation_PendingCategory_ApproveFlipsToApproved()
@@ -531,7 +538,7 @@ public sealed class AdminAndPortalTests : IClassFixture<DizajnoApiFactory>
         reject.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
-    // ── Audit log ────────────────────────────────────────────────────────
+    // â”€â”€ Audit log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task AuditLog_RecordsSupplierLifecycleAndIsSearchable()
@@ -559,7 +566,7 @@ public sealed class AdminAndPortalTests : IClassFixture<DizajnoApiFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // ── UserSummary surfaces IsSuspended ─────────────────────────────────
+    // â”€â”€ UserSummary surfaces IsSuspended â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task UserSummary_SupplierMemberships_IncludesSuspendedFlag()

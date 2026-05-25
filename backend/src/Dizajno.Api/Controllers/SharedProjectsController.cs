@@ -1,5 +1,12 @@
-using System.Text.Json;
-using Dizajno.Api.Contracts;
+﻿using System.Text.Json;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
 using Dizajno.Infrastructure.Persistence;
@@ -125,7 +132,7 @@ public sealed class SharedProjectsController : ControllerBase
 
         // Resolve the caller: bearer if present and valid, otherwise anon with
         // a required guest name. We don't error on a bearer that fails to parse
-        // — just fall back to anon.
+        // â€” just fall back to anon.
         var authorUserId = TryGetSignedInUserId();
         string? guestName = null;
         string? guestEmail = null;
@@ -196,7 +203,7 @@ public sealed class SharedProjectsController : ControllerBase
             comment.ResolvedAt));
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async Task<ProjectShare?> ResolveShareAsync(string token, CancellationToken cancellationToken)
     {

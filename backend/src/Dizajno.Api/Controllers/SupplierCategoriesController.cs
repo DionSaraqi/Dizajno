@@ -1,6 +1,13 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text.RegularExpressions;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Audit;
 using Dizajno.Application.Suppliers;
 using Dizajno.Domain.Entities;
@@ -13,13 +20,13 @@ using Microsoft.EntityFrameworkCore;
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 7b — supplier-side category suggestions. Suppliers can propose a new
+/// Phase 7b â€” supplier-side category suggestions. Suppliers can propose a new
 /// taxonomy entry under one of the five hard-coded <see cref="ProductFamily"/>
 /// values; the row lands in <see cref="CategoryStatus.Pending"/> with
 /// <see cref="Category.SuggestedBySupplierId"/> populated, and the admin
 /// moderation queue (Phase 7a) approves or rejects.
 ///
-/// Suppliers cannot edit or delete suggested categories from here — once
+/// Suppliers cannot edit or delete suggested categories from here â€” once
 /// submitted, admin owns the lifecycle. The supplier just sees the row in
 /// their portal until it flips to Approved.
 /// </summary>
@@ -76,7 +83,7 @@ public sealed class SupplierCategoriesController : ControllerBase
         var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
         if (!memberships.IsActiveMemberOf(request.SupplierId)) return Forbid();
 
-        // Parent (if specified) must be in the same family AND already Approved —
+        // Parent (if specified) must be in the same family AND already Approved â€”
         // can't nest a Pending suggestion under another Pending one.
         Category? parent = null;
         if (request.ParentCategoryId is { } pid)

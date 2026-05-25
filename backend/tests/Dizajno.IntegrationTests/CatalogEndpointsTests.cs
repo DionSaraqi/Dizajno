@@ -1,7 +1,14 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using FluentAssertions;
 using Xunit;
 
@@ -107,7 +114,7 @@ public sealed class CatalogEndpointsTests : IClassFixture<DizajnoApiFactory>
             "/api/catalog/products?family=buildingmaterial", JsonOpts);
 
         // 3 paints (interior-matt, premium-eco, exterior-weather) + 3 flooring
-        // tiers (oak-laminate, budget-vinyl, engineered-hardwood) — distinct
+        // tiers (oak-laminate, budget-vinyl, engineered-hardwood) â€” distinct
         // per-unit prices so the request-quote calculator has something to chew on.
         products!.Should().HaveCount(6);
 

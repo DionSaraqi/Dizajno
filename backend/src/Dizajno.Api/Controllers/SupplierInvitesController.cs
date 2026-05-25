@@ -1,5 +1,12 @@
-using System.Security.Claims;
-using Dizajno.Api.Contracts;
+﻿using System.Security.Claims;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Audit;
 using Dizajno.Application.Suppliers;
 using Dizajno.Domain.Entities;
@@ -12,12 +19,12 @@ using Microsoft.Extensions.Options;
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 7c — Owner-side invite issuance. Mirrors <see cref="AdminInvitesController"/>
+/// Phase 7c â€” Owner-side invite issuance. Mirrors <see cref="AdminInvitesController"/>
 /// but gated by <see cref="SupplierMembershipExtensions.IsActiveOwnerOf"/> instead
 /// of the Admin role, so Owners can grow their team without admin involvement.
 ///
 /// Token persistence, hashing, AcceptUrl construction, and the public accept
-/// flow at <c>/api/invites/{token}/accept</c> are all reused from Phase 7a —
+/// flow at <c>/api/invites/{token}/accept</c> are all reused from Phase 7a â€”
 /// the only difference is who can mint the link.
 /// </summary>
 [ApiController]

@@ -1,6 +1,13 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Security.Cryptography;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Audit;
 using Dizajno.Domain.Entities;
 using Dizajno.Infrastructure.Persistence;
@@ -13,7 +20,7 @@ namespace Dizajno.Api.Controllers;
 
 /// <summary>
 /// Admin endpoints for issuing supplier invites. The raw token returned on
-/// create is the only chance to capture it — the DB stores a SHA-256 hash and
+/// create is the only chance to capture it â€” the DB stores a SHA-256 hash and
 /// the response also includes a ready-made <c>AcceptUrl</c> built from
 /// <see cref="InviteOptions.AcceptUrlTemplate"/> so the admin can copy/paste
 /// straight into Slack/email/etc.

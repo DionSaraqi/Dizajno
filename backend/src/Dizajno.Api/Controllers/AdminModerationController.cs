@@ -1,4 +1,11 @@
-using Dizajno.Api.Contracts;
+﻿using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Audit;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
@@ -135,7 +142,7 @@ public sealed class AdminModerationController : ControllerBase
         if (category is null) return NotFound();
         if (category.Status != CategoryStatus.Pending)
             return Problem("Category is not in Pending state.", statusCode: StatusCodes.Status409Conflict);
-        // Block reject if any product already hangs off this category — admin
+        // Block reject if any product already hangs off this category â€” admin
         // should reassign first. Without this check we'd FK-restrict at save
         // time anyway, but the message is friendlier.
         var hasProducts = await _db.Products.AnyAsync(p => p.CategoryId == id, cancellationToken);

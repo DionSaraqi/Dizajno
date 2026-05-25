@@ -1,8 +1,15 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
 using Dizajno.Infrastructure.Persistence;
@@ -14,7 +21,7 @@ using Xunit;
 namespace Dizajno.IntegrationTests;
 
 /// <summary>
-/// Phase 7b — supplier portal endpoints. Covers product/variant CRUD + status
+/// Phase 7b â€” supplier portal endpoints. Covers product/variant CRUD + status
 /// transitions, texture library + per-variant slot bindings, category
 /// suggestions, Owner-only member management with last-Owner protection,
 /// Owner-only profile edits, and the gating cross-cuts (Staff can't manage
@@ -126,7 +133,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
         Attributes: null,
         SortOrder: null);
 
-    // ── Products: CRUD + status transitions ───────────────────────────────
+    // â”€â”€ Products: CRUD + status transitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Products_Create_StartsAsDraft()
@@ -256,7 +263,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
             $"/api/supplier/products/{product.Id}", JsonOpts);
         hidden!.Status.Should().Be(ProductStatus.Hidden);
 
-        // Re-publish should NOT re-enter Pending — already moderated once even
+        // Re-publish should NOT re-enter Pending â€” already moderated once even
         // though the supplier is now untrusted.
         await UntrustSupplierAsync(supplierId);
         await client.PostAsync($"/api/supplier/products/{product.Id}/publish", null);
@@ -303,7 +310,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // ── Variants ──────────────────────────────────────────────────────────
+    // â”€â”€ Variants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Variants_Create_AndList_AppearsOnProductDetail()
@@ -411,7 +418,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
         del.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
-    // ── Textures ──────────────────────────────────────────────────────────
+    // â”€â”€ Textures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Textures_Create_AndDelete_Lifecycle()
@@ -549,7 +556,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
             }),
             JsonOpts);
 
-        // Second assignment fully replaces — only Velvet on Pillows.
+        // Second assignment fully replaces â€” only Velvet on Pillows.
         await client.PutAsJsonAsync(
             $"/api/supplier/variants/{variant.Id}/texture-slots",
             new ReplaceVariantTextureSlotsRequest(new[]
@@ -566,7 +573,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
         slots![0].IsDefault.Should().BeTrue();
     }
 
-    // ── Categories: suggest ──────────────────────────────────────────────
+    // â”€â”€ Categories: suggest â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Categories_Suggest_LandsInPendingForAdminQueue()
@@ -590,7 +597,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
         queue!.Should().Contain(c => c.Id == dto.Id);
     }
 
-    // ── Members: last-Owner protection ───────────────────────────────────
+    // â”€â”€ Members: last-Owner protection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Members_CannotDemoteLastOwner()
@@ -659,7 +666,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
             staffMemberId = member.Id;
         }
 
-        // Staff tries to promote themselves to Owner → 403.
+        // Staff tries to promote themselves to Owner â†’ 403.
         var attempt = await staffClient.PutAsJsonAsync(
             $"/api/supplier/members/{staffMemberId}/role",
             new ChangeMemberRoleRequest(SupplierMemberRole.Owner),
@@ -674,7 +681,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
         promote.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
-    // ── Profile (Owner-only) ─────────────────────────────────────────────
+    // â”€â”€ Profile (Owner-only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Profile_OwnerCanEdit_StaffCannot()
@@ -697,10 +704,10 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
             await db.SaveChangesAsync();
         }
 
-        // Staff can GET the profile…
+        // Staff can GET the profileâ€¦
         var staffGet = await staffClient.GetAsync($"/api/supplier/profile/{supplierId}");
         staffGet.StatusCode.Should().Be(HttpStatusCode.OK);
-        // …but cannot PUT.
+        // â€¦but cannot PUT.
         var staffPut = await staffClient.PutAsJsonAsync(
             $"/api/supplier/profile/{supplierId}",
             new UpdateProfileRequest("Hacked", null, null, null, null, null),
@@ -716,7 +723,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
         dto.Name.Should().Be("Acme Renamed");
     }
 
-    // ── Owner-side invites (Phase 7c) ─────────────────────────────────────
+    // â”€â”€ Owner-side invites (Phase 7c) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Invites_OwnerCanIssueLink_StaffCannot()
@@ -776,7 +783,7 @@ public sealed class SupplierPortalTests : IClassFixture<DizajnoApiFactory>
         attempt.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // ── Asset uploads accept GLB + SVG kinds ─────────────────────────────
+    // â”€â”€ Asset uploads accept GLB + SVG kinds â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public async Task Assets_SupplierPresign_AcceptsGlbAndSvgPreviewKinds()

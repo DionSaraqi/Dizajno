@@ -1,5 +1,12 @@
-using System.Security.Claims;
-using Dizajno.Api.Contracts;
+﻿using System.Security.Claims;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Suppliers;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
@@ -11,15 +18,15 @@ using Microsoft.EntityFrameworkCore;
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 7b — supplier-owned texture library + per-variant slot bindings.
+/// Phase 7b â€” supplier-owned texture library + per-variant slot bindings.
 ///
 /// Two surfaces:
 /// <list type="bullet">
-///   <item><c>/api/supplier/textures</c> — library CRUD. Texture rows reference an <see cref="Asset"/> uploaded via the
+///   <item><c>/api/supplier/textures</c> â€” library CRUD. Texture rows reference an <see cref="Asset"/> uploaded via the
 ///         supplier asset presign flow (kind = <see cref="AssetKind.Image"/>).</item>
-///   <item><c>/api/supplier/variants/{id}/texture-slots</c> — full replacement of a variant's slot bindings (one row per
+///   <item><c>/api/supplier/variants/{id}/texture-slots</c> â€” full replacement of a variant's slot bindings (one row per
 ///         (slotName, supplierTextureId) pair, with one optionally flagged <c>IsDefault</c>). Replacing is simpler than
-///         diffing — matches the edit-and-save UX. The Postgres trigger <c>trg_pv_texture_slot_supplier_match</c>
+///         diffing â€” matches the edit-and-save UX. The Postgres trigger <c>trg_pv_texture_slot_supplier_match</c>
 ///         enforces cross-supplier isolation, but the controller fails fast with a 400 before reaching SQL.</item>
 /// </list>
 /// </summary>
@@ -38,7 +45,7 @@ public sealed class SupplierTexturesController : ControllerBase
         _memberships = memberships;
     }
 
-    // ── Library CRUD ────────────────────────────────────────────────────
+    // â”€â”€ Library CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [HttpGet("textures")]
     public async Task<ActionResult<IReadOnlyList<SupplierTextureDto>>> List(
@@ -79,7 +86,7 @@ public sealed class SupplierTexturesController : ControllerBase
         var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
         if (!memberships.IsActiveMemberOf(request.SupplierId)) return Forbid();
 
-        // Both referenced assets must belong to this supplier — otherwise
+        // Both referenced assets must belong to this supplier â€” otherwise
         // anyone could attach somebody else's image to their library.
         var assetOk = await _db.Assets.AnyAsync(
             a => a.Id == request.AssetId && a.OwnerSupplierId == request.SupplierId && a.Kind == AssetKind.Image,
@@ -180,7 +187,7 @@ public sealed class SupplierTexturesController : ControllerBase
         return NoContent();
     }
 
-    // ── Variant slot bindings ──────────────────────────────────────────
+    // â”€â”€ Variant slot bindings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [HttpGet("variants/{variantId:guid}/texture-slots")]
     public async Task<ActionResult<IReadOnlyList<VariantTextureSlotDto>>> ListSlots(

@@ -1,5 +1,12 @@
-using System.Security.Claims;
-using Dizajno.Api.Contracts;
+﻿using System.Security.Claims;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Application.Audit;
 using Dizajno.Application.Suppliers;
 using Dizajno.Domain.Entities;
@@ -12,12 +19,12 @@ using Microsoft.EntityFrameworkCore;
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 7b — supplier-facing variant CRUD nested under products.
+/// Phase 7b â€” supplier-facing variant CRUD nested under products.
 ///
 /// Variant attachment for GLB + SVG preview assets is split out into two
 /// dedicated endpoints (<c>/attach-glb</c>, <c>/attach-preview</c>) because the
-/// upload flow is two-step (R2 presign → finalize via <c>SupplierAssetsController</c>
-/// → assetId returned). Setting the asset reference on the variant row is the
+/// upload flow is two-step (R2 presign â†’ finalize via <c>SupplierAssetsController</c>
+/// â†’ assetId returned). Setting the asset reference on the variant row is the
 /// third step.
 ///
 /// Detaching is the same endpoint with <c>assetId = Guid.Empty</c>.
@@ -140,7 +147,7 @@ public sealed class SupplierVariantsController : ControllerBase
 
         // QuoteLines already snapshot the variant via variant_snapshot jsonb so
         // historical quotes survive deletion. PlacedItems / Openings / Walls /
-        // Floors reference variants by FK — if any of those exist, hard delete
+        // Floors reference variants by FK â€” if any of those exist, hard delete
         // would FK-fail at SaveChanges. Surface that as a friendlier 409.
         var hasScene = await _db.PlacedItems.AnyAsync(p => p.ProductVariantId == id, cancellationToken)
             || await _db.Openings.AnyAsync(o => o.ProductVariantId == id, cancellationToken)

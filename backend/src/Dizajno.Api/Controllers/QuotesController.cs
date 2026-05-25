@@ -1,6 +1,13 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text.Json;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
 using Dizajno.Infrastructure.Persistence;
@@ -11,7 +18,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 5 — user-facing quoting endpoints. Companion controllers:
+/// Phase 5 â€” user-facing quoting endpoints. Companion controllers:
 /// <see cref="SupplierQuotesController"/> (per-supplier inbox + respond),
 /// <see cref="AdminSupplierMembersController"/> (Phase-5 stopgap for binding members).
 /// </summary>
@@ -32,7 +39,7 @@ public sealed class QuotesController : ControllerBase
 
     public QuotesController(DizajnoDbContext db) => _db = db;
 
-    // ── POST /api/projects/{id}/quotes — fan out per supplier ──────────────
+    // â”€â”€ POST /api/projects/{id}/quotes â€” fan out per supplier â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [HttpPost("projects/{projectId:guid}/quotes")]
     public async Task<ActionResult<QuoteDetailDto>> Create(
@@ -162,7 +169,7 @@ public sealed class QuotesController : ControllerBase
             })
             .ToListAsync(cancellationToken);
 
-        // Openings on painted walls — used to subtract door/window area from the
+        // Openings on painted walls â€” used to subtract door/window area from the
         // paintable surface so the supplier doesn't get billed to paint thin air.
         var paintedWallIds = paintedWallsRaw.Select(w => w.WallId).ToList();
         var openingAreaByWall = new Dictionary<Guid, decimal>();
@@ -360,7 +367,7 @@ public sealed class QuotesController : ControllerBase
                 IsCustomSize: false));
         }
 
-        // Phase 6.5 — aggregated flooring lines (one per distinct variant).
+        // Phase 6.5 â€” aggregated flooring lines (one per distinct variant).
         foreach (var group in flooredFloorsRaw.GroupBy(f => f.FlooringProductVariantId))
         {
             if (!materialMeta.TryGetValue(group.Key, out var meta)) continue;
@@ -378,8 +385,8 @@ public sealed class QuotesController : ControllerBase
                 IsCustomSize: false));
         }
 
-        // Phase 6.5 — aggregated paint lines. Paintable surface = wall length × height
-        // minus opening areas on that wall; liters = paintable / coverage × (1 + waste),
+        // Phase 6.5 â€” aggregated paint lines. Paintable surface = wall length Ã— height
+        // minus opening areas on that wall; liters = paintable / coverage Ã— (1 + waste),
         // rounded up to whole cans.
         foreach (var group in paintedWallsRaw.GroupBy(w => w.PaintProductVariantId))
         {
@@ -502,8 +509,8 @@ public sealed class QuotesController : ControllerBase
         bool IsCustomSize);
 
     /// <summary>
-    /// Variant projection enriched with the product's CoverageRate (m²/L for
-    /// paint) and WasteFactor — both needed to compute scene-assigned material
+    /// Variant projection enriched with the product's CoverageRate (mÂ²/L for
+    /// paint) and WasteFactor â€” both needed to compute scene-assigned material
     /// quantities at fan-out time.
     /// </summary>
     private sealed record MaterialMeta(
@@ -512,7 +519,7 @@ public sealed class QuotesController : ControllerBase
         decimal WasteFactor);
 
     /// <summary>
-    /// Shoelace area of a jsonb-encoded polygon (<c>[[x,z], …]</c>). Returns 0
+    /// Shoelace area of a jsonb-encoded polygon (<c>[[x,z], â€¦]</c>). Returns 0
     /// for empty or degenerate polygons so a malformed Floor row can't kill
     /// the whole quote.
     /// </summary>
@@ -540,7 +547,7 @@ public sealed class QuotesController : ControllerBase
         return Math.Abs(sum) / 2m;
     }
 
-    // ── GET /api/quotes ────────────────────────────────────────────────────
+    // â”€â”€ GET /api/quotes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [HttpGet("quotes")]
     public async Task<ActionResult<IReadOnlyList<QuoteSummaryDto>>> List(
@@ -585,7 +592,7 @@ public sealed class QuotesController : ControllerBase
             r.SupplierCount, r.RespondedCount, r.DeclinedCount)).ToList());
     }
 
-    // ── GET /api/quotes/{id} ───────────────────────────────────────────────
+    // â”€â”€ GET /api/quotes/{id} â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [HttpGet("quotes/{id:guid}")]
     public async Task<ActionResult<QuoteDetailDto>> Get(
@@ -597,7 +604,7 @@ public sealed class QuotesController : ControllerBase
         return Ok(detail);
     }
 
-    // ── POST /api/quotes/{id}/cancel ───────────────────────────────────────
+    // â”€â”€ POST /api/quotes/{id}/cancel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [HttpPost("quotes/{id:guid}/cancel")]
     public async Task<ActionResult> Cancel(Guid id, CancellationToken cancellationToken)
@@ -628,14 +635,14 @@ public sealed class QuotesController : ControllerBase
         return NoContent();
     }
 
-    // ── POST /api/quotes/{id}/close ────────────────────────────────────────
+    // â”€â”€ POST /api/quotes/{id}/close â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [HttpPost("quotes/{id:guid}/close")]
     public async Task<ActionResult> Close(Guid id, CancellationToken cancellationToken)
     {
         if (!TryGetUserId(out var userId)) return Unauthorized();
 
-        // A supplier has "engaged" with the request once their status leaves Pending —
+        // A supplier has "engaged" with the request once their status leaves Pending â€”
         // Responded (priced) and Declined (said no) both count, since either way the
         // requester now knows enough to close the conversation.
         var quote = await _db.Quotes
@@ -669,7 +676,7 @@ public sealed class QuotesController : ControllerBase
         return NoContent();
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private async Task<QuoteDetailDto?> BuildDetailAsync(
         Guid quoteId, Guid requesterUserId, CancellationToken cancellationToken)

@@ -1,8 +1,15 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Dizajno.Api.Contracts;
+using Dizajno.Dto.Admin;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Auth;
+using Dizajno.Dto.Catalog;
+using Dizajno.Dto.Project;
+using Dizajno.Dto.Quote;
+using Dizajno.Dto.Share;
+using Dizajno.Dto.Supplier;
 using Dizajno.Domain.Enums;
 using Dizajno.Infrastructure.Persistence;
 using FluentAssertions;
@@ -119,7 +126,7 @@ public sealed class ProjectsEndpointsTests : IClassFixture<DizajnoApiFactory>
         afterFirst.Scene.Openings.Should().HaveCount(1);
         afterFirst.Scene.PlacedItems.Should().HaveCount(1);
 
-        // Replace with empty scene → everything should be wiped.
+        // Replace with empty scene â†’ everything should be wiped.
         var empty = new SceneDto(
             Array.Empty<WallDto>(), Array.Empty<FloorDto>(),
             Array.Empty<OpeningDto>(), Array.Empty<PlacedItemDto>());
@@ -194,7 +201,7 @@ public sealed class ProjectsEndpointsTests : IClassFixture<DizajnoApiFactory>
         (await client.PutAsJsonAsync($"/api/projects/{created.Id}/scene",
             new ReplaceSceneRequest(sceneB))).EnsureSuccessStatusCode();
 
-        // Restore version → scene should be back to A (with the original wall id).
+        // Restore version â†’ scene should be back to A (with the original wall id).
         var restore = await client.PostAsync(
             $"/api/projects/{created.Id}/versions/{version.Id}/restore",
             content: null);
