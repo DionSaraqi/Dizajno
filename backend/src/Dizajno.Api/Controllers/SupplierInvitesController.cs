@@ -9,6 +9,7 @@ using Dizajno.Dto.Share;
 using Dizajno.Dto.Supplier;
 using Dizajno.Application.Interfaces;
 using Dizajno.Application.Options;
+using Dizajno.Application.Services;
 using Dizajno.Domain.Entities;
 using Dizajno.Data;
 using Microsoft.AspNetCore.Authorization;

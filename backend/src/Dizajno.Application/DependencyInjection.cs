@@ -17,6 +17,14 @@ public static class DependencyInjection
     {
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ICatalogService, CatalogService>();
+        services.AddScoped<IAssetService, AssetService>();
+        services.AddScoped<IInviteService, InviteService>();
+        services.AddScoped<ISharedProjectService, SharedProjectService>();
+
+        services.AddScoped<IAdminSupplierService, AdminSupplierService>();
+        services.AddScoped<IAdminInviteService, AdminInviteService>();
+        services.AddScoped<IAdminModerationService, AdminModerationService>();
+        services.AddScoped<IAdminSupplierMemberService, AdminSupplierMemberService>();
         services.AddScoped<IAdminAuditLogService, AdminAuditLogService>();
         return services;
     }
