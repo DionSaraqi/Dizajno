@@ -7,7 +7,7 @@ A browser-based 2D/3D room designer where users draw walls, place furniture via 
 The repository is a pnpm workspace split into two top-level packages:
 
 - `frontend/` — Next.js 14 application (the existing codebase). All paths in this document are relative to `frontend/` unless prefixed otherwise.
-- `backend/` — .NET 8 Web API. Through Phase 7c: catalog + auth + R2 + projects/scene + sharing + customizer textures + quoting + branded fixtures + scene-assigned materials + admin dashboard + supplier portal backend + Owner-side invites. See [backend/BACKEND.md](backend/BACKEND.md) for the full backend reference (endpoints, env vars, migrations, troubleshooting).
+- `backend/` — .NET 10 Web API. Through Phase 7c: catalog + auth + R2 + projects/scene + sharing + customizer textures + quoting + branded fixtures + scene-assigned materials + admin dashboard + supplier portal backend + Owner-side invites. See [backend/BACKEND.md](backend/BACKEND.md) for the full backend reference (endpoints, env vars, migrations, troubleshooting).
 - `docs/` — product + schema master plan. **[docs/PLAN.md](docs/PLAN.md)** is the source of truth for design decisions and the 7-phase roadmap — read it first when picking up the project cold or starting a new chat.
 
 Root-level convenience scripts re-export the frontend's most common commands so you can run them from the repo root.
@@ -40,7 +40,7 @@ Backend commands (from `backend/` — full reference in [backend/BACKEND.md](bac
 
 ```bash
 docker compose up -d                                         # Postgres on host port 5433 + Adminer on 8081
-dotnet ef database update --project src/Dizajno.Infrastructure --startup-project src/Dizajno.Api
+dotnet ef database update --project src/Dizajno.Data --startup-project src/Dizajno.Api
 dotnet run --project src/Dizajno.Api                          # API on http://localhost:5000
 dotnet test tests/Dizajno.IntegrationTests                    # Testcontainers + WebApplicationFactory
 ```
@@ -60,7 +60,7 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 - **Data fetching**: TanStack React Query (v5)
 
 **Backend** (`backend/`):
-- **Framework**: .NET 8, ASP.NET Core Web API
+- **Framework**: .NET 10, ASP.NET Core Web API
 - **ORM**: EF Core 8 + Npgsql (snake_case via EFCore.NamingConventions)
 - **Identity**: ASP.NET Core Identity (extended `ApplicationUser : IdentityUser<Guid>`)
 - **Auth**: JWT bearer (15-min access) + rotating refresh tokens (30 days, SHA-256 hashed at rest)
@@ -108,35 +108,40 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 │           ├── furnitureCatalog.ts        # Fallback baseline for the API (see Known Patterns)
 │           └── snapToGrid.ts              # Grid snapping helpers
 │
-├── backend/                               # .NET 8 Web API — full reference: backend/BACKEND.md
+├── backend/                               # .NET 10 Web API — full reference: backend/BACKEND.md
 │   ├── Dizajno.sln
 │   ├── docker-compose.yml                 # Postgres 16-alpine on host 5433 + Adminer on 8081
 │   ├── NuGet.config                       # pins nuget.org as the source
 │   ├── .config/dotnet-tools.json          # local dotnet-ef tool manifest
 │   ├── src/
 │   │   ├── Dizajno.Api/                   # ASP.NET Core host
-│   │   │   ├── Program.cs                 # Swagger, CORS, JWT, seeder invocation
-│   │   │   ├── Controllers/               # AuthController, CatalogController
-│   │   │   ├── Contracts/                 # AuthContracts, CatalogContracts (DTOs)
+│   │   │   ├── Program.cs                 # AddData + AddApplication + AddInfrastructure, Swagger, CORS, JWT, seeder invocation
+│   │   │   ├── Controllers/               # 21 thin pass-throughs delegating to Application services
 │   │   │   ├── appsettings.json
 │   │   │   └── appsettings.Development.json
-│   │   ├── Dizajno.Application/           # Cross-layer contracts
-│   │   │   ├── Audit/                     # IAuditLogger (Phase 7a)
-│   │   │   ├── Auth/                      # IJwtTokenService, JwtOptions
-│   │   │   ├── Seed/                      # IDataSeeder, SeedOptions
-│   │   │   └── Suppliers/                 # ISupplierMembershipResolver + ActiveSupplierIds extension
+│   │   ├── Dizajno.Dto/                   # Wire-shape DTOs (78 records, one file each), grouped by area
+│   │   │   ├── Auth/ Catalog/ Project/ Quote/ Asset/ Share/ Admin/ Supplier/
+│   │   ├── Dizajno.Application/           # Business logic + service contracts
+│   │   │   ├── Interfaces/                # 21 service interfaces (I*Service) + IAuditLogger, IJwtTokenService, IObjectStorage, ISupplierMembershipResolver, SupplierMembershipExtensions
+│   │   │   ├── Options/                   # JwtOptions, R2Options, InviteOptions
+│   │   │   ├── Services/                  # 21 service implementations (DizajnoDbContext-backed) + AnchorParser, InviteTokenFactory, AssetUploadRules
+│   │   │   └── DependencyInjection.cs     # AddApplication() — registers all 21 services
 │   │   ├── Dizajno.Domain/                # Pure entities + enums (no deps)
 │   │   │   ├── Entities/                  # Supplier, Category, Product, ProductVariant, Asset, Translation, SupplierInvite, AuditLogEntry, …
 │   │   │   └── Enums/                     # ProductFamily, ProductStatus (incl. Pending), CategoryStatus, UnitOfSale, AssetKind, …
-│   │   └── Dizajno.Infrastructure/
+│   │   ├── Dizajno.Data/                  # Persistence layer
+│   │   │   ├── DizajnoDbContext.cs
+│   │   │   ├── Identity/                  # ApplicationUser, RefreshToken (alongside the DbContext)
+│   │   │   ├── Configurations/            # 24 IEntityTypeConfiguration<T> files
+│   │   │   ├── Migrations/                # 0001_Foundation … 0010_AssetOwnerNonUnique + snapshot
+│   │   │   ├── Seed/                      # IDataSeeder, SeedOptions, DataSeeder + CatalogSeedData
+│   │   │   └── DependencyInjection.cs     # AddData() — DbContext + AddIdentityCore + IDataSeeder
+│   │   └── Dizajno.Infrastructure/        # Technical plumbing only (post-overhaul)
 │   │       ├── Audit/AuditLogger.cs       # Resolves actor/IP/UA from IHttpContextAccessor
 │   │       ├── Auth/JwtTokenService.cs
-│   │       ├── Identity/                  # ApplicationUser, RefreshToken
-│   │       ├── Persistence/
-│   │       │   ├── DizajnoDbContext.cs
-│   │       │   ├── Configurations/        # IEntityTypeConfiguration<T> per entity
-│   │       │   └── Seed/                  # DataSeeder + CatalogSeedData (source of truth for seeded items)
-│   │       └── Migrations/                # 0001_Foundation, …, 0009_AdminAndPortal
+│   │       ├── Storage/S3ObjectStorage.cs
+│   │       ├── Suppliers/SupplierMembershipResolver.cs
+│   │       └── DependencyInjection.cs     # AddInfrastructure() — 4 plumbing services + IHttpContextAccessor
 │   └── tests/Dizajno.IntegrationTests/    # xUnit + Testcontainers + WebApplicationFactory<Program>
 │
 ├── docs/
@@ -156,7 +161,7 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 - API client lives in `lib/api.ts` — base URL from `NEXT_PUBLIC_API_URL` (default `http://localhost:5000`).
 - DTOs returned by the API map 1:1 onto `FurnitureCatalogItem` in `types/designer.ts` — no transformation needed.
 - `utils/furnitureCatalog.ts` is a **fallback baseline** used during the initial fetch and when the backend is offline. `getFurnitureDef(type)` (synchronous, called by collision and store mutations) reads from this fallback.
-- The seeded backend rows are sourced from `backend/src/Dizajno.Infrastructure/Persistence/Seed/CatalogSeedData.cs`, which mirrors the frontend fallback file. Keep both in sync until the supplier portal ships (Phase 7 of the master plan).
+- The seeded backend rows are sourced from `backend/src/Dizajno.Data/Seed/CatalogSeedData.cs`, which mirrors the frontend fallback file. Keep both in sync until the supplier portal ships (Phase 7 of the master plan).
 
 ### Supplier-side endpoints (Phase 5)
 - `/api/supplier/*` endpoints are gated by `ISupplierMembershipResolver` (Application layer) — every controller action loads the caller's `supplier_members` rows and checks the target supplier id is in the list. Admins are **not** implicit suppliers; they must be bound via the Phase-5 stopgap `POST /api/admin/supplier-members` endpoint or the Phase 7a tokenized invite flow.
@@ -317,11 +322,11 @@ Add the entry to `utils/furnitureCatalog.ts` with all computed values. Include `
 ## Known Patterns
 
 - The designer has two parallel state systems: the older `DesignerProvider` (React Context + useReducer in `components/designer/`) and the newer Zustand store (`store/useDesignerStore.ts`). The Zustand store is the canonical one going forward.
-- **Adding a new furniture item**: add it to **both** `frontend/src/utils/furnitureCatalog.ts` (fallback + sync lookups via `getFurnitureDef`) **and** `backend/src/Dizajno.Infrastructure/Persistence/Seed/CatalogSeedData.cs` (backend seed). The seeder is idempotent — restart the API to pick up the new item; existing seeded rows are not touched. Long-term, the supplier portal (Phase 4) replaces both with admin-uploaded products.
+- **Adding a new furniture item**: add it to **both** `frontend/src/utils/furnitureCatalog.ts` (fallback + sync lookups via `getFurnitureDef`) **and** `backend/src/Dizajno.Data/Seed/CatalogSeedData.cs` (backend seed). The seeder is idempotent — restart the API to pick up the new item; existing seeded rows are not touched. Long-term, the supplier portal (Phase 4) replaces both with admin-uploaded products.
 - Each catalog item has `svgPreview` for the sidebar thumbnail, optional `modelUrl` for GLTF loading, `materialSlots` for color customization, and `textureSlots` for texture customization.
 - Properties panel is a collapsible section inside the left sidebar (not a separate right panel).
 - **Backend port collision**: Postgres runs on host port **5433** (not 5432) to avoid colliding with host-installed Postgres services. The API runs on **5000** in dev. Frontend dev server picks 3000 unless taken (Next auto-increments).
-- **Backend layering** (Clean Architecture-ish): `Api` → `Application` + `Infrastructure`; `Application` → `Domain`; `Infrastructure` → `Application` + `Domain`; `Domain` depends on nothing. Service interfaces live in `Application` so `Domain` stays pure and `Infrastructure` implements.
+- **Backend layering** (Clean Architecture-ish, post-overhaul): `Api` → `Dto` + `Application` + `Data` + `Infrastructure`; `Application` → `Dto` + `Domain` + `Data`; `Infrastructure` → `Application` + `Domain` + `Data`; `Data` → `Domain`; `Dto` → `Domain`; `Domain` depends on nothing. Controllers are thin pass-throughs delegating to `I*Service` business services in `Dizajno.Application/Services/`; `DizajnoDbContext`, EF Configurations, Migrations, the `IDataSeeder`, and the Identity entities (`ApplicationUser`, `RefreshToken`) live in `Dizajno.Data`; plumbing interfaces (`IJwtTokenService`, `IAuditLogger`, `IObjectStorage`, `ISupplierMembershipResolver`) are declared in `Application/Interfaces/` and implemented in `Dizajno.Infrastructure`.
 - **JWT options** are configured via `IOptions<JwtOptions>` at request time — not captured at startup. This is deliberate so `WebApplicationFactory` config overrides in tests apply uniformly to both token issuance and validation.
 
 ## Troubleshooting

@@ -1,13 +1,16 @@
 # Dizajno Backend
 
-.NET 8 Web API serving the Dizajno room designer. Phase 1 delivers identity, the
+.NET 10 Web API serving the Dizajno room designer. Phase 1 delivers identity, the
 catalog API for the existing 12 furniture items, and an idempotent seeder. Later
 phases add projects/scenes, sharing, quotes, supplier portal — see the top-level
 schema plan for the roadmap.
 
 ## Prerequisites
 
-- **.NET 8 SDK** — `dotnet --version` should report `8.0.x`
+- **.NET 10 SDK** — `dotnet --version` should report `10.0.x`.
+  If `dotnet --list-sdks` doesn't show a 10.x line, install with `winget install --id Microsoft.DotNet.SDK.10` (requires admin) or run the user-scope install script:
+  `Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile $env:TEMP\dotnet-install.ps1; & "$env:TEMP\dotnet-install.ps1" -Channel 10.0 -InstallDir "$env:LOCALAPPDATA\Microsoft\dotnet"`,
+  then prepend `%LOCALAPPDATA%\Microsoft\dotnet` to your PATH.
 - **Docker Desktop** — needed for local Postgres and the integration tests
 - **PowerShell or Bash** — examples below assume PowerShell on Windows
 
@@ -20,7 +23,7 @@ From `backend/`:
 docker compose up -d
 
 # 2. Apply migrations
-dotnet ef database update --project src/Dizajno.Infrastructure --startup-project src/Dizajno.Api
+dotnet ef database update --project src/Dizajno.Data --startup-project src/Dizajno.Api
 
 # 3. Run the API (auto-seeds roles, admin user, 12 furniture products on first start)
 dotnet run --project src/Dizajno.Api
@@ -42,32 +45,55 @@ backend/
 ├── docker-compose.yml              Postgres 16-alpine + Adminer
 ├── .config/dotnet-tools.json       local dotnet-ef tool manifest
 ├── src/
-│   ├── Dizajno.Domain/             pure entities + enums
-│   ├── Dizajno.Application/        contracts: IJwtTokenService, IDataSeeder, options
-│   ├── Dizajno.Infrastructure/     EF Core, Identity, JWT impl, seeder
-│   │   ├── Auth/                   JwtTokenService
-│   │   ├── Identity/               ApplicationUser, RefreshToken
-│   │   ├── Persistence/
-│   │   │   ├── DizajnoDbContext.cs
-│   │   │   ├── Configurations/
-│   │   │   └── Seed/               DataSeeder + CatalogSeedData
-│   │   └── Migrations/             0001_Foundation, …, 0007_Quoting, 0008_SceneMaterials
+│   ├── Dizajno.Domain/             pure entities + enums (no deps)
+│   ├── Dizajno.Dto/                one record per file under Auth/ Catalog/ Project/ Quote/
+│   │                               Asset/ Share/ Admin/ Supplier/ — wire-shape DTOs only
+│   ├── Dizajno.Application/        business logic
+│   │   ├── Interfaces/             IAuthService, ICatalogService, IProjectService, IQuoteService,
+│   │   │                           IAssetService, IInviteService, ISharedProjectService,
+│   │   │                           IAdmin* (5), ISupplier* (9),
+│   │   │                           IJwtTokenService, IAuditLogger, IObjectStorage,
+│   │   │                           ISupplierMembershipResolver + SupplierMembershipExtensions
+│   │   ├── Options/                JwtOptions, R2Options, InviteOptions
+│   │   ├── Services/               21 service implementations (mechanical lift of all controllers)
+│   │   │                           plus AnchorParser, InviteTokenFactory, AssetUploadRules helpers
+│   │   └── DependencyInjection.cs  AddApplication() — registers all 21 business services
+│   ├── Dizajno.Data/               persistence layer
+│   │   ├── DizajnoDbContext.cs
+│   │   ├── Identity/               ApplicationUser, RefreshToken (kept with DbContext —
+│   │   │                           persistence-layer entity types, not Domain)
+│   │   ├── Configurations/         24 IEntityTypeConfiguration<T> files
+│   │   ├── Migrations/             0001_Foundation … 0010_AssetOwnerNonUnique + snapshot
+│   │   ├── Seed/                   IDataSeeder, SeedOptions, DataSeeder + CatalogSeedData
+│   │   └── DependencyInjection.cs  AddData() — DbContext + AddIdentityCore + IDataSeeder
+│   ├── Dizajno.Infrastructure/     plumbing only
+│   │   ├── Auth/JwtTokenService.cs       (impl of IJwtTokenService)
+│   │   ├── Audit/AuditLogger.cs          (impl of IAuditLogger)
+│   │   ├── Storage/S3ObjectStorage.cs    (impl of IObjectStorage)
+│   │   ├── Suppliers/SupplierMembershipResolver.cs (impl of ISupplierMembershipResolver)
+│   │   └── DependencyInjection.cs  AddInfrastructure() — 4 plumbing services + IHttpContextAccessor
 │   └── Dizajno.Api/                ASP.NET Core host
-│       ├── Program.cs              wiring (Swagger, CORS, JWT, seeder invocation)
-│       ├── Controllers/            AuthController, CatalogController
-│       ├── Contracts/              AuthContracts, CatalogContracts (DTOs)
+│       ├── Program.cs              wiring (Swagger, CORS, JWT, seeder invocation),
+│       │                           calls AddData → AddApplication → AddInfrastructure
+│       ├── Controllers/            21 thin pass-through controllers (each ~30–110 lines)
+│       │                           Auth, Catalog, Projects, Quotes, Assets, Invites,
+│       │                           SharedProjects, 5 Admin*, 9 Supplier*
 │       ├── Properties/launchSettings.json   pins HTTP to :5000
 │       ├── appsettings.json
 │       └── appsettings.Development.json
 └── tests/
     └── Dizajno.IntegrationTests/   Testcontainers + WebApplicationFactory<Program>
+                                    122 tests covering all endpoints
 ```
 
-Clean Architecture-ish layering:
+Clean Architecture-ish layering (DAG, no cycles):
 
-- **Api** → Application + Infrastructure
-- **Application** → Domain
-- **Infrastructure** → Application + Domain
+- **Api** → Dto + Application + Data + Infrastructure
+- **Application** → Domain + Dto + Data (services use DbContext directly per
+  the mechanical-lift refactor; ActionResult<T> via Microsoft.AspNetCore.App framework ref)
+- **Infrastructure** → Application + Domain + Data (services use DbContext + ApplicationUser)
+- **Data** → Domain
+- **Dto** → Domain (enum references)
 - **Domain** depends on nothing
 
 ## Configuration
@@ -107,16 +133,16 @@ variables or a secret manager — never check the production values into git.
 
 ```powershell
 # Apply pending migrations
-dotnet ef database update --project src/Dizajno.Infrastructure --startup-project src/Dizajno.Api
+dotnet ef database update --project src/Dizajno.Data --startup-project src/Dizajno.Api
 
 # Create a new migration
-dotnet ef migrations add MigrationName --project src/Dizajno.Infrastructure --startup-project src/Dizajno.Api --output-dir Migrations
+dotnet ef migrations add MigrationName --project src/Dizajno.Data --startup-project src/Dizajno.Api --output-dir Migrations
 
 # Roll back to a specific migration
-dotnet ef database update 0002_RefreshTokens --project src/Dizajno.Infrastructure --startup-project src/Dizajno.Api
+dotnet ef database update 0002_RefreshTokens --project src/Dizajno.Data --startup-project src/Dizajno.Api
 
 # List migrations
-dotnet ef migrations list --project src/Dizajno.Infrastructure --startup-project src/Dizajno.Api
+dotnet ef migrations list --project src/Dizajno.Data --startup-project src/Dizajno.Api
 ```
 
 `dotnet ef` is installed as a local tool (manifest at `backend/.config/dotnet-tools.json`).
@@ -133,7 +159,7 @@ What gets seeded:
 2. Admin user from `Seed:AdminEmail` / `Seed:AdminPassword` (assigned both roles)
 3. Supplier `dizajno`
 4. Furniture categories: Bedroom, Seating, Storage, Tables
-5. 12 furniture products from `Dizajno.Infrastructure.Persistence.Seed.CatalogSeedData`
+5. 12 furniture products from `Dizajno.Data.Seed.CatalogSeedData`
 
 `CatalogSeedData.cs` mirrors `frontend/src/utils/furnitureCatalog.ts` — SVG previews
 included verbatim as raw string literals. Once a supplier portal lands, this file
