@@ -19,6 +19,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Dizajno.Application\Dizajno.Application.csproj" />
     <ProjectReference Include="..\Dizajno.Infrastructure\Dizajno.Infrastructure.csproj" />
+    <ProjectReference Include="..\Dizajno.Dto\Dizajno.Dto.csproj" />
+    <ProjectReference Include="..\Dizajno.Data\Dizajno.Data.csproj" />
   </ItemGroup>
 
 </Project>
