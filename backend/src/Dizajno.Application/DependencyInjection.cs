@@ -26,6 +26,16 @@ public static class DependencyInjection
         services.AddScoped<IAdminModerationService, AdminModerationService>();
         services.AddScoped<IAdminSupplierMemberService, AdminSupplierMemberService>();
         services.AddScoped<IAdminAuditLogService, AdminAuditLogService>();
+
+        services.AddScoped<ISupplierAssetService, SupplierAssetService>();
+        services.AddScoped<ISupplierCategoryService, SupplierCategoryService>();
+        services.AddScoped<ISupplierInviteService, SupplierInviteService>();
+        services.AddScoped<ISupplierMemberService, SupplierMemberService>();
+        services.AddScoped<ISupplierProductService, SupplierProductService>();
+        services.AddScoped<ISupplierProfileService, SupplierProfileService>();
+        services.AddScoped<ISupplierQuoteService, SupplierQuoteService>();
+        services.AddScoped<ISupplierTextureService, SupplierTextureService>();
+        services.AddScoped<ISupplierVariantService, SupplierVariantService>();
         return services;
     }
 }

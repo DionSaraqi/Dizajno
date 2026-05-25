@@ -1,25 +1,13 @@
-using System.Security.Claims;
-using Dizajno.Dto.Admin;
-using Dizajno.Dto.Asset;
-using Dizajno.Dto.Auth;
-using Dizajno.Dto.Catalog;
-using Dizajno.Dto.Project;
-using Dizajno.Dto.Quote;
-using Dizajno.Dto.Share;
-using Dizajno.Dto.Supplier;
 using Dizajno.Application.Interfaces;
-using Dizajno.Application.Options;
-using Dizajno.Application.Services;
-using Dizajno.Domain.Entities;
-using Dizajno.Domain.Enums;
-using Dizajno.Data;
+using Dizajno.Dto.Asset;
+using Dizajno.Dto.Supplier;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Dizajno.Api.Controllers;
 
 /// <summary>
-/// Phase 5 â€” supplier-scoped wrapper around the R2 presign + finalize flow.
+/// Phase 5 — supplier-scoped wrapper around the R2 presign + finalize flow.
 /// Mirrors <see cref="AssetsController"/> but takes the supplier id from the
 /// request and validates it against the caller's <see cref="ISupplierMembershipResolver"/>
 /// results instead of requiring the Admin role. Phase 7's portal reuses this
@@ -30,139 +18,19 @@ namespace Dizajno.Api.Controllers;
 [Authorize]
 public sealed class SupplierAssetsController : ControllerBase
 {
-    private readonly DizajnoDbContext _db;
-    private readonly IObjectStorage _storage;
-    private readonly ISupplierMembershipResolver _memberships;
+    private readonly ISupplierAssetService _service;
 
-    public SupplierAssetsController(
-        DizajnoDbContext db,
-        IObjectStorage storage,
-        ISupplierMembershipResolver memberships)
-    {
-        _db = db;
-        _storage = storage;
-        _memberships = memberships;
-    }
+    public SupplierAssetsController(ISupplierAssetService service) => _service = service;
 
     [HttpPost("presign")]
-    public async Task<ActionResult<PresignAssetUploadResponse>> Presign(
+    public Task<ActionResult<PresignAssetUploadResponse>> Presign(
         PresignSupplierAssetRequest request,
         CancellationToken cancellationToken)
-    {
-        if (!TryGetUserId(out var userId)) return Unauthorized();
-        var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
-        if (!memberships.Any(m => m.SupplierId == request.SupplierId && !m.IsSuspended)) return Forbid();
-
-        // Phase 7b: Glb + SvgPreview added so suppliers can upload their own
-        // GLB models and floor-plan SVGs. CadSource is still admin-only â€”
-        // converting DXF/DWG â†’ GLB is a future pipeline (see PLAN.md).
-        if (request.Kind is not (
-            AssetKind.Image or AssetKind.Doc or AssetKind.Attachment or
-            AssetKind.Glb or AssetKind.SvgPreview))
-        {
-            return Problem(
-                "Supplier uploads accept Image, Doc, Attachment, Glb, or SvgPreview kinds.",
-                statusCode: StatusCodes.Status400BadRequest);
-        }
-        if (string.IsNullOrWhiteSpace(request.ContentType))
-        {
-            return Problem("Content type is required.", statusCode: StatusCodes.Status400BadRequest);
-        }
-        if (request.SizeBytes <= 0)
-        {
-            return Problem("Size must be greater than zero.", statusCode: StatusCodes.Status400BadRequest);
-        }
-
-        var rules = AssetUploadRules.For(request.Kind);
-        if (request.SizeBytes > rules.MaxBytes)
-        {
-            return Problem(
-                $"File too large for {request.Kind}. Max {rules.MaxBytes / (1024 * 1024)} MB.",
-                statusCode: StatusCodes.Status400BadRequest);
-        }
-        var contentType = request.ContentType.Trim().ToLowerInvariant();
-        if (!rules.IsAllowedMime(contentType))
-        {
-            return Problem(
-                $"Content type '{request.ContentType}' is not allowed for {request.Kind}.",
-                statusCode: StatusCodes.Status400BadRequest);
-        }
-
-        var extension = AssetUploadRules.PickExtension(request.Kind, contentType, request.OriginalFileName);
-        var key = $"suppliers/{request.SupplierId}/{rules.KeySegment}/{Guid.NewGuid():N}{extension}";
-
-        PresignedUploadUrl presigned;
-        try
-        {
-            presigned = await _storage.CreatePresignedUploadUrlAsync(
-                key, contentType, request.SizeBytes, cancellationToken);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Problem(ex.Message, statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-
-        return Ok(new PresignAssetUploadResponse(
-            Key: key,
-            UploadUrl: presigned.Url,
-            ExpiresAt: presigned.ExpiresAt,
-            PublicUrl: _storage.GetPublicUrl(key),
-            RequiredHeaders: new Dictionary<string, string>(presigned.RequiredHeaders, StringComparer.OrdinalIgnoreCase)));
-    }
+        => _service.PresignAsync(request, User, cancellationToken);
 
     [HttpPost]
-    public async Task<ActionResult<AssetDto>> Create(
+    public Task<ActionResult<AssetDto>> Create(
         CreateSupplierAssetRequest request,
         CancellationToken cancellationToken)
-    {
-        if (!TryGetUserId(out var userId)) return Unauthorized();
-        var memberships = await _memberships.GetMembershipsAsync(userId, cancellationToken);
-        if (!memberships.Any(m => m.SupplierId == request.SupplierId && !m.IsSuspended)) return Forbid();
-
-        if (string.IsNullOrWhiteSpace(request.Key))
-        {
-            return Problem("Key is required.", statusCode: StatusCodes.Status400BadRequest);
-        }
-        if (string.IsNullOrWhiteSpace(request.MimeType))
-        {
-            return Problem("MIME type is required.", statusCode: StatusCodes.Status400BadRequest);
-        }
-        if (request.SizeBytes <= 0)
-        {
-            return Problem("Size must be greater than zero.", statusCode: StatusCodes.Status400BadRequest);
-        }
-        // Defence in depth: the key must live under the supplier's namespace.
-        if (!request.Key.StartsWith($"suppliers/{request.SupplierId}/", StringComparison.Ordinal))
-        {
-            return Problem(
-                "Key does not belong to this supplier.",
-                statusCode: StatusCodes.Status400BadRequest);
-        }
-
-        var asset = new Asset
-        {
-            Id = Guid.NewGuid(),
-            OwnerSupplierId = request.SupplierId,
-            Kind = request.Kind,
-            Url = _storage.GetPublicUrl(request.Key),
-            MimeType = request.MimeType,
-            SizeBytes = request.SizeBytes,
-            ChecksumSha256 = request.ChecksumSha256,
-            SortOrder = 0,
-            CreatedAt = DateTime.UtcNow
-        };
-        _db.Assets.Add(asset);
-        await _db.SaveChangesAsync(cancellationToken);
-
-        return StatusCode(StatusCodes.Status201Created, new AssetDto(
-            asset.Id, asset.Kind, asset.Url, asset.MimeType, asset.SizeBytes, asset.ChecksumSha256,
-            asset.ProductId, asset.VariantId, asset.OwnerSupplierId, asset.SortOrder, asset.CreatedAt));
-    }
-
-    private bool TryGetUserId(out Guid userId)
-    {
-        var raw = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? User.FindFirst("sub")?.Value;
-        return Guid.TryParse(raw, out userId);
-    }
+        => _service.CreateAsync(request, User, cancellationToken);
 }
