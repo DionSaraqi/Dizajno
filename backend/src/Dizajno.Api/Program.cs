@@ -3,6 +3,7 @@ using Dizajno.Api.Controllers;
 using Dizajno.Application.Auth;
 using Dizajno.Application.Seed;
 using Dizajno.Application.Storage;
+using Dizajno.Data;
 using Dizajno.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
@@ -22,6 +23,7 @@ builder.Services.Configure<InviteOptions>(builder.Configuration.GetSection("Invi
 
 // ── Services ───────────────────────────────────────────────────────────────
 
+builder.Services.AddData();
 builder.Services.AddInfrastructure();
 
 builder.Services

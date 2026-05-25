@@ -11,7 +11,7 @@ using Dizajno.Dto.Supplier;
 using Dizajno.Application.Suppliers;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
-using Dizajno.Infrastructure.Persistence;
+using Dizajno.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

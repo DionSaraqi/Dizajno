@@ -1,5 +1,5 @@
-using Dizajno.Application.Suppliers;
-using Dizajno.Infrastructure.Persistence;
+﻿using Dizajno.Application.Suppliers;
+using Dizajno.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dizajno.Infrastructure.Suppliers;

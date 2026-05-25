@@ -8,7 +8,7 @@ using Dizajno.Dto.Share;
 using Dizajno.Dto.Supplier;
 using Dizajno.Application.Auth;
 using Dizajno.Application.Suppliers;
-using Dizajno.Infrastructure.Identity;
+using Dizajno.Data.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;

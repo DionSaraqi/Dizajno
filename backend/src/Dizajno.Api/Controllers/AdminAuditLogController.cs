@@ -6,7 +6,7 @@ using Dizajno.Dto.Project;
 using Dizajno.Dto.Quote;
 using Dizajno.Dto.Share;
 using Dizajno.Dto.Supplier;
-using Dizajno.Infrastructure.Persistence;
+using Dizajno.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

@@ -1,0 +1,42 @@
+﻿using Dizajno.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace Dizajno.Data.Configurations;
+
+public sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
+{
+    public void Configure(EntityTypeBuilder<Asset> b)
+    {
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(32);
+        b.Property(x => x.Url).HasMaxLength(1000).IsRequired();
+        b.Property(x => x.MimeType).HasMaxLength(120).IsRequired();
+        b.Property(x => x.ChecksumSha256).HasMaxLength(64);
+        b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+
+        b.HasIndex(x => x.ProductId);
+        b.HasIndex(x => x.VariantId);
+        b.HasIndex(x => x.OwnerSupplierId);
+
+        b.HasOne(x => x.Product)
+            .WithMany()
+            .HasForeignKey(x => x.ProductId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        b.HasOne(x => x.Variant)
+            .WithMany()
+            .HasForeignKey(x => x.VariantId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        // Use the explicit inverse navigation Supplier.OwnedAssets so EF
+        // doesn't pair Asset.OwnerSupplier with Supplier.LogoAsset and infer
+        // a 1:1 relationship â€” that's what made ix_assets_owner_supplier_id
+        // UNIQUE through migration 0009 and limited each supplier to one
+        // asset.
+        b.HasOne(x => x.OwnerSupplier)
+            .WithMany(s => s.OwnedAssets)
+            .HasForeignKey(x => x.OwnerSupplierId)
+            .OnDelete(DeleteBehavior.SetNull);
+    }
+}

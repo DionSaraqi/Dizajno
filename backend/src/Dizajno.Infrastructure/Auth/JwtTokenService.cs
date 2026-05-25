@@ -1,10 +1,10 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Dizajno.Application.Auth;
-using Dizajno.Infrastructure.Identity;
-using Dizajno.Infrastructure.Persistence;
+using Dizajno.Data.Identity;
+using Dizajno.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;

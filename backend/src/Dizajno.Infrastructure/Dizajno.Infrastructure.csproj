@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Dizajno.Application\Dizajno.Application.csproj" />
     <ProjectReference Include="..\Dizajno.Domain\Dizajno.Domain.csproj" />
+    <ProjectReference Include="..\Dizajno.Data\Dizajno.Data.csproj" />
   </ItemGroup>
 
   <ItemGroup>

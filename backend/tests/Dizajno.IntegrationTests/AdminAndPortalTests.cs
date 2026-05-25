@@ -12,7 +12,7 @@ using Dizajno.Dto.Share;
 using Dizajno.Dto.Supplier;
 using Dizajno.Domain.Entities;
 using Dizajno.Domain.Enums;
-using Dizajno.Infrastructure.Persistence;
+using Dizajno.Data;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
