@@ -87,7 +87,7 @@ public sealed class SharedProjectService : ISharedProjectService
                 : displayNames.TryGetValue(r.AuthorUserId.Value, out var dn) ? dn : null,
             r.GuestName,
             r.Body,
-            ParseAnchor(r.Anchor),
+            AnchorParser.Parse(r.Anchor),
             r.CreatedAt,
             r.ResolvedAt
         )).ToList();
@@ -202,7 +202,7 @@ public sealed class SharedProjectService : ISharedProjectService
             displayName,
             comment.GuestName,
             comment.Body,
-            ParseAnchor(comment.Anchor),
+            AnchorParser.Parse(comment.Anchor),
             comment.CreatedAt,
             comment.ResolvedAt))
         { StatusCode = StatusCodes.Status201Created };
@@ -230,20 +230,6 @@ public sealed class SharedProjectService : ISharedProjectService
         var raw = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
             ?? user.FindFirst("sub")?.Value;
         return Guid.TryParse(raw, out var id) ? id : null;
-    }
-
-    private static JsonElement? ParseAnchor(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            return doc.RootElement.Clone();
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     private async Task<SceneDto> LoadSceneAsync(Guid projectId, CancellationToken cancellationToken)

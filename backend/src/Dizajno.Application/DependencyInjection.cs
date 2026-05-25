@@ -20,6 +20,8 @@ public static class DependencyInjection
         services.AddScoped<IAssetService, AssetService>();
         services.AddScoped<IInviteService, InviteService>();
         services.AddScoped<ISharedProjectService, SharedProjectService>();
+        services.AddScoped<IProjectService, ProjectService>();
+        services.AddScoped<IQuoteService, QuoteService>();
 
         services.AddScoped<IAdminSupplierService, AdminSupplierService>();
         services.AddScoped<IAdminInviteService, AdminInviteService>();
