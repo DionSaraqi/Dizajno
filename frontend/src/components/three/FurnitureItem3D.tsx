@@ -192,7 +192,7 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     <>
       <group
         ref={groupRef}
-        position={[pos[0], 0, pos[1]]}
+        position={[pos[0], item.elevation ?? 0, pos[1]]}
         rotation={[0, item.rotation, 0]}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}

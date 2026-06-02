@@ -44,6 +44,7 @@ import GLTFModel from "./furniture/GLTFModel";
 import Measurements from "./Measurements";
 import RoomLabels from "./RoomLabels";
 import WallDimensions from "./WallDimensions";
+import RadialMenu from "./RadialMenu";
 import SnapIndicator from "./SnapIndicator";
 import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
 import {
@@ -357,6 +358,7 @@ function SceneContent() {
   const readOnly = useReadOnly();
   const showDimensions = useShowDimensions();
   const dimensionFace = useDimensionFace();
+  const isDraggingItem = useDesignerStore((s) => s.isDragging);
 
   const addWall = useDesignerStore((s) => s.addWall);
   const setWallsAndFloors = useDesignerStore((s) => s.setWallsAndFloors);
@@ -858,6 +860,14 @@ function SceneContent() {
       {furniture.map((item) => (
         <FurnitureItem3D key={item.id} item={item} />
       ))}
+
+      {/* Planner5D-style radial action menu around the single selected item */}
+      {!isDraggingItem &&
+        selectedIds.length === 1 &&
+        (() => {
+          const sel = furniture.find((f) => f.id === selectedIds[0]);
+          return sel ? <RadialMenu item={sel} /> : null;
+        })()}
 
       {/* Ghost preview when placing from sidebar */}
       {ghostItem && ghostPos && ghostDef && (

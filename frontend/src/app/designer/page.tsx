@@ -6,6 +6,7 @@ import { DesignerProvider } from "@/components/designer/DesignerProvider";
 import Sidebar from "@/components/designer/Sidebar";
 import Toolbar from "@/components/designer/Toolbar";
 import StatusBar from "@/components/designer/StatusBar";
+import SelectionBar from "@/components/designer/SelectionBar";
 import CanvasDropZone from "@/components/designer/CanvasDropZone";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
@@ -33,11 +34,13 @@ export default function DesignerPage() {
     <DesignerProvider>
       <div className="w-full h-screen flex flex-col bg-dizajno-bg overflow-hidden">
         <Toolbar />
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden relative">
           <Sidebar />
           <CanvasDropZone>
             <DrawingSurface />
           </CanvasDropZone>
+          {/* Planner5D-style bottom editor for the selected entity */}
+          <SelectionBar />
         </div>
         <StatusBar />
       </div>
