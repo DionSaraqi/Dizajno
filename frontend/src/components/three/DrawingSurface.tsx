@@ -23,6 +23,8 @@ import {
   useHoveredId,
   usePendingOpeningType,
   useReadOnly,
+  useShowDimensions,
+  useDimensionFace,
 } from "@/store/useDesignerStore";
 import GridPlane from "./GridPlane";
 import CameraController from "./CameraController";
@@ -41,6 +43,7 @@ import NightstandModel from "./furniture/NightstandModel";
 import GLTFModel from "./furniture/GLTFModel";
 import Measurements from "./Measurements";
 import RoomLabels from "./RoomLabels";
+import WallDimensions from "./WallDimensions";
 import SnapIndicator from "./SnapIndicator";
 import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
 import {
@@ -352,6 +355,8 @@ function SceneContent() {
   const hoveredId = useHoveredId();
   const pendingOpeningType = usePendingOpeningType();
   const readOnly = useReadOnly();
+  const showDimensions = useShowDimensions();
+  const dimensionFace = useDimensionFace();
 
   const addWall = useDesignerStore((s) => s.addWall);
   const setWallsAndFloors = useDesignerStore((s) => s.setWallsAndFloors);
@@ -778,6 +783,11 @@ function SceneContent() {
 
       {/* Planner5D-style centered room area labels (2D only) */}
       {!is3D && <RoomLabels floors={floors} />}
+
+      {/* Planner5D-style persistent wall dimension arrows (2D only) */}
+      {!is3D && showDimensions && (
+        <WallDimensions walls={walls} floors={floors} face={dimensionFace} />
+      )}
 
       {/* Openings (door/window frames rendered in world space) */}
       {openings.map((opening) => {
