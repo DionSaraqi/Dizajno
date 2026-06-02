@@ -1,17 +1,15 @@
 "use client";
 
 /**
- * WallDimensions — Planner5D-style persistent dimension annotations for walls,
- * drawn in 2D (top-down) mode. For each wall segment it renders an offset
- * dimension line with arrowheads, perpendicular extension lines, and a length
- * label. It also draws an overall bounding-span tier (total width + total
- * depth) outside everything.
+ * WallDimensions — Planner5D-style wall dimension annotations, drawn in 2D
+ * (top-down) mode. For every wall it always shows ONE clean number: the inner
+ * clear distance between the two facing walls (the usable room dimension along
+ * that wall). When a wall is hovered it additionally shows the full wall length
+ * — the inner span plus the thickness of the perpendicular walls at each end —
+ * as a second, highlighted dimension stacked further out.
  *
- * The displayed length honors the inner/outer face choice: walls are stored as
- * centerlines, so at a shared corner the outer face is longer by thickness/2
- * and the inner face shorter by thickness/2 (best-effort, shared-endpoint
- * detection — pragmatic for clean layouts, approximate at messy junctions).
- *
+ * Inner vs outer is computed from the *adjacent perpendicular* walls' thickness
+ * at each shared corner (shared-endpoint detection, ignoring collinear splits).
  * World-space geometry (lines + drei <Text>), consistent with Measurements.tsx.
  */
 
@@ -21,17 +19,19 @@ import * as THREE from "three";
 import type { WallData, FloorData } from "@/types/designer";
 
 // ── Tunables ────────────────────────────────────────────────────────────────
-const DIM_GAP = 0.35; // gap beyond the wall face to the per-wall dimension line
-const SPAN_GAP = 1.15; // gap beyond the bounding box to the overall-span tier
+const DIM_GAP = 0.35; // gap beyond the wall face to the inner dimension line
+const TIER_GAP = 0.5; // extra offset for the outer (hover) dimension line
 const ARROW = 0.16; // arrowhead wing length
 const ARROW_ANGLE = (28 * Math.PI) / 180;
 const EXT_OVERSHOOT = 0.08; // how far the extension line passes the dim line
 const CORNER_TOL = 0.06; // shared-endpoint tolerance for corner detection
+const PERP_DOT = 0.5; // |dot(dir, otherDir)| below this ⇒ treat as perpendicular
 const Y = 0.05; // render height above the ground plane
 
 const LINE_COLOR = "#64748b"; // slate-500
 const LABEL_COLOR = "#334155"; // slate-700
 const LABEL_OUTLINE = "#ffffff";
+const ACCENT = "#6366f1"; // hovered-wall highlight (indigo)
 
 // ── Vector helpers (operating on [x, z] tuples) ───────────────────────────────
 type V = [number, number];
@@ -78,13 +78,13 @@ function Seg({ points, color = LINE_COLOR }: { points: V[]; color?: string }) {
   return <primitive object={object} />;
 }
 
-function FlatLabel({ pos, text }: { pos: V; text: string }) {
+function FlatLabel({ pos, text, color = LABEL_COLOR }: { pos: V; text: string; color?: string }) {
   return (
     <Text
       position={[pos[0], Y + 0.01, pos[1]]}
       rotation={[-Math.PI / 2, 0, 0]}
       fontSize={0.22}
-      color={LABEL_COLOR}
+      color={color}
       anchorX="center"
       anchorY="middle"
       outlineWidth={0.025}
@@ -95,20 +95,23 @@ function FlatLabel({ pos, text }: { pos: V; text: string }) {
   );
 }
 
-/** One full dimension annotation: line a→b with outward arrowheads + label. */
+/** One dimension annotation: line a→b with outward arrowheads + centered label. */
 function DimLine({
   a,
   b,
   outward,
   label,
+  color = LINE_COLOR,
+  labelColor = LABEL_COLOR,
 }: {
   a: V;
   b: V;
   outward: V; // unit normal pointing away from the line, for label nudge
   label: string;
+  color?: string;
+  labelColor?: string;
 }) {
   const u = norm(sub(b, a)); // a → b
-  // Arrowheads: tip at each end, wings splayed toward the line interior.
   const aw1 = add(a, mul(rot(u, ARROW_ANGLE), ARROW));
   const aw2 = add(a, mul(rot(u, -ARROW_ANGLE), ARROW));
   const bu: V = [-u[0], -u[1]]; // b → a
@@ -119,10 +122,48 @@ function DimLine({
 
   return (
     <group>
-      <Seg points={[a, b]} />
-      <Seg points={[aw1, a, aw2]} />
-      <Seg points={[bw1, b, bw2]} />
-      <FlatLabel pos={labelPos} text={label} />
+      <Seg points={[a, b]} color={color} />
+      <Seg points={[aw1, a, aw2]} color={color} />
+      <Seg points={[bw1, b, bw2]} color={color} />
+      <FlatLabel pos={labelPos} text={label} color={labelColor} />
+    </group>
+  );
+}
+
+/**
+ * A measured dimension between two projected wall-line points p1→p2, offset
+ * outward by `off`, with extension ticks from the wall face.
+ */
+function Dimension({
+  p1,
+  p2,
+  n,
+  off,
+  thickness,
+  label,
+  color,
+  labelColor,
+}: {
+  p1: V;
+  p2: V;
+  n: V;
+  off: number;
+  thickness: number;
+  label: string;
+  color: string;
+  labelColor: string;
+}) {
+  const A = add(p1, mul(n, off));
+  const B = add(p2, mul(n, off));
+  const faceA = add(p1, mul(n, thickness / 2));
+  const faceB = add(p2, mul(n, thickness / 2));
+  const extA = add(A, mul(n, EXT_OVERSHOOT));
+  const extB = add(B, mul(n, EXT_OVERSHOOT));
+  return (
+    <group>
+      <Seg points={[faceA, extA]} color={color} />
+      <Seg points={[faceB, extB]} color={color} />
+      <DimLine a={A} b={B} outward={n} label={label} color={color} labelColor={labelColor} />
     </group>
   );
 }
@@ -132,9 +173,10 @@ function DimLine({
 interface WallDimensionsProps {
   walls: WallData[];
   floors: FloorData[];
-  face: "inner" | "outer";
+  hoveredId: string | null;
 }
 
+/** Interior reference point used to orient dimensions outward (away from rooms). */
 function interiorRef(walls: WallData[], floors: FloorData[]): V {
   if (floors.length > 0) {
     let sx = 0;
@@ -149,7 +191,6 @@ function interiorRef(walls: WallData[], floors: FloorData[]): V {
     }
     if (n > 0) return [sx / n, sz / n];
   }
-  // Fallback: bounding-box center of all wall endpoints.
   const pts = walls.flatMap((w) => [w.start, w.end]);
   if (pts.length === 0) return [0, 0];
   const xs = pts.map((p) => p[0]);
@@ -157,93 +198,114 @@ function interiorRef(walls: WallData[], floors: FloorData[]): V {
   return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2];
 }
 
-export default function WallDimensions({ walls, floors, face }: WallDimensionsProps) {
-  const sign = face === "outer" ? 1 : -1;
+/**
+ * Half-thickness of the perpendicular wall sharing `pt` (the corner). Collinear
+ * walls (e.g. a split segment) are ignored so only true corners contribute.
+ */
+function adjacentPerpHalf(pt: V, dir: V, walls: WallData[], selfId: string): number {
+  let t = 0;
+  for (const w of walls) {
+    if (w.id === selfId) continue;
+    if (dist(pt, w.start) < CORNER_TOL || dist(pt, w.end) < CORNER_TOL) {
+      const wd = norm(sub(w.end, w.start));
+      if (Math.abs(dir[0] * wd[0] + dir[1] * wd[1]) < PERP_DOT) {
+        t = Math.max(t, w.thickness);
+      }
+    }
+  }
+  return t / 2;
+}
 
-  const annotations = useMemo(() => {
-    if (walls.length === 0) return null;
-
+export default function WallDimensions({ walls, floors, hoveredId }: WallDimensionsProps) {
+  const perWall = useMemo(() => {
+    if (walls.length === 0) return [];
     const ref = interiorRef(walls, floors);
-    const sharesCorner = (pt: V, selfId: string) =>
-      walls.some(
-        (w) =>
-          w.id !== selfId &&
-          (dist(pt, w.start) < CORNER_TOL || dist(pt, w.end) < CORNER_TOL)
-      );
 
-    const perWall = walls.map((w) => {
+    const out: {
+      id: string;
+      thickness: number;
+      n: V;
+      innerLen: number;
+      outerLen: number;
+      ip1: V;
+      ip2: V;
+      op1: V;
+      op2: V;
+      offInner: number;
+      offOuter: number;
+    }[] = [];
+
+    for (const w of walls) {
       const a = w.start;
       const b = w.end;
+      const L = dist(a, b);
+      if (L < 0.05) continue;
+
       const dir = norm(sub(b, a));
-      // Outward normal: pick the perpendicular pointing away from the interior.
+      // Outward normal: the perpendicular pointing away from the interior.
       let n = perp(dir);
       const mid = mul(add(a, b), 0.5);
       if (n[0] * (mid[0] - ref[0]) + n[1] * (mid[1] - ref[1]) < 0) n = mul(n, -1);
 
-      const off = w.thickness / 2 + DIM_GAP;
-      const da = add(a, mul(n, off));
-      const db = add(b, mul(n, off));
+      const adjA = adjacentPerpHalf(a, dir, walls, w.id);
+      const adjB = adjacentPerpHalf(b, dir, walls, w.id);
 
-      // Extension lines from the wall face to just past the dimension line.
-      const faceStart = add(a, mul(n, w.thickness / 2));
-      const faceEnd = add(b, mul(n, w.thickness / 2));
-      const extA = add(da, mul(n, EXT_OVERSHOOT));
-      const extB = add(db, mul(n, EXT_OVERSHOOT));
+      out.push({
+        id: w.id,
+        thickness: w.thickness,
+        n,
+        innerLen: Math.max(0, L - adjA - adjB),
+        outerLen: L + adjA + adjB,
+        // Inner span runs between the inner faces of the perpendicular walls;
+        // outer span runs between their outer faces.
+        ip1: add(a, mul(dir, adjA)),
+        ip2: add(b, mul(dir, -adjB)),
+        op1: add(a, mul(dir, -adjA)),
+        op2: add(b, mul(dir, adjB)),
+        offInner: w.thickness / 2 + DIM_GAP,
+        offOuter: w.thickness / 2 + DIM_GAP + TIER_GAP,
+      });
+    }
+    return out;
+  }, [walls, floors]);
 
-      // Inner/outer length adjustment at shared corners.
-      const c1 = sharesCorner(a, w.id) ? sign * (w.thickness / 2) : 0;
-      const c2 = sharesCorner(b, w.id) ? sign * (w.thickness / 2) : 0;
-      const displayLen = Math.max(0, len(sub(b, a)) + c1 + c2);
-
-      return { id: w.id, da, db, n, faceStart, faceEnd, extA, extB, label: fmt(displayLen) };
-    });
-
-    // Overall bounding-span tier.
-    const pts = walls.flatMap((w) => [w.start, w.end]);
-    const xs = pts.map((p) => p[0]);
-    const zs = pts.map((p) => p[1]);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minZ = Math.min(...zs);
-    const maxZ = Math.max(...zs);
-
-    const widthA: V = [minX, maxZ + SPAN_GAP];
-    const widthB: V = [maxX, maxZ + SPAN_GAP];
-    const depthA: V = [maxX + SPAN_GAP, minZ];
-    const depthB: V = [maxX + SPAN_GAP, maxZ];
-
-    return {
-      perWall,
-      span: {
-        width: { a: widthA, b: widthB, label: fmt(maxX - minX), outward: [0, 1] as V },
-        depth: { a: depthA, b: depthB, label: fmt(maxZ - minZ), outward: [1, 0] as V },
-        ticks: { minX, maxX, minZ, maxZ },
-      },
-    };
-  }, [walls, floors, sign]);
-
-  if (!annotations) return null;
-  const { perWall, span } = annotations;
+  if (perWall.length === 0) return null;
 
   return (
     <group>
-      {perWall.map((d) => (
-        <group key={d.id}>
-          {/* extension lines */}
-          <Seg points={[d.faceStart, d.extA]} />
-          <Seg points={[d.faceEnd, d.extB]} />
-          <DimLine a={d.da} b={d.db} outward={d.n} label={d.label} />
-        </group>
-      ))}
-
-      {/* Overall span tier (total width + total depth) */}
-      <Seg points={[[span.ticks.minX, span.ticks.maxZ], span.width.a]} />
-      <Seg points={[[span.ticks.maxX, span.ticks.maxZ], span.width.b]} />
-      <DimLine a={span.width.a} b={span.width.b} outward={span.width.outward} label={span.width.label} />
-
-      <Seg points={[[span.ticks.maxX, span.ticks.minZ], span.depth.a]} />
-      <Seg points={[[span.ticks.maxX, span.ticks.maxZ], span.depth.b]} />
-      <DimLine a={span.depth.a} b={span.depth.b} outward={span.depth.outward} label={span.depth.label} />
+      {perWall.map((d) => {
+        const hovered = d.id === hoveredId;
+        return (
+          <group key={d.id}>
+            {/* Always-on inner clear distance */}
+            {d.innerLen > 0.05 && (
+              <Dimension
+                p1={d.ip1}
+                p2={d.ip2}
+                n={d.n}
+                off={d.offInner}
+                thickness={d.thickness}
+                label={fmt(d.innerLen)}
+                color={hovered ? ACCENT : LINE_COLOR}
+                labelColor={hovered ? ACCENT : LABEL_COLOR}
+              />
+            )}
+            {/* On hover: full wall length (incl. adjacent wall thickness) */}
+            {hovered && (
+              <Dimension
+                p1={d.op1}
+                p2={d.op2}
+                n={d.n}
+                off={d.offOuter}
+                thickness={d.thickness}
+                label={fmt(d.outerLen)}
+                color={ACCENT}
+                labelColor={ACCENT}
+              />
+            )}
+          </group>
+        );
+      })}
     </group>
   );
 }

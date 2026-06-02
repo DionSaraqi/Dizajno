@@ -20,7 +20,6 @@ import {
   useWallThickness,
   useWallHeight,
   useShowDimensions,
-  useDimensionFace,
 } from "@/store/useDesignerStore";
 import { Tooltip } from "@/components/ui";
 
@@ -120,9 +119,7 @@ function WallControlsPopover({
 function SettingsPopover() {
   const [open, setOpen] = useState(false);
   const showDimensions = useShowDimensions();
-  const dimensionFace = useDimensionFace();
   const setShowDimensions = useDesignerStore((s) => s.setShowDimensions);
-  const setDimensionFace = useDesignerStore((s) => s.setDimensionFace);
 
   return (
     <div className="relative">
@@ -152,7 +149,7 @@ function SettingsPopover() {
             </p>
 
             {/* Show dimensions toggle */}
-            <label className="flex items-center justify-between cursor-pointer mb-3">
+            <label className="flex items-center justify-between cursor-pointer">
               <span className="text-xs text-dizajno-text">Show wall dimensions</span>
               <input
                 type="checkbox"
@@ -161,27 +158,9 @@ function SettingsPopover() {
                 className="accent-dizajno-accent w-4 h-4 cursor-pointer"
               />
             </label>
-
-            {/* Inner / outer face */}
-            <p className="text-xs text-dizajno-muted mb-1.5">Measure</p>
-            <div className="flex gap-0.5 bg-dizajno-bg rounded-lg p-0.5 border border-dizajno-border">
-              {(["outer", "inner"] as const).map((face) => (
-                <button
-                  key={face}
-                  type="button"
-                  onClick={() => setDimensionFace(face)}
-                  aria-pressed={dimensionFace === face}
-                  className={[
-                    "flex-1 py-1 rounded-md text-xs font-medium capitalize transition-colors",
-                    dimensionFace === face
-                      ? "bg-dizajno-accent text-white shadow-sm"
-                      : "text-dizajno-muted hover:text-dizajno-text",
-                  ].join(" ")}
-                >
-                  {face}
-                </button>
-              ))}
-            </div>
+            <p className="text-[10px] text-dizajno-muted mt-2">
+              Hover a wall to see its full length.
+            </p>
           </div>
         </>
       )}

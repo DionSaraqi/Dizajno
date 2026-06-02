@@ -24,7 +24,6 @@ import {
   usePendingOpeningType,
   useReadOnly,
   useShowDimensions,
-  useDimensionFace,
 } from "@/store/useDesignerStore";
 import GridPlane from "./GridPlane";
 import CameraController from "./CameraController";
@@ -357,7 +356,6 @@ function SceneContent() {
   const pendingOpeningType = usePendingOpeningType();
   const readOnly = useReadOnly();
   const showDimensions = useShowDimensions();
-  const dimensionFace = useDimensionFace();
   const isDraggingItem = useDesignerStore((s) => s.isDragging);
 
   const addWall = useDesignerStore((s) => s.addWall);
@@ -786,9 +784,10 @@ function SceneContent() {
       {/* Planner5D-style centered room area labels (2D only) */}
       {!is3D && <RoomLabels floors={floors} />}
 
-      {/* Planner5D-style persistent wall dimension arrows (2D only) */}
+      {/* Planner5D-style wall dimensions (2D only): inner clear distance always,
+          full wall length on hover. */}
       {!is3D && showDimensions && (
-        <WallDimensions walls={walls} floors={floors} face={dimensionFace} />
+        <WallDimensions walls={walls} floors={floors} hoveredId={hoveredId} />
       )}
 
       {/* Openings (door/window frames rendered in world space) */}
