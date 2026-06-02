@@ -114,7 +114,7 @@ public sealed class ProjectsEndpointsTests : IClassFixture<DizajnoApiFactory>
             PlacedItems: new[]
             {
                 new PlacedItemDto(Guid.NewGuid(), variantId,
-                    1.5m, 1.5m, 0m, 0m, 1m, 0.6m, 0.6m, 0.45m, null, null)
+                    1.5m, 1.5m, 0m, 0.5m, 1m, 0.6m, 0.6m, 0.45m, null, null)
             });
 
         var put = await client.PutAsJsonAsync($"/api/projects/{created.Id}/scene",
@@ -125,6 +125,8 @@ public sealed class ProjectsEndpointsTests : IClassFixture<DizajnoApiFactory>
         afterFirst.Scene.Floors.Should().HaveCount(1);
         afterFirst.Scene.Openings.Should().HaveCount(1);
         afterFirst.Scene.PlacedItems.Should().HaveCount(1);
+        // Levitation/elevation must survive the write→DB→read round-trip.
+        afterFirst.Scene.PlacedItems[0].Elevation.Should().Be(0.5m);
 
         // Replace with empty scene â†’ everything should be wiped.
         var empty = new SceneDto(
