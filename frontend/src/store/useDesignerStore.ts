@@ -31,6 +31,7 @@ interface DesignerActions {
   ) => void;
   setDrawingFrom: (point: [number, number] | null) => void;
   setFloors: (floors: FloorData[]) => void;
+  removeFloor: (id: string) => void;
   updateFloor: (
     id: string,
     changes: Partial<Pick<FloorData, "flooringVariantId">>
@@ -148,6 +149,10 @@ export const useDesignerStore = create<DesignerStore>()(
       })),
       setDrawingFrom: (point) => set({ drawingFrom: point }),
       setFloors: (floors) => set({ floors }),
+      removeFloor: (id) => set((s) => ({
+        floors: s.floors.filter((f) => f.id !== id),
+        selectedIds: s.selectedIds.filter((sid) => sid !== id),
+      })),
       updateFloor: (id, changes) => set((s) => ({
         floors: s.floors.map((f) => f.id === id ? { ...f, ...changes } : f),
       })),

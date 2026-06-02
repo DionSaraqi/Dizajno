@@ -195,6 +195,19 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+// Delete action shared by every selection type.
+function DeleteButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-dizajno-danger hover:bg-red-500 text-white transition-colors"
+    >
+      <Trash2 size={13} /> Delete
+    </button>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function SelectionBar() {
   const selectedIds = useSelectedIds();
@@ -212,8 +225,10 @@ export default function SelectionBar() {
   const updateWall = useDesignerStore((s) => s.updateWall);
   const updateOpening = useDesignerStore((s) => s.updateOpening);
   const updateFloor = useDesignerStore((s) => s.updateFloor);
+  const removeFurniture = useDesignerStore((s) => s.removeFurniture);
   const removeWall = useDesignerStore((s) => s.removeWall);
   const removeOpening = useDesignerStore((s) => s.removeOpening);
+  const removeFloor = useDesignerStore((s) => s.removeFloor);
 
   if (selectedIds.length !== 1) return null;
   const id = selectedIds[0];
@@ -248,6 +263,7 @@ export default function SelectionBar() {
             onTexture={(slot, url) => setFurnitureMaterialTextures(furn.id, { [slot]: url })}
           />
         )}
+        <DeleteButton onClick={() => removeFurniture(furn.id)} />
       </Shell>
     );
   }
@@ -275,13 +291,7 @@ export default function SelectionBar() {
             onChange={(v) => updateWall(wall.id, { paintVariantId: v })}
           />
         )}
-        <button
-          type="button"
-          onClick={() => removeWall(wall.id)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-dizajno-danger hover:bg-red-500 text-white transition-colors"
-        >
-          <Trash2 size={13} /> Delete
-        </button>
+        <DeleteButton onClick={() => removeWall(wall.id)} />
       </Shell>
     );
   }
@@ -313,13 +323,7 @@ export default function SelectionBar() {
             onChange={(v) => updateOpening(opening.id, { productVariantId: v })}
           />
         )}
-        <button
-          type="button"
-          onClick={() => removeOpening(opening.id)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-dizajno-danger hover:bg-red-500 text-white transition-colors"
-        >
-          <Trash2 size={13} /> Delete
-        </button>
+        <DeleteButton onClick={() => removeOpening(opening.id)} />
       </Shell>
     );
   }
@@ -342,6 +346,7 @@ export default function SelectionBar() {
             onChange={(v) => updateFloor(floor.id, { flooringVariantId: v })}
           />
         )}
+        <DeleteButton onClick={() => removeFloor(floor.id)} />
       </Shell>
     );
   }

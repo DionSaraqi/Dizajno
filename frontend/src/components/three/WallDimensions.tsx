@@ -20,7 +20,8 @@ import type { WallData, FloorData } from "@/types/designer";
 
 // ── Tunables ────────────────────────────────────────────────────────────────
 const DIM_GAP = 0.35; // gap beyond the wall face to the inner dimension line
-const TIER_GAP = 0.5; // extra offset for the outer (hover) dimension line
+const TIER_GAP = 1.0; // extra offset for the outer (hover) dimension line — a full
+//                       grid cell so the inner & outer labels never run together
 const ARROW = 0.16; // arrowhead wing length
 const ARROW_ANGLE = (28 * Math.PI) / 180;
 const EXT_OVERSHOOT = 0.08; // how far the extension line passes the dim line

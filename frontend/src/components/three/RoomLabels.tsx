@@ -76,7 +76,7 @@ export default function RoomLabels({ floors }: RoomLabelsProps) {
             style={{ pointerEvents: "none", userSelect: "none" }}
           >
             <div className="px-2 py-0.5 rounded bg-white/80 text-[11px] font-medium text-slate-600 whitespace-nowrap shadow-sm">
-              Room ({area.toFixed(3)} m²)
+              Room ({area.toFixed(2)} m²)
             </div>
           </Html>
         );
