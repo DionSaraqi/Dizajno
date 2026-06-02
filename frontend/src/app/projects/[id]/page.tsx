@@ -12,9 +12,10 @@ import {
   Save,
   Share2,
 } from "lucide-react";
-import Sidebar from "@/components/designer/Sidebar";
+import LeftDock from "@/components/designer/LeftDock";
 import Toolbar from "@/components/designer/Toolbar";
 import StatusBar from "@/components/designer/StatusBar";
+import SelectionBar from "@/components/designer/SelectionBar";
 import CanvasDropZone from "@/components/designer/CanvasDropZone";
 import { DesignerProvider } from "@/components/designer/DesignerProvider";
 import { ShareDialog } from "@/components/designer/ShareDialog";
@@ -324,11 +325,12 @@ export default function ProjectDesignerPage() {
           onClose={() => setQuoteOpen(false)}
         />
         <Toolbar />
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
+        <div className="flex flex-1 overflow-hidden relative">
+          <LeftDock />
           <CanvasDropZone>
             <DrawingSurface />
           </CanvasDropZone>
+          <SelectionBar />
         </div>
         <StatusBar />
       </div>

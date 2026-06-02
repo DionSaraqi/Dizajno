@@ -3,7 +3,7 @@
 import React from "react";
 import dynamic from "next/dynamic";
 import { DesignerProvider } from "@/components/designer/DesignerProvider";
-import Sidebar from "@/components/designer/Sidebar";
+import LeftDock from "@/components/designer/LeftDock";
 import Toolbar from "@/components/designer/Toolbar";
 import StatusBar from "@/components/designer/StatusBar";
 import SelectionBar from "@/components/designer/SelectionBar";
@@ -35,7 +35,7 @@ export default function DesignerPage() {
       <div className="w-full h-screen flex flex-col bg-dizajno-bg overflow-hidden">
         <Toolbar />
         <div className="flex flex-1 overflow-hidden relative">
-          <Sidebar />
+          <LeftDock />
           <CanvasDropZone>
             <DrawingSurface />
           </CanvasDropZone>
