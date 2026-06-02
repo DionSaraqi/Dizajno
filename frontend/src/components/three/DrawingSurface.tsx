@@ -40,6 +40,7 @@ import BookshelfModel from "./furniture/BookshelfModel";
 import NightstandModel from "./furniture/NightstandModel";
 import GLTFModel from "./furniture/GLTFModel";
 import Measurements from "./Measurements";
+import RoomLabels from "./RoomLabels";
 import SnapIndicator from "./SnapIndicator";
 import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
 import {
@@ -774,6 +775,9 @@ function SceneContent() {
           onPointerOut={() => setHoveredId(null)}
         />
       ))}
+
+      {/* Planner5D-style centered room area labels (2D only) */}
+      {!is3D && <RoomLabels floors={floors} />}
 
       {/* Openings (door/window frames rendered in world space) */}
       {openings.map((opening) => {

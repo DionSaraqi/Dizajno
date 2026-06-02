@@ -37,6 +37,11 @@ export interface FurnitureData {
   locked?: boolean;
   /** Uniform scale multiplier (default 1.0). Affects width/depth/height proportionally. */
   scale?: number;
+  /**
+   * Vertical "levitation" offset in meters (default 0). Raises the model above
+   * the floor — Planner5D-style. Edited via the bottom selection bar.
+   */
+  elevation?: number;
   /** Per-material color overrides keyed by material name in the GLB */
   materialColors?: Record<string, string>;
   /** Per-material texture URL overrides keyed by material name in the GLB */
@@ -215,6 +220,14 @@ export interface DesignerState {
   gridSize: number;
   wallThickness: number;
   wallHeight: number;
+
+  // Planner5D-style UI state (not tracked by undo/redo)
+  /** Which floating catalog panel is open in the left dock, if any. */
+  activePanel: "build" | "furnish" | "search" | null;
+  /** Whether persistent wall dimension arrows are shown in 2D mode. */
+  showDimensions: boolean;
+  /** Whether wall dimensions measure the inner or outer face. */
+  dimensionFace: "inner" | "outer";
 
   // Interaction lock — true while dragging/placing furniture (disables camera)
   isDragging: boolean;

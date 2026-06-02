@@ -40,7 +40,13 @@ interface DesignerActions {
   placeFurniture: (item: FurnitureData) => void;
   moveFurniture: (id: string, position: [number, number]) => void;
   rotateFurniture: (id: string) => void;
+  setFurnitureRotation: (id: string, rotation: number) => void;
   scaleFurniture: (id: string, scale: number) => void;
+  resizeFurniture: (
+    id: string,
+    dims: Partial<Pick<FurnitureData, "width" | "depth" | "height">>
+  ) => void;
+  setFurnitureElevation: (id: string, elevation: number) => void;
   setFurnitureMaterialColors: (id: string, colors: Record<string, string>) => void;
   setFurnitureMaterialTextures: (id: string, textures: Record<string, string>) => void;
   removeFurniture: (id: string) => void;
@@ -71,6 +77,11 @@ interface DesignerActions {
   setGridSize: (size: number) => void;
   setWallThickness: (thickness: number) => void;
   setWallHeight: (height: number) => void;
+
+  // Planner5D-style UI state
+  setActivePanel: (panel: DesignerState["activePanel"]) => void;
+  setShowDimensions: (show: boolean) => void;
+  setDimensionFace: (face: DesignerState["dimensionFace"]) => void;
 
   // Interaction lock (disables camera while dragging/placing furniture)
   setDragging: (dragging: boolean) => void;
@@ -106,6 +117,9 @@ const initialState: DesignerState = {
   gridSize: 1,
   wallThickness: 0.15,
   wallHeight: 2.5,
+  activePanel: "furnish",
+  showDimensions: true,
+  dimensionFace: "outer",
   isDragging: false,
   readOnly: false,
   pendingDrop: null,
@@ -151,6 +165,53 @@ export const useDesignerStore = create<DesignerStore>()(
         set((s) => ({
           furniture: s.furniture.map((f) =>
             f.id === id ? { ...f, rotation: f.rotation + Math.PI / 2 } : f
+          ),
+        })),
+      setFurnitureRotation: (id, rotation) =>
+        set((s) => ({
+          furniture: s.furniture.map((f) =>
+            f.id === id ? { ...f, rotation } : f
+          ),
+        })),
+      resizeFurniture: (id, dims) =>
+        set((s) => ({
+          furniture: s.furniture.map((f) => {
+            if (f.id !== id) return f;
+            const def = getFurnitureDef(f.type);
+            // Non-rectangular items carry composite collision boxes that scale
+            // uniformly with the catalog base; editing one axis independently
+            // would break the hitbox, so we resize them proportionally instead.
+            if (def?.collisionBoxes && def.collisionBoxes.length > 0) {
+              const target =
+                dims.width ?? dims.depth ?? dims.height ?? null;
+              const base =
+                dims.width !== undefined
+                  ? def.width
+                  : dims.depth !== undefined
+                  ? def.depth
+                  : def.height;
+              if (target === null || base <= 0) return f;
+              const scale = target / base;
+              return {
+                ...f,
+                scale,
+                width: def.width * scale,
+                depth: def.depth * scale,
+                height: def.height * scale,
+              };
+            }
+            return {
+              ...f,
+              width: dims.width ?? f.width,
+              depth: dims.depth ?? f.depth,
+              height: dims.height ?? f.height,
+            };
+          }),
+        })),
+      setFurnitureElevation: (id, elevation) =>
+        set((s) => ({
+          furniture: s.furniture.map((f) =>
+            f.id === id ? { ...f, elevation: Math.max(0, elevation) } : f
           ),
         })),
       scaleFurniture: (id, scale) =>
@@ -258,6 +319,11 @@ export const useDesignerStore = create<DesignerStore>()(
       setWallThickness: (thickness) => set({ wallThickness: thickness }),
       setWallHeight: (height) => set({ wallHeight: height }),
 
+      // Planner5D-style UI state
+      setActivePanel: (panel) => set({ activePanel: panel }),
+      setShowDimensions: (show) => set({ showDimensions: show }),
+      setDimensionFace: (face) => set({ dimensionFace: face }),
+
       // Interaction lock
       setDragging: (dragging) => set({ isDragging: dragging }),
 
@@ -313,3 +379,6 @@ export const useDragPreview = () => useDesignerStore((s) => s.dragPreview);
 export const useOpenings = () => useDesignerStore((s) => s.openings);
 export const useHoveredId = () => useDesignerStore((s) => s.hoveredId);
 export const usePendingOpeningType = () => useDesignerStore((s) => s.pendingOpeningType);
+export const useActivePanel = () => useDesignerStore((s) => s.activePanel);
+export const useShowDimensions = () => useDesignerStore((s) => s.showDimensions);
+export const useDimensionFace = () => useDesignerStore((s) => s.dimensionFace);
