@@ -12,6 +12,7 @@ public sealed class PlacedItemConfiguration : IEntityTypeConfiguration<PlacedIte
         b.Property(x => x.PositionX).HasColumnType("numeric(10,4)");
         b.Property(x => x.PositionZ).HasColumnType("numeric(10,4)");
         b.Property(x => x.Rotation).HasColumnType("numeric(8,5)");
+        b.Property(x => x.Elevation).HasColumnType("numeric(10,4)").HasDefaultValue(0m);
         b.Property(x => x.Scale).HasColumnType("numeric(5,3)").HasDefaultValue(1m);
         b.Property(x => x.ScaledWidth).HasColumnType("numeric(8,3)");
         b.Property(x => x.ScaledDepth).HasColumnType("numeric(8,3)");

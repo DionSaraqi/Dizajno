@@ -22,8 +22,8 @@ export default function FloatingPanel({ title, onClose, search, children }: Floa
   return (
     <div
       className={[
-        "absolute left-[3.75rem] top-3 bottom-3 z-30 flex flex-col",
-        "bg-dizajno-surface border border-dizajno-border rounded-xl shadow-2xl overflow-hidden",
+        "absolute left-[5.5rem] top-3 bottom-3 z-30 flex flex-col",
+        "bg-dizajno-surface border border-dizajno-border rounded-2xl shadow-2xl overflow-hidden",
         expanded ? "w-[26rem]" : "w-72",
       ].join(" ")}
     >

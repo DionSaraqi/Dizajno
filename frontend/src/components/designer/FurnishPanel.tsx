@@ -1,13 +1,15 @@
 "use client";
 
 /**
- * FurnishPanel — the "Furnish" floating catalog. Mirrors Planner5D's Rooms /
- * Categories tabs. Categories come straight from the catalog's `category`
- * field; Rooms is a curated front-end grouping (type → room), not backend
- * driven. Items are draggable onto the canvas (same flow as the old sidebar).
+ * FurnishPanel — the "Furnish" floating catalog with Planner5D's Rooms /
+ * Categories tabs. Groupings are drill-in: the tab first shows group CARDS;
+ * clicking a card opens that group's items (with a back button). Categories
+ * come from the catalog's `category` field; Rooms is a curated front-end
+ * grouping (type → room), not backend driven. Search overrides with a flat list.
  */
 
-import React, { useCallback, DragEvent } from "react";
+import React, { useCallback, useState, DragEvent } from "react";
+import { ChevronLeft } from "lucide-react";
 import {
   useDesignerStore,
   useActiveFurnitureType,
@@ -19,14 +21,20 @@ import {
 } from "@/utils/furnitureCatalog";
 import type { FurnitureCatalogItem } from "@/types/designer";
 
-// Curated room → furniture-type grouping. Types not present in the catalog are
-// simply skipped (filter), so this is safe as the catalog evolves.
+// Curated room → furniture-type grouping. Types absent from the catalog are
+// skipped (filter), so this stays safe as the catalog evolves.
 const ROOMS: { name: string; types: string[] }[] = [
   { name: "Living room", types: ["sofa", "chair", "table", "bookshelf"] },
   { name: "Bedroom", types: ["bed", "nightstand", "wardrobe"] },
   { name: "Office", types: ["desk", "chair", "bookshelf", "monitor"] },
   { name: "Dining", types: ["table", "chair"] },
 ];
+
+interface Group {
+  key: string;
+  name: string;
+  items: FurnitureCatalogItem[];
+}
 
 interface FurnishPanelProps {
   search: string;
@@ -36,7 +44,8 @@ export default function FurnishPanel({ search }: FurnishPanelProps) {
   const activeFurnitureType = useActiveFurnitureType();
   const setMode = useDesignerStore((s) => s.setMode);
   const setActiveFurniture = useDesignerStore((s) => s.setActiveFurniture);
-  const [tab, setTab] = React.useState<"rooms" | "categories">("categories");
+  const [tab, setTab] = useState<"rooms" | "categories">("categories");
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const handleDragStart = useCallback(
     (e: DragEvent<HTMLButtonElement>, item: FurnitureCatalogItem) => {
@@ -59,15 +68,6 @@ export default function FurnishPanel({ search }: FurnishPanelProps) {
     [activeFurnitureType, setMode, setActiveFurniture]
   );
 
-  const filtered = search.trim()
-    ? furnitureCatalog.filter(
-        (item) =>
-          item.label.toLowerCase().includes(search.toLowerCase()) ||
-          item.type.toLowerCase().includes(search.toLowerCase()) ||
-          item.category.toLowerCase().includes(search.toLowerCase())
-      )
-    : null;
-
   const renderItem = (item: FurnitureCatalogItem) => (
     <FurnitureButton
       key={item.type}
@@ -78,7 +78,16 @@ export default function FurnishPanel({ search }: FurnishPanelProps) {
     />
   );
 
-  // Search overrides tabs with a flat result list.
+  // Search overrides tabs + drill-down with a flat result list.
+  const filtered = search.trim()
+    ? furnitureCatalog.filter(
+        (item) =>
+          item.label.toLowerCase().includes(search.toLowerCase()) ||
+          item.type.toLowerCase().includes(search.toLowerCase()) ||
+          item.category.toLowerCase().includes(search.toLowerCase())
+      )
+    : null;
+
   if (filtered) {
     return (
       <div className="space-y-1">
@@ -90,6 +99,24 @@ export default function FurnishPanel({ search }: FurnishPanelProps) {
     );
   }
 
+  const groups: Group[] =
+    tab === "categories"
+      ? furnitureCategories
+          .map((c) => ({ key: c, name: c, items: getFurnitureByCategory(c) }))
+          .filter((g) => g.items.length > 0)
+      : ROOMS.map((r) => ({
+          key: r.name,
+          name: r.name,
+          items: furnitureCatalog.filter((i) => r.types.includes(i.type)),
+        })).filter((g) => g.items.length > 0);
+
+  const switchTab = (t: "rooms" | "categories") => {
+    setTab(t);
+    setOpenGroup(null);
+  };
+
+  const current = openGroup ? groups.find((g) => g.key === openGroup) : null;
+
   return (
     <div className="space-y-3">
       {/* Tabs */}
@@ -98,7 +125,7 @@ export default function FurnishPanel({ search }: FurnishPanelProps) {
           <button
             key={t}
             type="button"
-            onClick={() => setTab(t)}
+            onClick={() => switchTab(t)}
             className={[
               "pb-2 text-xs font-medium capitalize border-b-2 -mb-px transition-colors",
               tab === t
@@ -111,31 +138,40 @@ export default function FurnishPanel({ search }: FurnishPanelProps) {
         ))}
       </div>
 
-      {tab === "categories"
-        ? furnitureCategories.map((category) => {
-            const items = getFurnitureByCategory(category);
-            if (items.length === 0) return null;
-            return (
-              <div key={category}>
-                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted px-1 mb-1">
-                  {category}
-                </h3>
-                <div className="space-y-0.5">{items.map(renderItem)}</div>
+      {current ? (
+        // Drilled into a group → back button + that group's items.
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setOpenGroup(null)}
+            className="flex items-center gap-1 text-xs font-medium text-dizajno-muted hover:text-dizajno-text transition-colors"
+          >
+            <ChevronLeft size={14} /> {current.name}
+          </button>
+          <div className="space-y-0.5">{current.items.map(renderItem)}</div>
+        </div>
+      ) : (
+        // Group cards (the extra click) — 2-col grid, Planner5D style.
+        <div className="grid grid-cols-2 gap-2.5">
+          {groups.map((g) => (
+            <button
+              key={g.key}
+              type="button"
+              onClick={() => setOpenGroup(g.key)}
+              className="flex flex-col rounded-xl border border-dizajno-border bg-dizajno-bg overflow-hidden text-left hover:border-dizajno-accent/50 hover:bg-dizajno-elevated transition-colors"
+            >
+              <div
+                className="aspect-[4/3] w-full bg-dizajno-surface flex items-center justify-center p-3 text-dizajno-muted"
+                dangerouslySetInnerHTML={{ __html: g.items[0]?.svgPreview ?? "" }}
+              />
+              <div className="px-2.5 py-2">
+                <div className="text-xs font-medium text-dizajno-text truncate">{g.name}</div>
+                <div className="text-[10px] text-dizajno-muted">{g.items.length} items</div>
               </div>
-            );
-          })
-        : ROOMS.map((room) => {
-            const items = furnitureCatalog.filter((i) => room.types.includes(i.type));
-            if (items.length === 0) return null;
-            return (
-              <div key={room.name}>
-                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-dizajno-muted px-1 mb-1">
-                  {room.name}
-                </h3>
-                <div className="space-y-0.5">{items.map(renderItem)}</div>
-              </div>
-            );
-          })}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

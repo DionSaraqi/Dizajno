@@ -114,7 +114,7 @@ public sealed class ProjectsEndpointsTests : IClassFixture<DizajnoApiFactory>
             PlacedItems: new[]
             {
                 new PlacedItemDto(Guid.NewGuid(), variantId,
-                    1.5m, 1.5m, 0m, 1m, 0.6m, 0.6m, 0.45m, null, null)
+                    1.5m, 1.5m, 0m, 0m, 1m, 0.6m, 0.6m, 0.45m, null, null)
             });
 
         var put = await client.PutAsJsonAsync($"/api/projects/{created.Id}/scene",

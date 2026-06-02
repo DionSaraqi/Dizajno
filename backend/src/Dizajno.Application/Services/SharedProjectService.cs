@@ -277,13 +277,13 @@ public sealed class SharedProjectService : ISharedProjectService
             .Where(p => p.ProjectId == projectId)
             .Select(p => new
             {
-                p.Id, p.ProductVariantId, p.PositionX, p.PositionZ, p.Rotation, p.Scale,
+                p.Id, p.ProductVariantId, p.PositionX, p.PositionZ, p.Rotation, p.Elevation, p.Scale,
                 p.ScaledWidth, p.ScaledDepth, p.ScaledHeight, p.MaterialColors, p.MaterialTextures
             })
             .ToListAsync(cancellationToken);
         var placed = placedRows
             .Select(p => new PlacedItemDto(
-                p.Id, p.ProductVariantId, p.PositionX, p.PositionZ, p.Rotation, p.Scale,
+                p.Id, p.ProductVariantId, p.PositionX, p.PositionZ, p.Rotation, p.Elevation, p.Scale,
                 p.ScaledWidth, p.ScaledDepth, p.ScaledHeight,
                 p.MaterialColors is null
                     ? null

@@ -9,6 +9,8 @@ public sealed class PlacedItem
     public decimal PositionZ { get; set; }
     /// <summary>Rotation around the Y axis in radians.</summary>
     public decimal Rotation { get; set; }
+    /// <summary>Vertical "levitation" offset above the floor, in meters.</summary>
+    public decimal Elevation { get; set; } = 0m;
     public decimal Scale { get; set; } = 1m;
     /// <summary>
     /// Cached final dimensions after the scale multiplier is applied. Stored so a

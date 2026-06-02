@@ -97,6 +97,7 @@ export function mapStoreToApiScene(
       positionX: f.position[0],
       positionZ: f.position[1],
       rotation: f.rotation,
+      elevation: f.elevation ?? 0,
       scale: f.scale ?? 1,
       scaledWidth: f.width,
       scaledDepth: f.depth,
@@ -174,6 +175,7 @@ export function mapApiSceneToStore(
       color: def?.color ?? "#ffffff",
       locked: true,
       scale: p.scale,
+      elevation: p.elevation ?? 0,
       materialColors: p.materialColors ?? undefined,
       materialTextures: p.materialTextures ?? undefined,
     });

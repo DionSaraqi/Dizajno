@@ -279,6 +279,8 @@ export interface PlacedItemApi {
   positionX: number;
   positionZ: number;
   rotation: number;
+  /** Vertical "levitation" offset above the floor, in meters. */
+  elevation: number;
   scale: number;
   scaledWidth: number;
   scaledDepth: number;

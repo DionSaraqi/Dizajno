@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * LeftDock — replaces the old fixed Sidebar. Renders the slim IconRail and,
- * when a panel is active, the matching FloatingPanel (Build / Furnish) that
- * overlays the canvas, Planner5D-style.
+ * LeftDock — replaces the old fixed Sidebar. Renders the slim floating IconRail
+ * and, when a panel is active, the matching FloatingPanel (Build / Furnish).
+ * Both float over the canvas (Planner5D-style), detached from the screen edges.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useDesignerStore, useActivePanel } from "@/store/useDesignerStore";
 import IconRail from "./IconRail";
 import FloatingPanel from "./FloatingPanel";
@@ -20,8 +20,18 @@ export default function LeftDock() {
 
   const close = () => setActivePanel(null);
 
+  // Drawing / door / window placement is tied to the Build panel. When the
+  // Build panel isn't the active panel, drop out of those modes so selecting
+  // and furnishing stay friction-free. Runs only when the active panel changes.
+  useEffect(() => {
+    if (activePanel !== "build") {
+      const s = useDesignerStore.getState();
+      if (s.mode === "draw" || s.mode === "opening") s.setMode("select");
+    }
+  }, [activePanel]);
+
   return (
-    <div className="relative h-full flex-shrink-0">
+    <>
       <IconRail />
 
       {activePanel === "build" && (
@@ -39,6 +49,6 @@ export default function LeftDock() {
           <FurnishPanel search={search} />
         </FloatingPanel>
       )}
-    </div>
+    </>
   );
 }

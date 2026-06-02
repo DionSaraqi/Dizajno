@@ -36,7 +36,7 @@ export default function IconRail() {
   ];
 
   return (
-    <div className="w-14 h-full flex-shrink-0 bg-dizajno-surface border-r border-dizajno-border flex flex-col items-center py-3 gap-1.5 z-40">
+    <div className="absolute left-3 top-3 z-40 w-14 bg-dizajno-surface border border-dizajno-border rounded-2xl shadow-lg flex flex-col items-center py-2 gap-1">
       {items.map((item) => {
         const isActive =
           (item.key === "build" && activePanel === "build") ||

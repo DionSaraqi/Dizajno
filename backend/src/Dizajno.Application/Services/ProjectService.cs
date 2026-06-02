@@ -724,13 +724,13 @@ public sealed class ProjectService : IProjectService
             .Where(p => p.ProjectId == projectId)
             .Select(p => new
             {
-                p.Id, p.ProductVariantId, p.PositionX, p.PositionZ, p.Rotation, p.Scale,
+                p.Id, p.ProductVariantId, p.PositionX, p.PositionZ, p.Rotation, p.Elevation, p.Scale,
                 p.ScaledWidth, p.ScaledDepth, p.ScaledHeight, p.MaterialColors, p.MaterialTextures
             })
             .ToListAsync(cancellationToken);
         var placed = placedRows
             .Select(p => new PlacedItemDto(
-                p.Id, p.ProductVariantId, p.PositionX, p.PositionZ, p.Rotation, p.Scale,
+                p.Id, p.ProductVariantId, p.PositionX, p.PositionZ, p.Rotation, p.Elevation, p.Scale,
                 p.ScaledWidth, p.ScaledDepth, p.ScaledHeight,
                 p.MaterialColors is null
                     ? null
@@ -825,6 +825,7 @@ public sealed class ProjectService : IProjectService
                 PositionX = p.PositionX,
                 PositionZ = p.PositionZ,
                 Rotation = p.Rotation,
+                Elevation = p.Elevation,
                 Scale = p.Scale,
                 ScaledWidth = p.ScaledWidth,
                 ScaledDepth = p.ScaledDepth,

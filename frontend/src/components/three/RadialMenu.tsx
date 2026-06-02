@@ -5,11 +5,12 @@
  * selected furniture item, rendered as a screen-space <Html> overlay anchored
  * to the item's world position. Furniture-only; hidden while dragging.
  *
- * Pure actions (no popovers) so it stays decoupled from the bottom SelectionBar,
- * which owns the numeric + material editing.
+ * Most buttons are pure actions; the Palette button opens a material popover
+ * (same picker as the bottom SelectionBar) so colors/textures can be edited
+ * straight from the ring.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Html } from "@react-three/drei";
 import {
   RotateCw,
@@ -18,8 +19,11 @@ import {
   ChevronUp,
   ChevronDown,
   Trash2,
+  Palette,
 } from "lucide-react";
 import { useDesignerStore } from "@/store/useDesignerStore";
+import { getFurnitureDef } from "@/utils/furnitureCatalog";
+import MaterialPicker from "@/components/designer/MaterialPicker";
 import type { FurnitureData } from "@/types/designer";
 
 const ELEVATE_STEP = 0.1; // meters per click
@@ -34,17 +38,27 @@ export default function RadialMenu({ item }: RadialMenuProps) {
   const duplicateFurniture = useDesignerStore((s) => s.duplicateFurniture);
   const setFurnitureElevation = useDesignerStore((s) => s.setFurnitureElevation);
   const removeFurniture = useDesignerStore((s) => s.removeFurniture);
+  const setFurnitureMaterialColors = useDesignerStore((s) => s.setFurnitureMaterialColors);
+  const setFurnitureMaterialTextures = useDesignerStore((s) => s.setFurnitureMaterialTextures);
 
-  const buttons: { icon: React.ReactNode; title: string; onClick: () => void; danger?: boolean }[] = [
+  const [showMaterials, setShowMaterials] = useState(false);
+
+  const def = getFurnitureDef(item.type);
+  const hasMaterials = !!(def?.materialSlots || def?.textureSlots);
+
+  const buttons: { icon: React.ReactNode; title: string; onClick: () => void; danger?: boolean; active?: boolean }[] = [
     { icon: <RotateCcw size={15} />, title: "Rotate left 90°", onClick: () => setFurnitureRotation(item.id, item.rotation - Math.PI / 2) },
     { icon: <RotateCw size={15} />, title: "Rotate right 90°", onClick: () => rotateFurniture(item.id) },
     { icon: <Copy size={15} />, title: "Duplicate", onClick: () => duplicateFurniture(item.id) },
     { icon: <ChevronUp size={15} />, title: "Levitate up", onClick: () => setFurnitureElevation(item.id, (item.elevation ?? 0) + ELEVATE_STEP) },
     { icon: <ChevronDown size={15} />, title: "Levitate down", onClick: () => setFurnitureElevation(item.id, (item.elevation ?? 0) - ELEVATE_STEP) },
+    ...(hasMaterials
+      ? [{ icon: <Palette size={15} />, title: "Materials", onClick: () => setShowMaterials((v) => !v), active: showMaterials }]
+      : []),
     { icon: <Trash2 size={15} />, title: "Delete", onClick: () => removeFurniture(item.id), danger: true },
   ];
 
-  const radius = 48;
+  const radius = 52;
   const cy = item.height / 2 + (item.elevation ?? 0);
 
   return (
@@ -80,6 +94,8 @@ export default function RadialMenu({ item }: RadialMenuProps) {
                 "w-8 h-8 flex items-center justify-center rounded-full shadow-md border transition-colors",
                 b.danger
                   ? "bg-white text-red-500 border-red-200 hover:bg-red-50"
+                  : b.active
+                  ? "bg-dizajno-accent text-white border-dizajno-accent"
                   : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100",
               ].join(" ")}
             >
@@ -87,6 +103,28 @@ export default function RadialMenu({ item }: RadialMenuProps) {
             </button>
           );
         })}
+
+        {/* Material popover — same picker as the bottom SelectionBar */}
+        {showMaterials && def && (
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              left: radius + 22,
+              top: -48,
+              pointerEvents: "auto",
+            }}
+            className="w-52 bg-white rounded-lg shadow-xl border border-slate-200 p-3"
+          >
+            <MaterialPicker
+              def={def}
+              materialColors={item.materialColors}
+              materialTextures={item.materialTextures}
+              onColor={(slot, hex) => setFurnitureMaterialColors(item.id, { [slot]: hex })}
+              onTexture={(slot, url) => setFurnitureMaterialTextures(item.id, { [slot]: url })}
+            />
+          </div>
+        )}
       </div>
     </Html>
   );

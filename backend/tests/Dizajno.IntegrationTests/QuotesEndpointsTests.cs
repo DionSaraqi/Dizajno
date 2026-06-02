@@ -104,6 +104,7 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
             PositionX: 1m,
             PositionZ: 1m,
             Rotation: 0m,
+            Elevation: 0m,
             Scale: 1m,
             ScaledWidth: scaleW ?? stockW,
             ScaledDepth: scaleD ?? stockD,

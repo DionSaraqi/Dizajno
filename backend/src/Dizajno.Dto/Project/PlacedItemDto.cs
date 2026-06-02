@@ -6,6 +6,7 @@ public sealed record PlacedItemDto(
     decimal PositionX,
     decimal PositionZ,
     decimal Rotation,
+    decimal Elevation,
     decimal Scale,
     decimal ScaledWidth,
     decimal ScaledDepth,
