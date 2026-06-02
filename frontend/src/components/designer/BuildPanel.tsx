@@ -63,7 +63,7 @@ export default function BuildPanel() {
           icon={<Pencil size={22} />}
           label="Draw Walls"
           active={mode === "draw"}
-          onClick={() => setMode("draw")}
+          onClick={() => setMode(mode === "draw" ? "select" : "draw")}
         />
         <Tile icon={<Square size={22} />} label="Rooms" disabled />
         <Tile icon={<Wand2 size={22} />} label="Smart Wizard" disabled />
