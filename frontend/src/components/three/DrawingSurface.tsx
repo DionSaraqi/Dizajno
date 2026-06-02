@@ -782,7 +782,7 @@ function SceneContent() {
       ))}
 
       {/* Planner5D-style centered room area labels (2D only) */}
-      {!is3D && <RoomLabels floors={floors} />}
+      {!is3D && <RoomLabels floors={floors} walls={walls} />}
 
       {/* Planner5D-style wall dimensions (2D only): inner clear distance always,
           full wall length on hover. */}

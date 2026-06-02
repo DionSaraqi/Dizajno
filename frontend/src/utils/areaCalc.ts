@@ -68,6 +68,107 @@ function distance(a: readonly [number, number], b: readonly [number, number]): n
   return Math.sqrt(dx * dx + dz * dz);
 }
 
+// ── Inner (usable) floor area ──────────────────────────────────────────────────
+// Floor polygons are traced along wall *centerlines*, so their area includes the
+// footprint under the walls. The inner usable area is the polygon inset inward
+// by each bounding wall's half-thickness — the area between the walls' inner
+// faces, which is what people mean by "room size".
+
+type Pt = readonly [number, number];
+
+function norm2(x: number, z: number): [number, number] {
+  const l = Math.hypot(x, z) || 1;
+  return [x / l, z / l];
+}
+
+/** Distance from point p to segment a→b. */
+function pointSegDistance(p: Pt, a: Pt, b: Pt): number {
+  const abx = b[0] - a[0];
+  const abz = b[1] - a[1];
+  const len2 = abx * abx + abz * abz;
+  let t = len2 > 0 ? ((p[0] - a[0]) * abx + (p[1] - a[1]) * abz) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - (a[0] + t * abx), p[1] - (a[1] + t * abz));
+}
+
+/**
+ * Half-thickness of the wall lying on the floor edge vi→vj. Matches the wall
+ * whose centerline is parallel to the edge and passes through its midpoint
+ * (robust to walls that were split at intersections). Returns 0 when no wall
+ * bounds the edge, so that edge isn't inset.
+ */
+function edgeWallHalfThickness(vi: Pt, vj: Pt, walls: ReadonlyArray<WallData>): number {
+  const mid: Pt = [(vi[0] + vj[0]) / 2, (vi[1] + vj[1]) / 2];
+  const [edx, edz] = norm2(vj[0] - vi[0], vj[1] - vi[1]);
+  let best = 0;
+  let bestDist = Infinity;
+  for (const w of walls) {
+    const [wdx, wdz] = norm2(w.end[0] - w.start[0], w.end[1] - w.start[1]);
+    if (Math.abs(edx * wdx + edz * wdz) < 0.9) continue; // not parallel
+    const d = pointSegDistance(mid, w.start, w.end);
+    if (d < bestDist) {
+      bestDist = d;
+      best = w.thickness / 2;
+    }
+  }
+  return bestDist < 0.2 ? best : 0;
+}
+
+/**
+ * Inset a centerline floor polygon inward by each bounding wall's half-thickness.
+ * Each edge is offset toward the polygon interior, then consecutive offset lines
+ * are intersected to form the new corners. Small offsets (wall thickness) keep
+ * this stable for convex and L-shaped rooms alike.
+ */
+export function insetFloorPolygon(
+  vertices: ReadonlyArray<readonly [number, number]>,
+  walls: ReadonlyArray<WallData>
+): [number, number][] {
+  const n = vertices.length;
+  if (n < 3) return vertices.map((v) => [v[0], v[1]] as [number, number]);
+
+  const cx = vertices.reduce((s, v) => s + v[0], 0) / n;
+  const cz = vertices.reduce((s, v) => s + v[1], 0) / n;
+
+  // Offset line per edge: a point on the line + its direction.
+  const lines = vertices.map((vi, i) => {
+    const vj = vertices[(i + 1) % n];
+    const [dx, dz] = norm2(vj[0] - vi[0], vj[1] - vi[1]);
+    let nx = -dz;
+    let nz = dx; // perpendicular
+    const mx = (vi[0] + vj[0]) / 2;
+    const mz = (vi[1] + vj[1]) / 2;
+    if (nx * (cx - mx) + nz * (cz - mz) < 0) {
+      nx = -nx;
+      nz = -nz; // point inward (toward centroid)
+    }
+    const d = edgeWallHalfThickness(vi, vj, walls);
+    return { px: vi[0] + nx * d, pz: vi[1] + nz * d, dx, dz };
+  });
+
+  const out: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const a = lines[(i - 1 + n) % n];
+    const b = lines[i];
+    const denom = a.dx * b.dz - a.dz * b.dx;
+    if (Math.abs(denom) < 1e-9) {
+      out.push([vertices[i][0], vertices[i][1]]); // parallel — keep original
+      continue;
+    }
+    const t = ((b.px - a.px) * b.dz - (b.pz - a.pz) * b.dx) / denom;
+    out.push([a.px + t * a.dx, a.pz + t * a.dz]);
+  }
+  return out;
+}
+
+/** Usable floor area: the centerline polygon inset by the walls' half-thickness. */
+export function innerFloorArea(
+  vertices: ReadonlyArray<readonly [number, number]>,
+  walls: ReadonlyArray<WallData>
+): number {
+  return polygonArea(insetFloorPolygon(vertices, walls));
+}
+
 /**
  * Suggests a quantity for a building-material item based on the calculated
  * room areas + the product's coverage rate (m²/L for paint) and waste factor.

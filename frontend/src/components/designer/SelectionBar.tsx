@@ -21,7 +21,7 @@ import {
   useFloors,
 } from "@/store/useDesignerStore";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
-import { polygonArea } from "@/utils/areaCalc";
+import { innerFloorArea } from "@/utils/areaCalc";
 import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
 import type { FurnitureCatalogItem } from "@/types/designer";
 import MaterialPicker from "./MaterialPicker";
@@ -335,7 +335,7 @@ export default function SelectionBar() {
     );
     return (
       <Shell title="Floor">
-        <NumberField label="Area" unit="m²" value={polygonArea(floor.vertices)} readOnly />
+        <NumberField label="Area" unit="m²" value={innerFloorArea(floor.vertices, walls)} readOnly />
         {flooringOptions.length > 0 && (
           <VariantSelect
             label="Flooring"
