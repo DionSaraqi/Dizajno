@@ -140,6 +140,17 @@ public sealed class QuoteService : IQuoteService
             })
             .ToListAsync(cancellationToken);
 
+        // All wall centerlines + thickness — used to inset each floor polygon to
+        // the inner usable area, so flooring is billed on usable m² (matching the
+        // room area shown in the designer), not the gross centerline footprint.
+        var insetWallsRaw = (await _db.Walls
+            .AsNoTracking()
+            .Where(w => w.ProjectId == projectId)
+            .Select(w => new { w.StartX, w.StartZ, w.EndX, w.EndZ, w.Thickness })
+            .ToListAsync(cancellationToken))
+            .Select(w => (sx: w.StartX, sz: w.StartZ, ex: w.EndX, ez: w.EndZ, thickness: w.Thickness))
+            .ToList();
+
         var paintedWallsRaw = await _db.Walls
             .AsNoTracking()
             .Where(w => w.ProjectId == projectId && w.PaintProductVariantId != null)
@@ -369,7 +380,7 @@ public sealed class QuoteService : IQuoteService
         foreach (var group in flooredFloorsRaw.GroupBy(f => f.FlooringProductVariantId))
         {
             if (!materialMeta.TryGetValue(group.Key, out var meta)) continue;
-            var totalAreaM2 = group.Sum(f => PolygonArea(f.Vertices));
+            var totalAreaM2 = group.Sum(f => InnerFloorArea(f.Vertices, insetWallsRaw));
             if (totalAreaM2 <= 0m) continue;
             var withWaste = totalAreaM2 * (1m + meta.WasteFactor);
             pendingLines.Add(new PendingLine(
@@ -544,6 +555,120 @@ public sealed class QuoteService : IQuoteService
             sum += a[0] * b[1] - b[0] * a[1];
         }
         return Math.Abs(sum) / 2m;
+    }
+
+    /// <summary>
+    /// Inner usable area of a centerline floor polygon: each edge is inset inward
+    /// by the half-thickness of the wall lying on it, then consecutive offset
+    /// lines are intersected. Mirrors the frontend insetFloorPolygon so billed
+    /// flooring m² matches the room area shown in the designer. Falls back to the
+    /// gross polygon area when an edge has no bounding wall.
+    /// </summary>
+    internal static decimal InnerFloorArea(
+        string verticesJson,
+        IReadOnlyList<(decimal sx, decimal sz, decimal ex, decimal ez, decimal thickness)> walls)
+    {
+        if (string.IsNullOrWhiteSpace(verticesJson)) return 0m;
+        List<List<decimal>>? raw;
+        try
+        {
+            raw = JsonSerializer.Deserialize<List<List<decimal>>>(verticesJson, JsonOpts);
+        }
+        catch
+        {
+            return 0m;
+        }
+        if (raw is null || raw.Count < 3) return 0m;
+
+        var poly = new List<(double x, double z)>(raw.Count);
+        foreach (var v in raw)
+        {
+            if (v.Count < 2) return PolygonArea(verticesJson);
+            poly.Add(((double)v[0], (double)v[1]));
+        }
+
+        var n = poly.Count;
+        double cx = 0, cz = 0;
+        foreach (var p in poly) { cx += p.x; cz += p.z; }
+        cx /= n; cz /= n;
+
+        // Per-edge inward offset line: a point on the line + its unit direction.
+        var lines = new (double px, double pz, double dx, double dz)[n];
+        for (var i = 0; i < n; i++)
+        {
+            var a = poly[i];
+            var b = poly[(i + 1) % n];
+            double ex = b.x - a.x, ez = b.z - a.z;
+            double len = Math.Sqrt(ex * ex + ez * ez);
+            if (len == 0) return PolygonArea(verticesJson);
+            double dx = ex / len, dz = ez / len;
+            double nx = -dz, nz = dx;
+            double mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+            if (nx * (cx - mx) + nz * (cz - mz) < 0) { nx = -nx; nz = -nz; } // point inward
+            double d = (double)EdgeWallHalfThickness(a, b, walls);
+            lines[i] = (a.x + nx * d, a.z + nz * d, dx, dz);
+        }
+
+        var inset = new List<(double x, double z)>(n);
+        for (var i = 0; i < n; i++)
+        {
+            var la = lines[(i - 1 + n) % n];
+            var lb = lines[i];
+            double denom = la.dx * lb.dz - la.dz * lb.dx;
+            if (Math.Abs(denom) < 1e-9)
+            {
+                inset.Add(poly[i]); // parallel — keep original corner
+                continue;
+            }
+            double t = ((lb.px - la.px) * lb.dz - (lb.pz - la.pz) * lb.dx) / denom;
+            inset.Add((la.px + t * la.dx, la.pz + t * la.dz));
+        }
+
+        double sum = 0;
+        for (var i = 0; i < inset.Count; i++)
+        {
+            var p = inset[i];
+            var q = inset[(i + 1) % inset.Count];
+            sum += p.x * q.z - q.x * p.z;
+        }
+        return (decimal)(Math.Abs(sum) / 2);
+    }
+
+    /// <summary>Half-thickness of the wall lying on the floor edge vi→vj (parallel
+    /// + closest to its midpoint), or 0 when none bounds the edge.</summary>
+    private static decimal EdgeWallHalfThickness(
+        (double x, double z) vi,
+        (double x, double z) vj,
+        IReadOnlyList<(decimal sx, decimal sz, decimal ex, decimal ez, decimal thickness)> walls)
+    {
+        double ex = vj.x - vi.x, ez = vj.z - vi.z;
+        double el = Math.Sqrt(ex * ex + ez * ez);
+        if (el == 0) return 0m;
+        double edx = ex / el, edz = ez / el;
+        double mx = (vi.x + vj.x) / 2, mz = (vi.z + vj.z) / 2;
+        decimal best = 0m;
+        double bestDist = double.MaxValue;
+        foreach (var w in walls)
+        {
+            double wx = (double)(w.ex - w.sx), wz = (double)(w.ez - w.sz);
+            double wl = Math.Sqrt(wx * wx + wz * wz);
+            if (wl == 0) continue;
+            if (Math.Abs(edx * (wx / wl) + edz * (wz / wl)) < 0.9) continue; // not parallel
+            double d = PointSegDistance(mx, mz, (double)w.sx, (double)w.sz, (double)w.ex, (double)w.ez);
+            if (d < bestDist) { bestDist = d; best = w.thickness / 2m; }
+        }
+        return bestDist < 0.2 ? best : 0m;
+    }
+
+    private static double PointSegDistance(
+        double px, double pz, double ax, double az, double bx, double bz)
+    {
+        double abx = bx - ax, abz = bz - az;
+        double len2 = abx * abx + abz * abz;
+        double t = len2 > 0 ? ((px - ax) * abx + (pz - az) * abz) / len2 : 0;
+        t = Math.Max(0, Math.Min(1, t));
+        double dx = px - (ax + t * abx), dz = pz - (az + t * abz);
+        return Math.Sqrt(dx * dx + dz * dz);
     }
 
     // ── GET /api/quotes ───────────────────────────────────────────────────

@@ -617,8 +617,9 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
         lines.Should().ContainSingle()
             .Which.VariantSnapshot.GetProperty("productSlug").GetString()
             .Should().Be("oak-laminate-flooring");
-        // 4 Ã— 5 = 20 mÂ² Ã— (1 + 0.05) = 21.00 mÂ²
-        lines[0].Quantity.Should().Be(21.00m);
+        // Inner usable area (centerline 4×5 inset by the 0.1 m walls' half-thickness):
+        // 3.9 × 4.9 = 19.11 m² × (1 + 0.05 waste) = 20.07 m².
+        lines[0].Quantity.Should().Be(20.07m);
         lines[0].QuantityUnit.Should().Be("m2");
     }
 
