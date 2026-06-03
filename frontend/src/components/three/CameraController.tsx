@@ -20,14 +20,19 @@ export default function CameraController({ is3D, mode }: CameraControllerProps) 
   // left-click drags pan the canvas (convenient and non-destructive).
   // Right-click ALWAYS pans in 2D so the user never has to switch modes to
   // navigate.  Middle-click zooms (dolly) in both 2D and 3D.
+  // Draw + Room modes need left-click to reach the canvas meshes (drawing walls
+  // / placing room corners), so OrbitControls must NOT capture it — otherwise
+  // each click pans (2D) or rotates (3D) the camera.
+  const leftFreeForCanvas = mode === "draw" || mode === "room";
+
   const mouseButtons2D = {
-    LEFT: mode === "draw" ? (undefined as any) : THREE.MOUSE.PAN,
+    LEFT: leftFreeForCanvas ? (undefined as any) : THREE.MOUSE.PAN,
     MIDDLE: THREE.MOUSE.DOLLY,
     RIGHT: THREE.MOUSE.PAN,
   };
 
   const mouseButtons3D = {
-    LEFT: THREE.MOUSE.ROTATE,
+    LEFT: leftFreeForCanvas ? (undefined as any) : THREE.MOUSE.ROTATE,
     MIDDLE: THREE.MOUSE.DOLLY,
     RIGHT: THREE.MOUSE.PAN,
   };

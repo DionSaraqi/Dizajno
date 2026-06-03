@@ -349,15 +349,26 @@ function RoomDraftPreview({
   points: [number, number][];
   cursor: [number, number] | null;
 }) {
+  const all = cursor ? [...points, cursor] : points;
+
   const lineObj = useMemo(() => {
-    const all = cursor ? [...points, cursor] : points;
     const arr: number[] = [];
     for (const [x, z] of all) arr.push(x, 0.06, z);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
     const mat = new THREE.LineBasicMaterial({ color: "#6366f1" });
     return new THREE.Line(geo, mat);
-  }, [points, cursor]);
+  }, [all]);
+
+  // Live length label per drawn segment (placed edges + rubber-band to cursor).
+  const segLabels: { mid: [number, number]; len: number }[] = [];
+  for (let i = 0; i < all.length - 1; i++) {
+    const a = all[i];
+    const b = all[i + 1];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 0.05) continue;
+    segLabels.push({ mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], len });
+  }
 
   return (
     <group>
@@ -367,6 +378,13 @@ function RoomDraftPreview({
           <sphereGeometry args={[i === 0 ? 0.12 : 0.07, 14, 14]} />
           <meshBasicMaterial color={i === 0 ? "#22c55e" : "#6366f1"} />
         </mesh>
+      ))}
+      {segLabels.map((s, i) => (
+        <Html key={`len-${i}`} position={[s.mid[0], 0.3, s.mid[1]]} center>
+          <div className="bg-dizajno-accent text-white px-1.5 py-0.5 rounded text-[11px] font-mono whitespace-nowrap shadow-lg pointer-events-none">
+            {s.len.toFixed(2)}m
+          </div>
+        </Html>
       ))}
     </group>
   );
@@ -482,6 +500,10 @@ function SceneContent() {
       if (snap) {
         p = snapPoint(p[0], p[1], gridSize);
       }
+      // KNOWN-ISSUE(wall-draw-glitch): see docs/KNOWN_ISSUES.md. Suspected that
+      // snapToCorner here can snap the drawing endpoint to a corner behind the
+      // drag direction at certain angles, making the wall jump/extend leftward.
+      // Remove this comment when the issue is fixed.
       // Also snap to existing wall corners (for easy connections)
       return snapToCorner(p, walls);
     },

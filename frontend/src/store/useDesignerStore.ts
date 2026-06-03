@@ -160,7 +160,7 @@ const initialState: DesignerState = {
   activeFurnitureType: null,
   pendingOpeningType: null,
   roomDraft: null,
-  mode: "draw",
+  mode: "select",
   is3D: false,
   selectedIds: [],
   hoveredId: null,
