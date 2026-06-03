@@ -194,7 +194,7 @@ export interface OpeningData {
   productVariantId?: string | null;
 }
 
-export type DesignerMode = "draw" | "select" | "furniture" | "opening";
+export type DesignerMode = "draw" | "select" | "furniture" | "opening" | "room";
 
 export interface DesignerState {
   walls: WallData[];
@@ -210,6 +210,10 @@ export interface DesignerState {
 
   // Active opening type being placed (door or window)
   pendingOpeningType: OpeningType | null;
+
+  // In-progress custom-room polygon vertices (Room tool, "room" mode). Null when
+  // not drawing a room.
+  roomDraft: [number, number][] | null;
 
   // UI
   mode: DesignerMode;

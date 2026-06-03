@@ -56,7 +56,7 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Escape: deselect all / cancel drawing
+      // Escape: deselect all / cancel drawing / finish room or opening mode
       if (e.key === "Escape") {
         const state = useDesignerStore.getState();
         if (state.drawingFrom) {
@@ -65,6 +65,11 @@ export function useKeyboardShortcuts() {
         state.clearSelection();
         if (state.activeFurnitureType) {
           state.setActiveFurniture(null);
+          state.setMode("select");
+        }
+        // Cancel an in-progress custom room or opening placement (setMode clears
+        // the room draft).
+        if (state.mode === "room" || state.mode === "opening") {
           state.setMode("select");
         }
         return;

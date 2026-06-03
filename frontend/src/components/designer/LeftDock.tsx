@@ -26,7 +26,7 @@ export default function LeftDock() {
   useEffect(() => {
     if (activePanel !== "build") {
       const s = useDesignerStore.getState();
-      if (s.mode === "draw" || s.mode === "opening") s.setMode("select");
+      if (s.mode === "draw" || s.mode === "opening" || s.mode === "room") s.setMode("select");
     }
   }, [activePanel]);
 

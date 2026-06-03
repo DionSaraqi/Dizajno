@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
@@ -24,6 +24,7 @@ import {
   usePendingOpeningType,
   useReadOnly,
   useShowDimensions,
+  useRoomDraft,
 } from "@/store/useDesignerStore";
 import GridPlane from "./GridPlane";
 import CameraController from "./CameraController";
@@ -337,6 +338,40 @@ function projectPointOntoWall(cx: number, cz: number, wall: WallData): number | 
   return t * Math.sqrt(lenSq);
 }
 
+// ── Room draft preview ────────────────────────────────────────────────────────
+// Renders the in-progress custom-room polygon: a rubber-band polyline through the
+// placed corners to the cursor, with the first corner highlighted as the close
+// target.
+function RoomDraftPreview({
+  points,
+  cursor,
+}: {
+  points: [number, number][];
+  cursor: [number, number] | null;
+}) {
+  const lineObj = useMemo(() => {
+    const all = cursor ? [...points, cursor] : points;
+    const arr: number[] = [];
+    for (const [x, z] of all) arr.push(x, 0.06, z);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+    const mat = new THREE.LineBasicMaterial({ color: "#6366f1" });
+    return new THREE.Line(geo, mat);
+  }, [points, cursor]);
+
+  return (
+    <group>
+      <primitive object={lineObj} />
+      {points.map((p, i) => (
+        <mesh key={i} position={[p[0], 0.06, p[1]]}>
+          <sphereGeometry args={[i === 0 ? 0.12 : 0.07, 14, 14]} />
+          <meshBasicMaterial color={i === 0 ? "#22c55e" : "#6366f1"} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 // ── Scene Content ───────────────────────────────────────────────────────────
 
 function SceneContent() {
@@ -371,8 +406,14 @@ function SceneContent() {
   const activeFurnitureType = useDesignerStore((s) => s.activeFurnitureType);
   const setMode = useDesignerStore((s) => s.setMode);
   const clearSelection = useDesignerStore((s) => s.clearSelection);
+  const roomDraft = useRoomDraft();
+  const setRoomDraft = useDesignerStore((s) => s.setRoomDraft);
+  const addRoom = useDesignerStore((s) => s.addRoom);
 
   const [previewEnd, setPreviewEnd] = useState<[number, number] | null>(null);
+  // Live cursor position while drawing a custom room polygon (rubber-band).
+  const [roomCursor, setRoomCursor] = useState<[number, number] | null>(null);
+  const ROOM_CLOSE_THRESHOLD = 0.3;
   const drawingRef = useRef(false);
   const drawStartRef = useRef<[number, number] | null>(null);
 
@@ -541,6 +582,24 @@ function SceneContent() {
         return;
       }
 
+      // Custom room: click to drop corners; click near the first corner to close.
+      if (e.button === 0 && mode === "room") {
+        e.stopPropagation();
+        const point = getSnappedPoint(e);
+        if (!point) return;
+        const draft = useDesignerStore.getState().roomDraft ?? [];
+        if (
+          draft.length >= 3 &&
+          Math.hypot(point[0] - draft[0][0], point[1] - draft[0][1]) < ROOM_CLOSE_THRESHOLD
+        ) {
+          addRoom(draft); // closes the polygon → builds walls outward
+          setRoomCursor(null);
+          return;
+        }
+        setRoomDraft([...draft, point]);
+        return;
+      }
+
       // Left-click deselect
       if (e.button === 0 && mode === "select") {
         clearSelection();
@@ -554,6 +613,8 @@ function SceneContent() {
       placeFurniture,
       select,
       clearSelection,
+      addRoom,
+      setRoomDraft,
       walls,
       furniture,
       snap,
@@ -566,6 +627,13 @@ function SceneContent() {
       if (drawingRef.current && mode === "draw") {
         const point = getSnappedPoint(e);
         if (point) setPreviewEnd(point);
+        return;
+      }
+
+      // Rubber-band the custom-room polygon to the cursor.
+      if (mode === "room") {
+        const point = getSnappedPoint(e);
+        if (point) setRoomCursor(point);
         return;
       }
 
@@ -759,6 +827,11 @@ function SceneContent() {
             </Html>
           )}
         </>
+      )}
+
+      {/* Custom-room polygon in progress (Room tool) */}
+      {mode === "room" && roomDraft && roomDraft.length > 0 && (
+        <RoomDraftPreview points={roomDraft} cursor={roomCursor} />
       )}
 
       {/* Floors — selectable in select mode so the user can assign flooring. */}

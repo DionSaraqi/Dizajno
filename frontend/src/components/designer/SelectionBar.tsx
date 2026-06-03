@@ -22,6 +22,7 @@ import {
 } from "@/store/useDesignerStore";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { innerFloorArea } from "@/utils/areaCalc";
+import { isAxisAlignedRect, boundingWalls } from "@/utils/roomBuilder";
 import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
 import type { FurnitureCatalogItem } from "@/types/designer";
 import MaterialPicker from "./MaterialPicker";
@@ -225,6 +226,7 @@ export default function SelectionBar() {
   const updateWall = useDesignerStore((s) => s.updateWall);
   const updateOpening = useDesignerStore((s) => s.updateOpening);
   const updateFloor = useDesignerStore((s) => s.updateFloor);
+  const resizeRectRoom = useDesignerStore((s) => s.resizeRectRoom);
   const removeFurniture = useDesignerStore((s) => s.removeFurniture);
   const removeWall = useDesignerStore((s) => s.removeWall);
   const removeOpening = useDesignerStore((s) => s.removeOpening);
@@ -333,9 +335,30 @@ export default function SelectionBar() {
     const flooringOptions = liveCatalog.filter(
       (i) => i.family === "BuildingMaterial" && i.category === "Flooring"
     );
+    const rect = isAxisAlignedRect(floor.vertices);
+    // Usable W×L for a rectangular room = centerline span minus the bounding
+    // walls' thickness (so it matches the inner area + the Room-tool input).
+    let usableW = 0;
+    let usableL = 0;
+    if (rect) {
+      const xs = floor.vertices.map((v) => v[0]);
+      const zs = floor.vertices.map((v) => v[1]);
+      const t = boundingWalls(floor.vertices, walls)[0]?.thickness ?? 0.15;
+      usableW = Math.max(0, Math.max(...xs) - Math.min(...xs) - t);
+      usableL = Math.max(0, Math.max(...zs) - Math.min(...zs) - t);
+    }
     return (
       <Shell title="Floor">
-        <NumberField label="Area" unit="m²" value={innerFloorArea(floor.vertices, walls)} readOnly />
+        {rect ? (
+          <>
+            <NumberField label="Width" unit="m" value={usableW} step={0.1} min={0.5}
+              onCommit={(v) => resizeRectRoom(floor.id, v, usableL)} />
+            <NumberField label="Length" unit="m" value={usableL} step={0.1} min={0.5}
+              onCommit={(v) => resizeRectRoom(floor.id, usableW, v)} />
+          </>
+        ) : (
+          <NumberField label="Area" unit="m²" value={innerFloorArea(floor.vertices, walls)} readOnly />
+        )}
         {flooringOptions.length > 0 && (
           <VariantSelect
             label="Flooring"
