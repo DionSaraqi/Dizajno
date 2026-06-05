@@ -41,6 +41,7 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       className = "",
       children,
       type = "button",
+      "aria-label": ariaLabel,
       ...props
     },
     ref,
@@ -50,6 +51,7 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         ref={ref}
         type={type}
         title={tooltip}
+        aria-label={ariaLabel ?? tooltip}
         disabled={disabled}
         className={[
           "inline-flex items-center justify-center rounded-md transition-colors",

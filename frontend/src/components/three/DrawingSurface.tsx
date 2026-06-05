@@ -452,6 +452,8 @@ function SceneContent() {
   // Ghost furniture state (furniture mode hover)
   const [ghostPos, setGhostPos] = useState<[number, number] | null>(null);
   const [ghostSnapEdge, setGhostSnapEdge] = useState<SnapEdge | null>(null);
+  // Last-pushed ghost position, to skip redundant state writes each frame.
+  const ghostPosRef = useRef<[number, number] | null>(null);
 
   // Ghost opening state (opening mode hover)
   const [ghostOpening, setGhostOpening] = useState<{
@@ -562,6 +564,25 @@ function SceneContent() {
       if (!pointsEqual(snapped, roomCursorRef.current)) {
         roomCursorRef.current = snapped;
         setRoomCursor(snapped);
+      }
+      return;
+    }
+
+    // 4. Furniture placement ghost — follow the cursor. Driven here (global
+    // pointer) rather than GridPlane.onPointerMove so it keeps tracking over a
+    // floor: FloorMesh is an interactive mesh above the GridPlane and its
+    // stopPropagation hover handlers otherwise swallow the move event before it
+    // reaches the GridPlane, freezing the ghost at the floor's edge.
+    if (mode === "furniture" && activeFurnitureType) {
+      if (!hasGround) return;
+      const def = getFurnitureDef(activeFurnitureType);
+      if (!def) return;
+      const itemDesc = { rotation: 0, width: def.width, depth: def.depth };
+      const result = smartSnap(ground.x, ground.z, itemDesc, walls, furniture, snap, gridSize);
+      if (!pointsEqual(result.position, ghostPosRef.current)) {
+        ghostPosRef.current = result.position;
+        setGhostPos(result.position);
+        setGhostSnapEdge(result.snapEdge);
       }
       return;
     }
@@ -774,46 +795,18 @@ function SceneContent() {
     ]
   );
 
-  const handlePointerMove = useCallback(
-    (e: any) => {
-      // Wall-draw and room-tool previews are driven by the per-frame ground-plane
-      // raycast in useFrame (see above) so they keep tracking the cursor even when
-      // it passes over existing walls, which stopPropagation on pointermove.
-
-      // Update ghost preview position for furniture mode
-      if (mode === "furniture" && activeFurnitureType) {
-        const rawPoint = e.point;
-        if (!rawPoint) return;
-
-        const def = getFurnitureDef(activeFurnitureType);
-        if (!def) return;
-
-        const itemDesc = { rotation: 0, width: def.width, depth: def.depth };
-        const result = smartSnap(
-          rawPoint.x,
-          rawPoint.z,
-          itemDesc,
-          walls,
-          furniture,
-          snap,
-          gridSize
-        );
-        setGhostPos(result.position);
-        setGhostSnapEdge(result.snapEdge);
-      }
-    },
-    [mode, activeFurnitureType, walls, furniture, snap, gridSize]
-  );
-
-  // Wall-draw finishing is handled by the window-level pointerup (endWallDraw)
-  // so it works even when the cursor is released over the Build panel or
-  // off-canvas. GridPlane no longer needs an onPointerUp handler.
+  // All live cursor-tracking previews (wall draw, room rubber-band, furniture
+  // ghost) are driven by the per-frame ground-plane raycast in useFrame (above)
+  // off the GLOBAL pointer, so they keep tracking even over meshes that
+  // stopPropagation (existing walls, floors). GridPlane needs no onPointerMove
+  // or onPointerUp handler — only onPointerDown (to start/place/select).
 
   // Hide ghost when not in furniture mode
   useEffect(() => {
     if (mode !== "furniture" || !activeFurnitureType) {
       setGhostPos(null);
       setGhostSnapEdge(null);
+      ghostPosRef.current = null;
     }
   }, [mode, activeFurnitureType]);
 
@@ -863,7 +856,6 @@ function SceneContent() {
       <GridPlane
         gridSize={gridSize}
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
       />
 
       {/* Rendered walls */}
@@ -964,15 +956,9 @@ function SceneContent() {
         <RoomDraftPreview points={roomDraft} cursor={roomCursor} />
       )}
 
-      {/* Floors — selectable in select mode so the user can assign flooring. */}
-      {/* KNOWN-ISSUE(furniture-floor-interaction): see docs/KNOWN_ISSUES.md. The
-          floor is interactive and rendered above the GridPlane. Its hover
-          handlers stop propagation, so the GridPlane onPointerMove that drives the
-          furniture ghost preview never fires over a floor (the ghost freezes;
-          a click still places correctly). The onClick below also steals the
-          selection from furniture sitting on top (the pointer-down selects the
-          furniture, the synthesized click falls through to here). Remove when
-          fixed. */}
+      {/* Floors — selectable in select mode so the user can assign flooring.
+          Selecting furniture that sits on a floor no longer falls through here:
+          FurnitureItem3D stops the click from reaching this onClick. */}
       {floors.map((floor) => (
         <FloorMesh
           key={floor.id}

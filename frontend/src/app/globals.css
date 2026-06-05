@@ -23,6 +23,22 @@
   }
 }
 
+/* ---------- Reduced motion ---------------------------------------- *
+ * Honor the OS "reduce motion" preference globally: collapse animation
+ * and transition durations, stop looping animations after one cycle, and
+ * disable smooth scrolling. Covers fade/scale/slide-in, the light sweep,
+ * skeleton pulse, spinners, the ping dot, and any future motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ---------- Surfaces & patterns ---------------------------------- */
 
 /* Hairline grid — for marketing/auth backdrop. Much subtler than the old blueprint look. */

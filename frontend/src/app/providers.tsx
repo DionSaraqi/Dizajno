@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Toaster } from "sonner";
 import { useAuthStore } from "@/store/useAuthStore";
 
 interface ProvidersProps {
@@ -39,6 +40,7 @@ export function Providers({ children }: ProvidersProps) {
     <QueryClientProvider client={client}>
       <AuthBootstrap />
       {children}
+      <Toaster richColors closeButton position="top-right" />
     </QueryClientProvider>
   );
 }

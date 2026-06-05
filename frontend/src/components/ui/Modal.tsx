@@ -1,7 +1,8 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 export interface ModalProps {
   open: boolean;
@@ -40,6 +41,12 @@ export default function Modal({
   modal = false,
   children,
 }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Move focus into the dialog on open, trap Tab within it, and restore focus
+  // to the trigger on close.
+  useFocusTrap(dialogRef, open);
+
   // Lock body scroll while modal is open
   useEffect(() => {
     if (!open) return;
@@ -68,14 +75,19 @@ export default function Modal({
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? "modal-title" : undefined}
+      aria-describedby={
+        description && (title || !modal) ? "modal-description" : undefined
+      }
     >
       <div
-        className="absolute inset-0 bg-zinc-950/40 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-zinc-950/50 backdrop-blur-[2px]"
         onClick={modal ? undefined : onClose}
       />
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className={[
-          "relative w-full bg-dizajno-surface rounded-2xl shadow-card-lg border border-dizajno-border",
+          "relative w-full bg-dizajno-surface rounded-2xl shadow-card-lg border border-dizajno-border outline-none",
           "animate-scale-in",
           sizeMap[size],
         ].join(" ")}
@@ -92,7 +104,10 @@ export default function Modal({
                 </h2>
               )}
               {description && (
-                <p className="mt-1 text-[13px] text-dizajno-muted leading-relaxed">
+                <p
+                  id="modal-description"
+                  className="mt-1 text-[13px] text-dizajno-muted leading-relaxed"
+                >
                   {description}
                 </p>
               )}

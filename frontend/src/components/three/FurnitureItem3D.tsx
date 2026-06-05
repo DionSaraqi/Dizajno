@@ -103,14 +103,13 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   };
 
   const handlePointerDown = (e: any) => {
+    // Only intercept in select mode. In furniture / draw / room / opening modes
+    // the gesture must reach GridPlane.onPointerDown (place a new item, draw a
+    // wall, drop a room corner…), so bail BEFORE stopPropagation — otherwise the
+    // full-bounds pick box would swallow clicks landing on/near an existing item.
+    if (useDesignerStore.getState().mode !== "select") return;
     e.stopPropagation();
 
-    // KNOWN-ISSUE(furniture-floor-interaction): see docs/KNOWN_ISSUES.md.
-    // Selection happens here on pointer-DOWN (with stopPropagation), but there's
-    // no onClick to stop the synthesized click on pointer-up, so when the item
-    // sits on a floor the click falls through to FloorMesh.onClick and the
-    // selection switches to the floor. A moving cursor also makes this down miss
-    // the thin hitbox and land on whatever is behind. Remove when fixed.
     if (e.nativeEvent?.shiftKey || e.shiftKey) {
       toggleSelect(item.id);
     } else {
@@ -204,6 +203,9 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
         onPointerUp={handlePointerUp}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
+        // Stop the synthesized click from bubbling past the item to the floor
+        // mesh underneath, whose onClick would otherwise steal the selection.
+        onClick={(e) => e.stopPropagation()}
       >
         {hasGLTF ? (
           <GLTFModel
@@ -226,16 +228,20 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
           />
         ) : null}
 
-        {/* Hover / selection outline */}
-        {(isSelected || isHovered) && (
-          <mesh position={[0, item.height / 2, 0]}>
-            <boxGeometry
-              args={[item.width + 0.02, item.height + 0.02, item.depth + 0.02]}
-            />
-            <meshBasicMaterial visible={false} />
+        {/* Always-present invisible pick box — a forgiving, full-bounds hit
+            target so selection/hover doesn't depend on landing precisely on the
+            model's (often thin / shallow-in-3D) geometry. Transparent so it
+            renders nothing; depthWrite off so it never occludes. The selection /
+            hover outline is drawn on it only when active. */}
+        <mesh position={[0, item.height / 2, 0]}>
+          <boxGeometry
+            args={[item.width + 0.02, item.height + 0.02, item.depth + 0.02]}
+          />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          {(isSelected || isHovered) && (
             <Edges threshold={15} color={isSelected ? "#ffffff" : "#00aaff"} />
-          </mesh>
-        )}
+          )}
+        </mesh>
       </group>
 
       {/* Snap edge indicator (outside rotation group so it renders in world space) */}

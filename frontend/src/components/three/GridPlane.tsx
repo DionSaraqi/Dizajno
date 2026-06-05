@@ -5,12 +5,14 @@ import { Grid } from "@react-three/drei";
 
 interface GridPlaneProps {
   gridSize: number;
+  // Pointer-DOWN only: starts wall draw, places room corners / furniture, or
+  // deselects. Live cursor tracking (previews, ghost) is driven by the per-frame
+  // global-pointer raycast in DrawingSurface, NOT by grid move events — so it
+  // keeps working over meshes (walls, floors) that stopPropagation.
   onPointerDown?: (e: any) => void;
-  onPointerMove?: (e: any) => void;
-  onPointerUp?: (e: any) => void;
 }
 
-export default function GridPlane({ gridSize, onPointerDown, onPointerMove, onPointerUp }: GridPlaneProps) {
+export default function GridPlane({ gridSize, onPointerDown }: GridPlaneProps) {
   return (
     <>
       <Grid
@@ -31,8 +33,6 @@ export default function GridPlane({ gridSize, onPointerDown, onPointerMove, onPo
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0, 0]}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
       >
         <planeGeometry args={[200, 200]} />
         <meshBasicMaterial visible={false} />
