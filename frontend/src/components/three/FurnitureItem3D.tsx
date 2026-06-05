@@ -105,6 +105,12 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const handlePointerDown = (e: any) => {
     e.stopPropagation();
 
+    // KNOWN-ISSUE(furniture-floor-interaction): see docs/KNOWN_ISSUES.md.
+    // Selection happens here on pointer-DOWN (with stopPropagation), but there's
+    // no onClick to stop the synthesized click on pointer-up, so when the item
+    // sits on a floor the click falls through to FloorMesh.onClick and the
+    // selection switches to the floor. A moving cursor also makes this down miss
+    // the thin hitbox and land on whatever is behind. Remove when fixed.
     if (e.nativeEvent?.shiftKey || e.shiftKey) {
       toggleSelect(item.id);
     } else {

@@ -11,6 +11,13 @@ interface CameraControllerProps {
   mode: DesignerMode;
 }
 
+/** Default orthographic (2D) zoom — the "100%" reference for the status bar readout. */
+export const DEFAULT_ORTHO_ZOOM = 35;
+
+/** Initial 3D camera position. Its distance to the orbit target is the "100%" 3D zoom reference. */
+export const PERSPECTIVE_START: [number, number, number] = [8, 8, 8];
+export const DEFAULT_PERSP_DISTANCE = Math.hypot(...PERSPECTIVE_START);
+
 export default function CameraController({ is3D, mode }: CameraControllerProps) {
   const controlsRef = useRef<any>(null);
   const isDragging = useIsDragging();
@@ -40,12 +47,12 @@ export default function CameraController({ is3D, mode }: CameraControllerProps) 
   return (
     <>
       {is3D ? (
-        <PerspectiveCamera makeDefault position={[8, 8, 8]} fov={50} />
+        <PerspectiveCamera makeDefault position={PERSPECTIVE_START} fov={50} />
       ) : (
         <OrthographicCamera
           makeDefault
           position={[0, 50, 0]}
-          zoom={35}
+          zoom={DEFAULT_ORTHO_ZOOM}
           near={0.1}
           far={1000}
         />

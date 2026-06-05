@@ -6,36 +6,79 @@ anything that is no longer true.**
 
 ---
 
-## KNOWN-ISSUE(wall-draw-glitch): walls glitch / extend leftward while drawing at certain angles
+## KNOWN-ISSUE(furniture-floor-interaction): furniture ghost preview won't follow the cursor over a floor; selection falls through to the floor underneath
 
-**Status:** open · flagged 2026-06-04 · not yet root-caused
+**Status:** open · flagged 2026-06-05 · root cause likely identified (R3F event
+propagation through the interactive floor mesh), not yet fixed
 
-**Symptom (reported):** While drawing a wall (left-click-hold-drag in Draw mode),
-holding the cursor at *a certain angle* makes the wall glitch and extend toward
-the left with a wrong "inside" length, instead of following the cursor.
+**Symptoms (reported):**
 
-**Repro:** Build → Draw Walls, start a wall and slowly sweep the cursor around;
-at some angle the preview jumps/extends leftward. (Not yet reproduced
-deterministically — appears angle-dependent.)
+A. **Ghost preview doesn't follow the cursor over a floor.** In Furniture mode,
+   while the cursor is over a room floor the ghost preview freezes — it stays
+   stuck to the side instead of tracking the cursor (see screenshot: cursor
+   centred in the room, ghost off at the edge). Placement itself still works: a
+   single click *does* drop the item at the cursor position over the floor — only
+   the live preview is wrong.
 
-**Investigation so far (none conclusive):**
-- `components/three/WallMesh.tsx` — box geometry + `rotation={[0, -angle, 0]}`
-  (`angle = atan2(dz, dx)`) looks correct across all quadrants; no obvious flip.
-- `utils/snapToGrid.ts` — wall drawing snaps via `getSnappedPoint` →
-  `snapPoint` (grid) then `snapToCorner` (nearest existing corner within
-  `CORNER_MERGE_THRESHOLD = 0.2`). **Prime suspect:** when the drag passes within
-  0.2 of an existing corner that lies "behind"/left of the start, `previewEnd`
-  snaps to it, so the wall jumps leftward. Check whether snap-to-corner should be
-  suppressed when the candidate corner is the *start* corner or is behind the
-  drag direction.
-- `components/three/CameraController.tsx` — in Draw mode `LEFT` is released to the
-  canvas; verify OrbitControls isn't also reacting to the drag at some angles.
+B. **Holding left-click is the only way to get a live preview.** Holding the left
+   button down while moving makes the ghost follow the cursor again, but you
+   should not have to hold the button just to preview where a fresh item will
+   land — a normal hover should drive the preview.
 
-**Next steps when picking this up:** reproduce with the dev server + on-screen
-coords, log `getSnappedPoint` input vs output during the glitch in
-`DrawingSurface.finishWall`/`handlePointerMove`, and confirm whether the jump is
-a snap-to-corner artifact (most likely) or a render/camera issue.
+C. **Selecting furniture on a floor falls through to the floor.** Click a piece of
+   furniture that sits on a floor: it selects, then (the reporter perceived
+   "after ~1 second") the selection switches to the floor underneath, making it
+   impossible to edit furniture while it rests on a floor.
 
-**Code marker:** `KNOWN-ISSUE(wall-draw-glitch)` comment in
-`frontend/src/components/three/DrawingSurface.tsx` (near the wall-draw handlers).
-Remove it together with this entry once fixed.
+D. **Furniture only selects on a stationary click.** You cannot select furniture
+   while the cursor is moving over it — you have to stop on top of it for the
+   click to register. Otherwise the click is dropped or goes to whatever is
+   under/behind the item (more pronounced in 3D, where the model is shallow).
+
+**Repro:** Build a closed room so a floor polygon is generated → open the
+furniture sidebar → move the cursor into the room interior and try to (1) place
+an item and (2) select an item already placed there.
+
+**Investigation so far (code read, not yet reproduced under instrumentation):**
+- `components/three/FloorMesh.tsx` — the floor is an *interactive* mesh rendered
+  above the grid (`position={[0, 0.02, 0]}`, `renderOrder={1}`) whose
+  `onClick`/`onPointerOver`/`onPointerOut` all call `e.stopPropagation()` (via
+  `stopAndCall`).
+- `components/three/GridPlane.tsx` + `DrawingSurface.SceneContent` — furniture
+  ghost-follow is driven by the GridPlane `onPointerMove`, click-to-place by its
+  `onPointerDown`. The floor has no `onPointerDown`, so the down still propagates
+  to the GridPlane — **placement works over a floor** (a single click drops the
+  item correctly). The floor *does* handle hover (`onPointerOver`/`onPointerOut`
+  with `stopPropagation`), and R3F walks ray intersections nearest-first, halting
+  the walk as soon as a handler stops propagation — so over a floor the move never
+  reaches the GridPlane `onPointerMove` and the ghost freezes. Holding the button
+  keeps the gesture active (the floor isn't re-entered on each move), so the move
+  reaches the GridPlane again and the ghost follows. **Prime suspect for A/B.**
+- `DrawingSurface` floor render (`onClick={() => mode === "select" && select(floor.id)}`)
+  vs `FurnitureItem3D.handlePointerDown` (`select(item.id)` on pointer-*down*,
+  with `stopPropagation`): furniture selects on pointer-down, but the synthesized
+  *click* on pointer-up still propagates — the furniture group has no `onClick`
+  to stop it, so the click falls through to the floor's `onClick`, which
+  overwrites the selection with the floor id. **Prime suspect for C.** The "~1 s"
+  is just how long the button was held before release; there is no timer in the
+  3D path (grep confirms no `setTimeout` in the designer 3D code).
+- `FurnitureItem3D` selecting on `onPointerDown` (not click) plus the thin
+  hitboxes and the global `pointerup` drag-end listener make a *moving* cursor
+  easy to miss: the down can land on the floor or grid behind the item, so the
+  selection lands on the wrong object. **Suspect for D.**
+
+**Next steps when picking this up:**
+- Make the furniture ghost preview follow the cursor over a floor (placement
+  already works) — drive the ghost-follow at the Canvas / `onPointerMissed` level,
+  mirror the GridPlane `onPointerMove` handler onto `FloorMesh`, or render a
+  transparent full-scene interaction plane on top while in furniture mode (A/B).
+- Give furniture a click handler that `stopPropagation()`s (or guard the floor's
+  `onClick` so it only selects when nothing sits on top) so selecting furniture
+  on a floor sticks (C).
+- Decide whether furniture should select on pointer-down or on click
+  consistently, and make hit detection forgiving while the cursor moves (D).
+
+**Code markers:** `KNOWN-ISSUE(furniture-floor-interaction)` comments in
+`frontend/src/components/three/DrawingSurface.tsx` (floor render + GridPlane
+placement handlers) and `frontend/src/components/three/FurnitureItem3D.tsx`
+(selection on pointer-down). Remove them together with this entry once fixed.

@@ -244,4 +244,10 @@ export interface DesignerState {
 
   // Live drag preview position (NDC) while HTML dragging over canvas
   dragPreview: { ndcX: number; ndcY: number } | null;
+
+  // Status-bar readouts (ephemeral, not tracked by undo/redo).
+  /** World-space [x, z] under the cursor, or null when off-canvas. */
+  cursor: [number, number] | null;
+  /** Current view zoom as a percentage of the default (100 = default fit). */
+  zoom: number;
 }

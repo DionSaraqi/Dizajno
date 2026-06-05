@@ -27,7 +27,7 @@ import {
   useRoomDraft,
 } from "@/store/useDesignerStore";
 import GridPlane from "./GridPlane";
-import CameraController from "./CameraController";
+import CameraController, { DEFAULT_ORTHO_ZOOM, DEFAULT_PERSP_DISTANCE } from "./CameraController";
 import WallMesh from "./WallMesh";
 import FloorMesh from "./FloorMesh";
 import { newId } from "@/utils/ids";
@@ -338,6 +338,11 @@ function projectPointOntoWall(cx: number, cz: number, wall: WallData): number | 
   return t * Math.sqrt(lenSq);
 }
 
+/** Exact equality for snapped XZ points — used to skip no-op state updates in the per-frame loop. */
+function pointsEqual(a: [number, number] | null, b: [number, number] | null): boolean {
+  return a !== null && b !== null && a[0] === b[0] && a[1] === b[1];
+}
+
 // ── Room draft preview ────────────────────────────────────────────────────────
 // Renders the in-progress custom-room polygon: a rubber-band polyline through the
 // placed corners to the cursor, with the first corner highlighted as the close
@@ -427,6 +432,8 @@ function SceneContent() {
   const roomDraft = useRoomDraft();
   const setRoomDraft = useDesignerStore((s) => s.setRoomDraft);
   const addRoom = useDesignerStore((s) => s.addRoom);
+  const setCursor = useDesignerStore((s) => s.setCursor);
+  const setZoom = useDesignerStore((s) => s.setZoom);
 
   const [previewEnd, setPreviewEnd] = useState<[number, number] | null>(null);
   // Live cursor position while drawing a custom room polygon (rubber-band).
@@ -434,6 +441,13 @@ function SceneContent() {
   const ROOM_CLOSE_THRESHOLD = 0.3;
   const drawingRef = useRef(false);
   const drawStartRef = useRef<[number, number] | null>(null);
+  // Latest snapped preview end / room cursor, mirrored in refs so the per-frame
+  // raycast loop and the pointer-up commit share one value without stale closures.
+  const previewEndRef = useRef<[number, number] | null>(null);
+  const roomCursorRef = useRef<[number, number] | null>(null);
+  // Last-pushed status-bar values, to skip redundant store writes each frame.
+  const cursorRef = useRef<[number, number] | null>(null);
+  const zoomRef = useRef(100);
 
   // Ghost furniture state (furniture mode hover)
   const [ghostPos, setGhostPos] = useState<[number, number] | null>(null);
@@ -454,30 +468,103 @@ function SceneContent() {
     wallId: string;
     width: number;
   } | null>(null);
-  const { raycaster, camera, pointer } = useThree();
+  const { raycaster, camera, pointer, gl, controls } = useThree();
   const groundPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  // Pointer id captured during a wall-draw gesture (see handlePointerDown).
+  const capturedPointerRef = useRef<number | null>(null);
 
-  // Smoothly update opening position each frame during drag
+  // Snap a raw world XZ point: grid snap (when enabled) then snap to a nearby
+  // existing wall corner so wall chains connect cleanly.
+  const snapWorldPoint = useCallback(
+    (x: number, z: number): [number, number] => {
+      let p: [number, number] = [x, z];
+      if (snap) {
+        p = snapPoint(p[0], p[1], gridSize);
+      }
+      return snapToCorner(p, walls);
+    },
+    [snap, gridSize, walls]
+  );
+
+  // Per-frame ground-plane raycast off the GLOBAL pointer (not mesh pointer
+  // events). R3F updates `pointer` before any object's stopPropagation runs, so
+  // this stays glued to the cursor even when it passes over existing walls /
+  // furniture / floors (which stopPropagation and would otherwise freeze the
+  // preview) or over DOM overlays (the captured pointer keeps `pointer` live).
+  // One raycast per frame feeds both the status-bar readouts and the live
+  // previews (opening drag, wall draw, room rubber-band).
   useFrame(() => {
-    const drag = draggingOpeningRef.current;
-    if (!drag) return;
-
     raycaster.setFromCamera(pointer, camera);
-    const intersection = new THREE.Vector3();
-    const hit = raycaster.ray.intersectPlane(groundPlaneRef.current, intersection);
-    if (!hit) return;
+    const ground = new THREE.Vector3();
+    const hasGround = raycaster.ray.intersectPlane(groundPlaneRef.current, ground);
 
-    const wall = walls.find((w) => w.id === drag.wallId);
-    if (!wall) return;
+    // ── Status-bar readouts ──────────────────────────────────────────────────
+    if (hasGround) {
+      const cur = cursorRef.current;
+      if (!cur || Math.abs(cur[0] - ground.x) > 1e-3 || Math.abs(cur[1] - ground.z) > 1e-3) {
+        cursorRef.current = [ground.x, ground.z];
+        setCursor([ground.x, ground.z]);
+      }
+    }
+    const orthoCam = camera as THREE.OrthographicCamera;
+    let zoomPct: number;
+    if (orthoCam.isOrthographicCamera) {
+      // 2D: orthographic zoom relative to the default fit.
+      zoomPct = Math.round((orthoCam.zoom / DEFAULT_ORTHO_ZOOM) * 100);
+    } else {
+      // 3D: a perspective camera doesn't "zoom" — OrbitControls dollies it closer
+      // or further, so derive the percentage from its distance to the orbit
+      // target (closer = larger %). Falls back to distance-from-origin if the
+      // controls target isn't available yet.
+      const target = (controls as { target?: THREE.Vector3 } | null)?.target;
+      const dist = target ? camera.position.distanceTo(target) : camera.position.length();
+      zoomPct = Math.round((DEFAULT_PERSP_DISTANCE / Math.max(dist, 0.001)) * 100);
+    }
+    if (zoomPct !== zoomRef.current) {
+      zoomRef.current = zoomPct;
+      setZoom(zoomPct);
+    }
 
-    const offset = projectPointOntoWall(intersection.x, intersection.z, wall);
-    if (offset === null) return;
+    // ── Live previews ────────────────────────────────────────────────────────
+    // 1. Opening drag — reposition the dragged opening along its host wall.
+    const drag = draggingOpeningRef.current;
+    if (drag) {
+      if (!hasGround) return;
+      const wall = walls.find((w) => w.id === drag.wallId);
+      if (!wall) return;
 
-    const wallLen = Math.sqrt(
-      (wall.end[0] - wall.start[0]) ** 2 + (wall.end[1] - wall.start[1]) ** 2
-    );
-    const clamped = Math.max(0.05, Math.min(wallLen - drag.width - 0.05, offset - drag.width / 2));
-    updateOpening(drag.openingId, { offsetFromStart: clamped });
+      const offset = projectPointOntoWall(ground.x, ground.z, wall);
+      if (offset === null) return;
+
+      const wallLen = Math.sqrt(
+        (wall.end[0] - wall.start[0]) ** 2 + (wall.end[1] - wall.start[1]) ** 2
+      );
+      const clamped = Math.max(0.05, Math.min(wallLen - drag.width - 0.05, offset - drag.width / 2));
+      updateOpening(drag.openingId, { offsetFromStart: clamped });
+      return;
+    }
+
+    // 2. Wall draw — track the preview end while a wall is being drawn.
+    if (drawingRef.current && mode === "draw") {
+      if (!hasGround) return;
+      const snapped = snapWorldPoint(ground.x, ground.z);
+      if (!pointsEqual(snapped, previewEndRef.current)) {
+        previewEndRef.current = snapped;
+        setPreviewEnd(snapped);
+      }
+      return;
+    }
+
+    // 3. Room tool — rubber-band the in-progress polygon to the cursor.
+    if (mode === "room") {
+      if (!hasGround) return;
+      const snapped = snapWorldPoint(ground.x, ground.z);
+      if (!pointsEqual(snapped, roomCursorRef.current)) {
+        roomCursorRef.current = snapped;
+        setRoomCursor(snapped);
+      }
+      return;
+    }
   });
 
   // Release opening drag on pointer up (window-level listener)
@@ -496,18 +583,9 @@ function SceneContent() {
     (e: any): [number, number] | null => {
       const point = e.point;
       if (!point) return null;
-      let p: [number, number] = [point.x, point.z];
-      if (snap) {
-        p = snapPoint(p[0], p[1], gridSize);
-      }
-      // KNOWN-ISSUE(wall-draw-glitch): see docs/KNOWN_ISSUES.md. Suspected that
-      // snapToCorner here can snap the drawing endpoint to a corner behind the
-      // drag direction at certain angles, making the wall jump/extend leftward.
-      // Remove this comment when the issue is fixed.
-      // Also snap to existing wall corners (for easy connections)
-      return snapToCorner(p, walls);
+      return snapWorldPoint(point.x, point.z);
     },
-    [snap, gridSize, walls]
+    [snapWorldPoint]
   );
 
   const finishWall = useCallback(
@@ -545,6 +623,41 @@ function SceneContent() {
     [walls, floors, openings, wallThickness, wallHeight, setWallsAndFloors]
   );
 
+  // End the in-progress wall draw: commit at the live preview end, release the
+  // captured pointer, and reset all draw state. Driven by a window-level
+  // pointerup (below) so it fires no matter where the cursor is on release
+  // (over a wall, over the Build panel, or off-canvas).
+  const endWallDraw = useCallback(() => {
+    if (!drawingRef.current) return;
+    const point = previewEndRef.current;
+    if (point) finishWall(point);
+    if (capturedPointerRef.current != null) {
+      try {
+        gl.domElement.releasePointerCapture(capturedPointerRef.current);
+      } catch {
+        /* already released */
+      }
+      capturedPointerRef.current = null;
+    }
+    drawingRef.current = false;
+    drawStartRef.current = null;
+    previewEndRef.current = null;
+    setDrawingFrom(null);
+    setPreviewEnd(null);
+  }, [finishWall, setDrawingFrom, gl]);
+
+  useEffect(() => {
+    const onUp = (e: PointerEvent) => {
+      if (!drawingRef.current) return;
+      // Only end on the pointer that started the draw (ignore right-click pans etc.)
+      if (capturedPointerRef.current != null && e.pointerId !== capturedPointerRef.current) return;
+      if (capturedPointerRef.current == null && e.button !== 0) return;
+      endWallDraw();
+    };
+    window.addEventListener("pointerup", onUp);
+    return () => window.removeEventListener("pointerup", onUp);
+  }, [endWallDraw]);
+
   const handlePointerDown = useCallback(
     (e: any) => {
       // Left-click-hold to draw walls
@@ -555,8 +668,24 @@ function SceneContent() {
 
         drawingRef.current = true;
         drawStartRef.current = point;
+        previewEndRef.current = point;
         setDrawingFrom(point);
         setPreviewEnd(point);
+
+        // Capture the pointer on the canvas so pointermove keeps flowing — and
+        // R3F's global `pointer` keeps updating — even when the cursor crosses
+        // over a DOM overlay (e.g. the open Build panel) or leaves the canvas.
+        // Without this the pointer freezes at the canvas edge and the preview
+        // sticks pointing toward whatever overlay the cursor wandered onto.
+        const pid = e.pointerId ?? e.nativeEvent?.pointerId;
+        if (pid != null) {
+          try {
+            gl.domElement.setPointerCapture(pid);
+            capturedPointerRef.current = pid;
+          } catch {
+            /* capture unsupported — preview still works while over the canvas */
+          }
+        }
         return;
       }
 
@@ -616,6 +745,7 @@ function SceneContent() {
         ) {
           addRoom(draft); // closes the polygon → builds walls outward
           setRoomCursor(null);
+          roomCursorRef.current = null;
           return;
         }
         setRoomDraft([...draft, point]);
@@ -646,18 +776,9 @@ function SceneContent() {
 
   const handlePointerMove = useCallback(
     (e: any) => {
-      if (drawingRef.current && mode === "draw") {
-        const point = getSnappedPoint(e);
-        if (point) setPreviewEnd(point);
-        return;
-      }
-
-      // Rubber-band the custom-room polygon to the cursor.
-      if (mode === "room") {
-        const point = getSnappedPoint(e);
-        if (point) setRoomCursor(point);
-        return;
-      }
+      // Wall-draw and room-tool previews are driven by the per-frame ground-plane
+      // raycast in useFrame (see above) so they keep tracking the cursor even when
+      // it passes over existing walls, which stopPropagation on pointermove.
 
       // Update ghost preview position for furniture mode
       if (mode === "furniture" && activeFurnitureType) {
@@ -681,24 +802,12 @@ function SceneContent() {
         setGhostSnapEdge(result.snapEdge);
       }
     },
-    [mode, activeFurnitureType, getSnappedPoint, walls, furniture, snap, gridSize]
+    [mode, activeFurnitureType, walls, furniture, snap, gridSize]
   );
 
-  const handlePointerUp = useCallback(
-    (e: any) => {
-      if (e.button === 0 && drawingRef.current && mode === "draw") {
-        const point = getSnappedPoint(e);
-        if (point) {
-          finishWall(point);
-        }
-        drawingRef.current = false;
-        drawStartRef.current = null;
-        setDrawingFrom(null);
-        setPreviewEnd(null);
-      }
-    },
-    [mode, getSnappedPoint, finishWall, setDrawingFrom]
-  );
+  // Wall-draw finishing is handled by the window-level pointerup (endWallDraw)
+  // so it works even when the cursor is released over the Build panel or
+  // off-canvas. GridPlane no longer needs an onPointerUp handler.
 
   // Hide ghost when not in furniture mode
   useEffect(() => {
@@ -755,7 +864,6 @@ function SceneContent() {
         gridSize={gridSize}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
       />
 
       {/* Rendered walls */}
@@ -857,6 +965,14 @@ function SceneContent() {
       )}
 
       {/* Floors — selectable in select mode so the user can assign flooring. */}
+      {/* KNOWN-ISSUE(furniture-floor-interaction): see docs/KNOWN_ISSUES.md. The
+          floor is interactive and rendered above the GridPlane. Its hover
+          handlers stop propagation, so the GridPlane onPointerMove that drives the
+          furniture ghost preview never fires over a floor (the ghost freezes;
+          a click still places correctly). The onClick below also steals the
+          selection from furniture sitting on top (the pointer-down selects the
+          furniture, the synthesized click falls through to here). Remove when
+          fixed. */}
       {floors.map((floor) => (
         <FloorMesh
           key={floor.id}

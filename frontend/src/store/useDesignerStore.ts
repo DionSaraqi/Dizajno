@@ -113,6 +113,10 @@ interface DesignerActions {
   setPendingDrop: (drop: { type: string; ndcX: number; ndcY: number } | null) => void;
   setDragPreview: (preview: { ndcX: number; ndcY: number } | null) => void;
 
+  // Status-bar readouts (ephemeral)
+  setCursor: (cursor: [number, number] | null) => void;
+  setZoom: (zoom: number) => void;
+
   // Bulk
   clearAll: () => void;
 }
@@ -175,6 +179,8 @@ const initialState: DesignerState = {
   readOnly: false,
   pendingDrop: null,
   dragPreview: null,
+  cursor: null,
+  zoom: 100,
 };
 
 // ── Store ───────────────────────────────────────────────────────────────────
@@ -470,6 +476,10 @@ export const useDesignerStore = create<DesignerStore>()(
       setPendingDrop: (drop) => set({ pendingDrop: drop }),
       setDragPreview: (preview) => set({ dragPreview: preview }),
 
+      // Status-bar readouts (ephemeral — excluded from undo via partialize)
+      setCursor: (cursor) => set({ cursor }),
+      setZoom: (zoom) => set({ zoom }),
+
       // Bulk
       clearAll: () => set({ ...initialState }),
     }),
@@ -519,3 +529,5 @@ export const useRoomDraft = () => useDesignerStore((s) => s.roomDraft);
 export const useActivePanel = () => useDesignerStore((s) => s.activePanel);
 export const useShowDimensions = () => useDesignerStore((s) => s.showDimensions);
 export const useDimensionFace = () => useDesignerStore((s) => s.dimensionFace);
+export const useCursor = () => useDesignerStore((s) => s.cursor);
+export const useZoom = () => useDesignerStore((s) => s.zoom);
