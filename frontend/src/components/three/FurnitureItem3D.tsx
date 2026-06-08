@@ -65,6 +65,11 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const walls = useDesignerStore((s) => s.walls);
 
   const [dragging, setDragging] = useState(false);
+  // Pointer is held down on this item (left button, select mode). Camera
+  // controls are disabled for the whole gesture — not just once the move
+  // threshold is crossed — so a tiny mouse move during a click can't rotate
+  // the camera. Drives the window-level pointerup listener below.
+  const [active, setActive] = useState(false);
   const [dragPos, setDragPos] = useState<[number, number]>(item.position);
   const [snapEdge, setSnapEdge] = useState<SnapEdge | null>(null);
   // Actual rendered model dimensions (from GLTFModel's uniform scaling)
@@ -119,8 +124,18 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     // In read-only (share viewer), allow selection but never start a drag.
     if (readOnly) return;
 
-    // Record pointer-down; actual drag starts after threshold is exceeded
+    // Only the left button initiates a move-drag. Right/middle stay free for
+    // OrbitControls (pan / dolly) even when the cursor is over an item.
+    if (e.button !== 0) return;
+
+    // Disable camera controls for the entire gesture. OrbitControls listens on
+    // the canvas via native DOM events, which R3F's stopPropagation above does
+    // NOT intercept — so without this, a small mouse movement during the click
+    // would make the camera rotate (3D left-click = ROTATE) before the drag
+    // threshold kicks in. setStoreDragging gates OrbitControls' `enabled`.
     pointerDownRef.current = true;
+    setActive(true);
+    setStoreDragging(true);
     raycaster.setFromCamera(pointer, camera);
     const startPt = new THREE.Vector3();
     raycaster.ray.intersectPlane(groundPlane.current, startPt);
@@ -165,10 +180,13 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const finishDrag = useCallback(() => {
     pointerDownRef.current = false;
     pointerStartRef.current = null;
+    // Always re-enable camera controls when the gesture ends, even for a pure
+    // click that never crossed the drag threshold.
+    setActive(false);
+    setStoreDragging(false);
 
     if (!dragging) return;
     setDragging(false);
-    setStoreDragging(false);
     setSnapEdge(null);
 
     if (!hasCollision) {
@@ -182,13 +200,15 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     finishDrag();
   };
 
-  // Global pointerup so drag ends even when released outside the item mesh
+  // Global pointerup so the gesture ends (and camera controls re-enable) even
+  // when released outside the item mesh. Attached for the whole interaction via
+  // `active`, which flips on pointer-down (not only once dragging starts).
   useEffect(() => {
-    if (!pointerDownRef.current && !dragging) return;
+    if (!active) return;
     const onUp = () => finishDrag();
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
-  }, [dragging, finishDrag]);
+  }, [active, finishDrag]);
 
   // Show measurements in 2D when selected and not currently dragging (or while dragging)
   const showMeasurements = !is3D && isSelected;

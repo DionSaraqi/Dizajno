@@ -61,23 +61,6 @@ only **width**, **height**, and **delete**.
 
 ---
 
-## Camera & 3D View
-
-### Increase max zoom in 3D view
-In 3D view the maximum zoom is currently capped (the footer shows ~693% as the max).
-Raise the zoom ceiling.
-
-### Faster right-click camera movement
-Increase the camera movement speed when **right-clicking** (panning/orbit). Leave
-the **left-click** speed unchanged.
-
-### Camera randomly rotates when selecting some custom models
-Sometimes when picking one of the custom 3D models (e.g. the designer sofa) the
-camera rotates unexpectedly. Cause unknown and not yet reproducible — flagged for
-future investigation.
-
----
-
 ## Auth & Home Page
 
 ### No logged-in indication on the home page

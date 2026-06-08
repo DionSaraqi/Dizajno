@@ -70,6 +70,10 @@ export default function CameraController({ is3D, mode }: CameraControllerProps) 
         maxPolarAngle={is3D ? Math.PI / 2.1 : 0}
         // ── Pan ────────────────────────────────────────────────────────────
         enablePan={true}
+        // Faster right-click pan in 3D (left-click is ROTATE there, so this only
+        // affects right-click). 2D keeps the default so left-click pan is
+        // unchanged.
+        panSpeed={is3D ? 2 : undefined}
         // ── Zoom / Dolly ───────────────────────────────────────────────────
         enableZoom={true}
         enableDamping={true}
@@ -77,8 +81,9 @@ export default function CameraController({ is3D, mode }: CameraControllerProps) 
         // Orthographic zoom limits (2D)
         minZoom={is3D ? undefined : 8}
         maxZoom={is3D ? undefined : 200}
-        // Perspective distance limits (3D) — don't clip floor, don't fly too far
-        minDistance={is3D ? 2 : undefined}
+        // Perspective distance limits (3D) — don't clip floor, don't fly too far.
+        // minDistance 0.5 lets the user zoom in close (~2800% on the readout).
+        minDistance={is3D ? 0.5 : undefined}
         maxDistance={is3D ? 40 : undefined}
         // ── Mouse button mapping ───────────────────────────────────────────
         mouseButtons={is3D ? mouseButtons3D : mouseButtons2D}
