@@ -98,18 +98,18 @@ export function centerlineToWalls(
 }
 
 /**
- * Build wall segments around a usable footprint: offset to centerlines, round to
- * the floor-detector's 2-decimal key precision, and emit one wall per edge. Used
- * for custom (arbitrary) room shapes — a sub-cm rounding wobble is acceptable.
+ * Build wall segments around a usable footprint: offset to centerlines and emit
+ * one wall per edge. Used for custom (arbitrary) room shapes. The centerlines
+ * keep full precision (no rounding) so that when findFloors insets the detected
+ * floor back by the same half-thickness it recovers the drawn footprint exactly
+ * — a room drawn 5×5 stays exactly 25 m².
  */
 export function usablePolygonToWalls(
   usable: V[],
   thickness: number,
   height: number
 ): WallData[] {
-  const centerline = outsetPolygon(usable, thickness / 2).map(
-    (p) => [round2(p[0]), round2(p[1])] as V
-  );
+  const centerline = outsetPolygon(usable, thickness / 2);
   return centerlineToWalls(centerline, thickness, height);
 }
 

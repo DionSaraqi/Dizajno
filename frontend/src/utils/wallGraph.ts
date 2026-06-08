@@ -1,10 +1,15 @@
 import type { WallData, FloorData, OpeningData } from "@/types/designer";
 import { newId } from "@/utils/ids";
+import { insetFloorPolygon } from "@/utils/areaCalc";
 
 type Key = string;
 type Point = [number, number];
 
 const CORNER_MERGE_THRESHOLD = 0.2; // merge corners within 0.2 units
+
+/** Round to the millimetre — kills float noise from the inset intersection
+ *  while preserving sub-cm accuracy (so a grid-clean room stays exact). */
+const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 
 function key(p: Point): Key {
   return `${p[0].toFixed(2)},${p[1].toFixed(2)}`;
@@ -329,9 +334,16 @@ export function findFloors(walls: WallData[]): FloorData[] {
 
   const edgeSet = new Set<string>(); // dedup walls with same endpoints
 
+  // Keys are quantised to 2 decimals for robust corner matching, but the floor
+  // polygon must carry the *exact* endpoint coordinates so the inset below
+  // recovers the drawn footprint precisely. Map each key to its real point.
+  const realPoint = new Map<Key, Point>();
+
   for (const w of walls) {
     const sk = key(w.start);
     const ek = key(w.end);
+    if (!realPoint.has(sk)) realPoint.set(sk, w.start);
+    if (!realPoint.has(ek)) realPoint.set(ek, w.end);
 
     const edgeId = [sk, ek].sort().join("||");
     if (edgeSet.has(edgeId)) continue;
@@ -392,8 +404,9 @@ export function findFloors(walls: WallData[]): FloorData[] {
       if (steps >= 50) continue; // safety bail
       if (faceKeys.length < 3) continue;
 
-      // Compute signed area (shoelace formula)
-      const verts = faceKeys.map(parseKey);
+      // Exact centerline vertices (not the cm-quantised keys) so the inset
+      // below lands precisely on the inner wall faces.
+      const verts = faceKeys.map((k) => realPoint.get(k) ?? parseKey(k));
       let area = 0;
       for (let i = 0; i < verts.length; i++) {
         const j = (i + 1) % verts.length;
@@ -405,13 +418,71 @@ export function findFloors(walls: WallData[]): FloorData[] {
       // Positive area = CCW winding = inner face (room)
       // Negative area = CW winding = outer (unbounded) face -> skip
       if (area > 0.01) {
+        // The traced polygon runs along the wall centerlines; the floor is the
+        // inner usable area, so inset each edge inward by its wall's
+        // half-thickness. This is the inverse of the room builder's outset, so
+        // a room drawn 5×5 yields a floor of exactly 25 m².
+        const inner = insetFloorPolygon(verts, walls).map(
+          (p) => [round3(p[0]), round3(p[1])] as Point
+        );
         floors.push({
           id: newId(),
-          vertices: verts,
+          vertices: inner,
         });
       }
     }
   }
 
   return floors;
+}
+
+function vertsCentroid(verts: ReadonlyArray<Point>): Point {
+  const n = verts.length || 1;
+  let x = 0;
+  let z = 0;
+  for (const v of verts) {
+    x += v[0];
+    z += v[1];
+  }
+  return [x / n, z / n];
+}
+
+/**
+ * Re-derive floors from the wall graph so their geometry uses the current
+ * inner-usable-polygon convention, carrying each loaded floor's flooring
+ * material onto the matching re-derived floor by nearest centroid.
+ *
+ * Used on scene load to self-heal projects saved under the old centerline
+ * convention (where floor vertices ran along wall centerlines). Falls back to
+ * the loaded floors when the walls no longer form closed loops, so we never
+ * silently drop a floor we can't re-derive.
+ */
+export function reconcileLoadedFloors(
+  walls: WallData[],
+  loadedFloors: FloorData[]
+): FloorData[] {
+  const derived = findFloors(walls);
+  if (derived.length === 0) return loadedFloors;
+
+  const loaded = loadedFloors.map((f) => ({
+    floor: f,
+    centroid: vertsCentroid(f.vertices),
+  }));
+
+  return derived.map((d) => {
+    const dc = vertsCentroid(d.vertices);
+    let best: FloorData | null = null;
+    let bestDist = Infinity;
+    for (const { floor, centroid } of loaded) {
+      const dist2 = (centroid[0] - dc[0]) ** 2 + (centroid[1] - dc[1]) ** 2;
+      if (dist2 < bestDist) {
+        bestDist = dist2;
+        best = floor;
+      }
+    }
+    // ≤1 m between centroids = same room (flooring is a coarse per-room pick).
+    return bestDist <= 1 && best?.flooringVariantId
+      ? { ...d, flooringVariantId: best.flooringVariantId }
+      : d;
+  });
 }

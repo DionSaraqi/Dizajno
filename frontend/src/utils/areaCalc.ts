@@ -161,14 +161,6 @@ export function insetFloorPolygon(
   return out;
 }
 
-/** Usable floor area: the centerline polygon inset by the walls' half-thickness. */
-export function innerFloorArea(
-  vertices: ReadonlyArray<readonly [number, number]>,
-  walls: ReadonlyArray<WallData>
-): number {
-  return polygonArea(insetFloorPolygon(vertices, walls));
-}
-
 /**
  * Suggests a quantity for a building-material item based on the calculated
  * room areas + the product's coverage rate (m²/L for paint) and waste factor.

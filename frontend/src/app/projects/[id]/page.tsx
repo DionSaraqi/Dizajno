@@ -25,6 +25,7 @@ import { useDesignerStore } from "@/store/useDesignerStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useVariantLookup } from "@/hooks/useVariantLookup";
 import { mapApiSceneToStore, mapStoreToApiScene } from "@/utils/sceneMapper";
+import { reconcileLoadedFloors } from "@/utils/wallGraph";
 import { captureCanvasThumbnail } from "@/utils/captureCanvas";
 import * as api from "@/lib/api";
 import { Logo, Spinner } from "@/components/ui";
@@ -143,12 +144,16 @@ export default function ProjectDesignerPage() {
         if (cancelled) return;
         const store = useDesignerStore.getState();
         const mapped = mapApiSceneToStore(detail.scene, lookupRef.current);
+        // Re-derive floors from the walls so their geometry uses the current
+        // inner-usable-polygon convention (self-heals projects saved under the
+        // old centerline convention), carrying flooring assignments across.
+        const floors = reconcileLoadedFloors(mapped.walls, mapped.floors);
         // Reset store, then push the mapped scene in. clearAll() resets
         // everything including selection/mode flags.
         store.clearAll();
         useDesignerStore.setState({
           walls: mapped.walls,
-          floors: mapped.floors,
+          floors,
           furniture: mapped.furniture,
           openings: mapped.openings,
         });

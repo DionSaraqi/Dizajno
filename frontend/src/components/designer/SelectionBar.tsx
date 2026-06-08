@@ -21,8 +21,8 @@ import {
   useFloors,
 } from "@/store/useDesignerStore";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
-import { innerFloorArea } from "@/utils/areaCalc";
-import { isAxisAlignedRect, boundingWalls } from "@/utils/roomBuilder";
+import { polygonArea } from "@/utils/areaCalc";
+import { isAxisAlignedRect } from "@/utils/roomBuilder";
 import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
 import type { FurnitureCatalogItem } from "@/types/designer";
 import MaterialPicker from "./MaterialPicker";
@@ -336,16 +336,15 @@ export default function SelectionBar() {
       (i) => i.family === "BuildingMaterial" && i.category === "Flooring"
     );
     const rect = isAxisAlignedRect(floor.vertices);
-    // Usable W×L for a rectangular room = centerline span minus the bounding
-    // walls' thickness (so it matches the inner area + the Room-tool input).
+    // Floor polygons are stored as the inner usable area, so the rectangle's
+    // span IS the usable W×L (matches the Room-tool input directly).
     let usableW = 0;
     let usableL = 0;
     if (rect) {
       const xs = floor.vertices.map((v) => v[0]);
       const zs = floor.vertices.map((v) => v[1]);
-      const t = boundingWalls(floor.vertices, walls)[0]?.thickness ?? 0.15;
-      usableW = Math.max(0, Math.max(...xs) - Math.min(...xs) - t);
-      usableL = Math.max(0, Math.max(...zs) - Math.min(...zs) - t);
+      usableW = Math.max(0, Math.max(...xs) - Math.min(...xs));
+      usableL = Math.max(0, Math.max(...zs) - Math.min(...zs));
     }
     return (
       <Shell title="Floor">
@@ -357,7 +356,7 @@ export default function SelectionBar() {
               onCommit={(v) => resizeRectRoom(floor.id, usableW, v)} />
           </>
         ) : (
-          <NumberField label="Area" unit="m²" value={innerFloorArea(floor.vertices, walls)} readOnly />
+          <NumberField label="Area" unit="m²" value={polygonArea(floor.vertices)} readOnly />
         )}
         {flooringOptions.length > 0 && (
           <VariantSelect

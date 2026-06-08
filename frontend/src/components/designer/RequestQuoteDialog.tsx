@@ -6,7 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Send, Store } from "lucide-react";
 import { useDesignerStore } from "@/store/useDesignerStore";
 import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
-import { innerFloorArea, unitLabel } from "@/utils/areaCalc";
+import { polygonArea, unitLabel } from "@/utils/areaCalc";
 import * as api from "@/lib/api";
 import type {
   FurnitureCatalogItem,
@@ -121,7 +121,7 @@ export function RequestQuoteDialog({
     const floorAreaByVariant = new Map<string, number>();
     for (const floor of floors) {
       if (!floor.flooringVariantId) continue;
-      const area = innerFloorArea(floor.vertices, walls);
+      const area = polygonArea(floor.vertices);
       floorAreaByVariant.set(
         floor.flooringVariantId,
         (floorAreaByVariant.get(floor.flooringVariantId) ?? 0) + area,

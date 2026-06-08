@@ -578,14 +578,17 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
             new WallDto(w4, 0m, 5m, 0m, 0m, 0.1m, 2.5m, paintVariantId),
         };
 
+        // Floor polygons are stored as the inner usable area (the designer insets
+        // the centerline polygon to the inner wall faces). For this 4×5 centerline
+        // room with 0.1 m walls that's a 3.9×4.9 m inner rectangle.
         var floor = new FloorDto(
             Guid.NewGuid(),
             new IReadOnlyList<decimal>[]
             {
-                new[] { 0m, 0m },
-                new[] { 4m, 0m },
-                new[] { 4m, 5m },
-                new[] { 0m, 5m },
+                new[] { 0.05m, 0.05m },
+                new[] { 3.95m, 0.05m },
+                new[] { 3.95m, 4.95m },
+                new[] { 0.05m, 4.95m },
             },
             flooringVariantId);
 
@@ -617,7 +620,7 @@ public sealed class QuotesEndpointsTests : IClassFixture<DizajnoApiFactory>
         lines.Should().ContainSingle()
             .Which.VariantSnapshot.GetProperty("productSlug").GetString()
             .Should().Be("oak-laminate-flooring");
-        // Inner usable area (centerline 4×5 inset by the 0.1 m walls' half-thickness):
+        // Flooring is billed on the stored inner usable polygon directly:
         // 3.9 × 4.9 = 19.11 m² × (1 + 0.05 waste) = 20.07 m².
         lines[0].Quantity.Should().Be(20.07m);
         lines[0].QuantityUnit.Should().Be("m2");

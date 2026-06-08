@@ -14,6 +14,7 @@ import {
 import { useDesignerStore, useIs3D } from "@/store/useDesignerStore";
 import { useVariantLookup } from "@/hooks/useVariantLookup";
 import { mapApiSceneToStore } from "@/utils/sceneMapper";
+import { reconcileLoadedFloors } from "@/utils/wallGraph";
 import * as api from "@/lib/api";
 import { CommentsPanel } from "@/components/share/CommentsPanel";
 import { Logo, Spinner } from "@/components/ui";
@@ -54,11 +55,14 @@ export default function SharedProjectPage() {
         const detail = await api.loadSharedProject(token);
         if (cancelled) return;
         const mapped = mapApiSceneToStore(detail.scene, lookup);
+        // Re-derive floors from walls so old centerline-convention scenes render
+        // at the correct inner-usable size in the read-only viewer.
+        const floors = reconcileLoadedFloors(mapped.walls, mapped.floors);
         const store = useDesignerStore.getState();
         store.clearAll();
         useDesignerStore.setState({
           walls: mapped.walls,
-          floors: mapped.floors,
+          floors,
           furniture: mapped.furniture,
           openings: mapped.openings,
           mode: "select",

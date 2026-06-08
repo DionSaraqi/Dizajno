@@ -10,8 +10,8 @@
 
 import React from "react";
 import { Html } from "@react-three/drei";
-import type { FloorData, WallData } from "@/types/designer";
-import { innerFloorArea } from "@/utils/areaCalc";
+import type { FloorData } from "@/types/designer";
+import { polygonArea } from "@/utils/areaCalc";
 
 /**
  * Area-weighted polygon centroid. Falls back to the vertex average for
@@ -56,17 +56,17 @@ function polygonCentroid(
 
 interface RoomLabelsProps {
   floors: FloorData[];
-  walls: WallData[];
 }
 
-export default function RoomLabels({ floors, walls }: RoomLabelsProps) {
+export default function RoomLabels({ floors }: RoomLabelsProps) {
   if (floors.length === 0) return null;
 
   return (
     <group>
       {floors.map((floor) => {
-        // Inner usable area (inset by the bounding walls' half-thickness).
-        const area = innerFloorArea(floor.vertices, walls);
+        // Floor polygons are stored as the inner usable area, so the drawn m²
+        // is just the shoelace area of the polygon itself.
+        const area = polygonArea(floor.vertices);
         if (area < 0.01) return null;
         const [cx, cz] = polygonCentroid(floor.vertices);
         return (
