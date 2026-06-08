@@ -19,6 +19,7 @@ import {
   useOpenings,
   useWalls,
   useFloors,
+  useReadOnly,
 } from "@/store/useDesignerStore";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { polygonArea } from "@/utils/areaCalc";
@@ -196,8 +197,11 @@ function Shell({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-// Delete action shared by every selection type.
+// Delete action shared by every selection type. Hidden in read-only mode (e.g.
+// the shared-project viewer) so the scene can't be edited there.
 function DeleteButton({ onClick }: { onClick: () => void }) {
+  const readOnly = useReadOnly();
+  if (readOnly) return null;
   return (
     <button
       type="button"

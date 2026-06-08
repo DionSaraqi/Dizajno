@@ -192,7 +192,7 @@ export const useDesignerStore = create<DesignerStore>()(
 
       // Wall actions
       addWall: (wall) => set((s) => ({ walls: [...s.walls, wall] })),
-      removeWall: (id) => set((s) => ({
+      removeWall: (id) => set((s) => (s.readOnly ? {} : {
         walls: s.walls.filter((w) => w.id !== id),
         openings: s.openings.filter((o) => o.wallId !== id),
         selectedIds: s.selectedIds.filter((sid) => sid !== id),
@@ -280,7 +280,7 @@ export const useDesignerStore = create<DesignerStore>()(
           selectedIds: selId ? [selId] : s.selectedIds,
         });
       },
-      removeFloor: (id) => set((s) => ({
+      removeFloor: (id) => set((s) => (s.readOnly ? {} : {
         floors: s.floors.filter((f) => f.id !== id),
         selectedIds: s.selectedIds.filter((sid) => sid !== id),
       })),
@@ -289,8 +289,17 @@ export const useDesignerStore = create<DesignerStore>()(
       })),
 
       // Furniture actions
+      // Place a new item and immediately select it (so its properties are
+      // editable right away), leaving the sidebar tool and entering select
+      // mode. setMode would clear selectedIds, so the mode switch is folded in
+      // here rather than called separately by the placement handlers.
       placeFurniture: (item) =>
-        set((s) => ({ furniture: [...s.furniture, item] })),
+        set((s) => ({
+          furniture: [...s.furniture, item],
+          selectedIds: [item.id],
+          mode: "select",
+          activeFurnitureType: null,
+        })),
       moveFurniture: (id, position) =>
         set((s) => ({
           furniture: s.furniture.map((f) =>
@@ -379,7 +388,7 @@ export const useDesignerStore = create<DesignerStore>()(
           ),
         })),
       removeFurniture: (id) =>
-        set((s) => ({
+        set((s) => (s.readOnly ? {} : {
           furniture: s.furniture.filter((f) => f.id !== id),
           selectedIds: s.selectedIds.filter((sid) => sid !== id),
         })),
@@ -399,9 +408,10 @@ export const useDesignerStore = create<DesignerStore>()(
         }));
       },
       deleteSelected: () =>
-        set((s) => ({
+        set((s) => (s.readOnly ? {} : {
           furniture: s.furniture.filter((f) => !s.selectedIds.includes(f.id)),
           walls: s.walls.filter((w) => !s.selectedIds.includes(w.id)),
+          floors: s.floors.filter((f) => !s.selectedIds.includes(f.id)),
           openings: s.openings.filter((o) => {
             // Remove openings for deleted walls AND directly selected openings
             const wallDeleted = s.selectedIds.includes(o.wallId);
@@ -413,7 +423,7 @@ export const useDesignerStore = create<DesignerStore>()(
 
       // Opening actions
       addOpening: (opening) => set((s) => ({ openings: [...s.openings, opening] })),
-      removeOpening: (id) => set((s) => ({
+      removeOpening: (id) => set((s) => (s.readOnly ? {} : {
         openings: s.openings.filter((o) => o.id !== id),
         selectedIds: s.selectedIds.filter((sid) => sid !== id),
       })),
@@ -432,9 +442,12 @@ export const useDesignerStore = create<DesignerStore>()(
         })),
       selectAll: () =>
         set((s) => ({
+          // Everything on the board: furniture, walls, floors, and openings.
           selectedIds: [
             ...s.furniture.map((f) => f.id),
             ...s.walls.map((w) => w.id),
+            ...s.floors.map((f) => f.id),
+            ...s.openings.map((o) => o.id),
           ],
         })),
       clearSelection: () => set({ selectedIds: [] }),

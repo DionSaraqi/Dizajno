@@ -116,11 +116,12 @@ function DropHandler() {
     };
 
     if (!checkFurnitureCollision(newItem, state.furniture, state.walls)) {
+      // placeFurniture also selects the new item and enters select mode.
       state.placeFurniture(newItem);
+    } else {
+      // Collision: nothing placed — just leave the sidebar tool.
+      state.setMode("select");
     }
-
-    // Deselect sidebar item after placing
-    state.setMode("select");
     state.setPendingDrop(null);
   }, [pendingDrop, camera, raycaster, snap, gridSize, walls, furniture]);
 
@@ -745,10 +746,12 @@ function SceneContent() {
         };
 
         if (!checkFurnitureCollision(newItem, state.furniture, state.walls)) {
+          // placeFurniture also selects the new item and enters select mode.
           placeFurniture(newItem);
+        } else {
+          // Collision: nothing placed — just leave the sidebar tool.
+          setMode("select");
         }
-        // Deselect sidebar item after placing
-        setMode("select");
         setGhostPos(null);
         setGhostSnapEdge(null);
         return;

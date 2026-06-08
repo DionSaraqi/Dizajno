@@ -15,24 +15,6 @@ proper fix; we'll go into much greater detail on this in the future.
 
 ---
 
-## Selection & Keyboard Shortcuts
-
-### Delete key doesn't work on floors
-The Delete keyboard shortcut does not remove a selected floor. While fixing this,
-make sure **all keyboard shortcuts apply to everything on the drawing board**
-(walls, floors, furniture, doors/windows) — not just furniture.
-
-### Select All (Ctrl+A) skips floors
-Select All does not include floors in the selection. It should select everything
-on the board, floors included.
-
-### Newly placed furniture isn't auto-selected
-After dropping a piece of furniture onto a floor, the furniture is placed but the
-**floor** ends up selected. The newly placed item should be the thing that is
-automatically selected after placement.
-
----
-
 ## Furniture
 
 ### Add increase/decrease size buttons for proportional furniture
