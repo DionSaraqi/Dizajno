@@ -71,7 +71,10 @@ export function outsetPolygon(verts: V[], distance: number): V[] {
     const b = lines[i];
     const denom = a.dx * b.dz - a.dz * b.dx;
     if (Math.abs(denom) < 1e-9) {
-      out.push([verts[i][0], verts[i][1]]);
+      // Consecutive collinear edges — no unique intersection; project the
+      // original vertex onto edge b's offset line so it still moves outward.
+      const along = (verts[i][0] - b.px) * b.dx + (verts[i][1] - b.pz) * b.dz;
+      out.push([b.px + along * b.dx, b.pz + along * b.dz]);
       continue;
     }
     const t = ((b.px - a.px) * b.dz - (b.pz - a.pz) * b.dx) / denom;
@@ -168,6 +171,31 @@ export function boundingWalls(floorVerts: V[], walls: WallData[]): WallData[] {
     if (w) found.set(w.id, w);
   }
   return [...found.values()];
+}
+
+/**
+ * ALL wall segments running along a floor edge (parallel, within 0.2 of its
+ * line, with real longitudinal overlap) — unlike `matchWall`, which returns
+ * only the segment nearest the edge midpoint. A floor side built from more
+ * than one segment means a shared/T-junction topology.
+ */
+export function wallsAlongEdge(vi: V, vj: V, walls: WallData[]): WallData[] {
+  const edgeLen = Math.hypot(vj[0] - vi[0], vj[1] - vi[1]);
+  if (edgeLen < 0.05) return [];
+  const [edx, edz] = norm(vj[0] - vi[0], vj[1] - vi[1]);
+  const perp = (p: V) =>
+    Math.abs((p[0] - vi[0]) * -edz + (p[1] - vi[1]) * edx);
+  const out: WallData[] = [];
+  for (const w of walls) {
+    const [wdx, wdz] = norm(w.end[0] - w.start[0], w.end[1] - w.start[1]);
+    if (Math.abs(edx * wdx + edz * wdz) < 0.9) continue;
+    if (perp(w.start) > 0.2 || perp(w.end) > 0.2) continue;
+    const t1 = (w.start[0] - vi[0]) * edx + (w.start[1] - vi[1]) * edz;
+    const t2 = (w.end[0] - vi[0]) * edx + (w.end[1] - vi[1]) * edz;
+    const ov = Math.min(Math.max(t1, t2), edgeLen) - Math.max(Math.min(t1, t2), 0);
+    if (ov > 0.05) out.push(w);
+  }
+  return out;
 }
 
 /** Polygon centroid (vertex average — fine for label/selection proximity). */

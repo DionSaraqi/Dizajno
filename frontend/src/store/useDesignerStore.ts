@@ -10,21 +10,24 @@ import type {
   DesignerMode,
 } from "@/types/designer";
 // (no extra imports needed — OpeningData already covers the reassign helper)
+import { toast } from "sonner";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { newId } from "@/utils/ids";
 import {
   addWallWithIntersections,
-  findFloors,
   reassignOpeningsAfterWallChange,
+  reconcileLoadedFloors,
 } from "@/utils/wallGraph";
 import {
-  usablePolygonToWalls,
+  outsetPolygon,
   centerlineToWalls,
   rectCenterlineVerts,
-  boundingWalls,
+  wallsAlongEdge,
   vertsCentroid,
   isAxisAlignedRect,
+  roundTo2,
 } from "@/utils/roomBuilder";
+import { alignRoomToWalls } from "@/utils/roomAlign";
 
 // ── Actions Interface ───────────────────────────────────────────────────────
 
@@ -123,9 +126,21 @@ interface DesignerActions {
 
 type DesignerStore = DesignerState & DesignerActions;
 
+// One toast per commit when doors/windows could not survive a wall change.
+function notifyDroppedOpenings(dropped: number) {
+  if (dropped > 0) {
+    toast.warning(
+      dropped === 1
+        ? "1 door/window no longer fit on its wall and was removed"
+        : `${dropped} doors/windows no longer fit on their walls and were removed`
+    );
+  }
+}
+
 // Commit a batch of generated room walls atomically: merge each through the
-// intersection pipeline, re-derive floors, reassign openings, and select the
-// floor nearest the requested footprint. Returns the partial state to `set`.
+// intersection pipeline, re-derive floors (carrying flooring materials over by
+// room centroid), reassign openings, and select the floor nearest the
+// requested footprint. Returns the partial state to `set`.
 function commitRoom(
   s: DesignerState,
   generated: WallData[],
@@ -133,8 +148,13 @@ function commitRoom(
 ): Partial<DesignerState> {
   let walls = s.walls;
   for (const w of generated) walls = addWallWithIntersections(w, walls);
-  const floors = findFloors(walls);
-  const openings = reassignOpeningsAfterWallChange(s.openings, s.walls, walls);
+  // Every wall fully absorbed (e.g. a duplicate room traced over an existing
+  // one): change nothing — re-deriving floors would mint fresh floor ids and
+  // pollute the undo history with a visually empty step.
+  if (walls === s.walls) return {};
+  const floors = reconcileLoadedFloors(walls, s.floors);
+  const { openings, dropped } = reassignOpeningsAfterWallChange(s.openings, s.walls, walls);
+  notifyDroppedOpenings(dropped);
   let selId: string | null = null;
   let bestD = Infinity;
   for (const f of floors) {
@@ -147,7 +167,7 @@ function commitRoom(
   }
   return {
     walls,
-    floors: floors.length > 0 ? floors : s.floors,
+    floors,
     openings,
     selectedIds: selId ? [selId] : [],
   };
@@ -209,28 +229,58 @@ export const useDesignerStore = create<DesignerStore>()(
       // ── Room tool ──
       setRoomDraft: (points) => set({ roomDraft: points }),
       // Custom (arbitrary) room: the drawn polygon is the usable footprint;
-      // walls are offset outward to centerlines.
+      // walls are offset outward to centerlines, then aligned onto nearby
+      // existing walls (when snap is on) so adjacent rooms share a wall.
       addRoom: (usableVerts) => {
         if (usableVerts.length < 3) return;
         const s = get();
-        const generated = usablePolygonToWalls(usableVerts, s.wallThickness, s.wallHeight);
+        if (s.readOnly) return;
+        const cl = outsetPolygon(usableVerts, s.wallThickness / 2);
+        const aligned = s.snap ? alignRoomToWalls(cl, s.walls, s.wallThickness) : cl;
+        const generated = centerlineToWalls(aligned, s.wallThickness, s.wallHeight);
         if (generated.length < 3) return;
         set({
-          ...commitRoom(s, generated, vertsCentroid(usableVerts)),
+          ...commitRoom(s, generated, vertsCentroid(aligned)),
           mode: "select",
           roomDraft: null,
         });
       },
-      // Rectangle room from an exact usable W×L (cm-exact centerlines).
+      // Rectangle room from an exact usable W×L (cm-exact centerlines). Spawns
+      // flush against the right edge of the existing structure (a fixed origin
+      // would stack every new room on top of the first one).
       addRectRoom: (usableWidth, usableLength) => {
         const s = get();
-        const cl = rectCenterlineVerts(usableWidth, usableLength, s.wallThickness, 0, 0);
-        const generated = centerlineToWalls(cl, s.wallThickness, s.wallHeight);
+        if (s.readOnly) return;
+        const t = s.wallThickness;
+        let cl: [number, number][];
+        if (s.walls.length > 0) {
+          // Anchor the left wall centerline EXACTLY on the structure's right
+          // edge (the collinear merge turns it into a shared wall when one
+          // runs there) — centering + cm-rounding would land 5 mm off and
+          // quietly change the typed usable width.
+          const xs = s.walls.flatMap((w) => [w.start[0], w.end[0]]);
+          const zs = s.walls.flatMap((w) => [w.start[1], w.end[1]]);
+          const W = roundTo2(usableWidth + t);
+          const L = roundTo2(usableLength + t);
+          const x0 = Math.max(...xs);
+          const z0 = roundTo2((Math.min(...zs) + Math.max(...zs)) / 2 - L / 2);
+          cl = [
+            [x0, z0],
+            [x0 + W, z0],
+            [x0 + W, z0 + L],
+            [x0, z0 + L],
+          ];
+        } else {
+          cl = rectCenterlineVerts(usableWidth, usableLength, t, 0, 0);
+        }
+        const aligned = s.snap ? alignRoomToWalls(cl, s.walls, t) : cl;
+        const generated = centerlineToWalls(aligned, t, s.wallHeight);
         if (generated.length < 3) return;
-        set({ ...commitRoom(s, generated, vertsCentroid(cl)), mode: "select", roomDraft: null });
+        set({ ...commitRoom(s, generated, vertsCentroid(aligned)), mode: "select", roomDraft: null });
       },
       resizeRectRoom: (floorId, usableWidth, usableLength) => {
         const s = get();
+        if (s.readOnly) return;
         const floor = s.floors.find((f) => f.id === floorId);
         if (!floor || !isAxisAlignedRect(floor.vertices)) return;
 
@@ -239,7 +289,39 @@ export const useDesignerStore = create<DesignerStore>()(
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
         const cz = (Math.min(...zs) + Math.max(...zs)) / 2;
 
-        const bw = boundingWalls(floor.vertices, s.walls);
+        // Resize moves each side's wall wholesale, so it needs every side to
+        // be exactly ONE unshared segment. A side split into several segments
+        // (a neighbor T-joins it) or a wall also bounding another room cannot
+        // be dragged without silently reshaping the neighbor — refuse until a
+        // detach/resize-both interaction exists.
+        const nVerts = floor.vertices.length;
+        const edgeWallLists: WallData[][] = [];
+        for (let i = 0; i < nVerts; i++) {
+          edgeWallLists.push(
+            wallsAlongEdge(floor.vertices[i], floor.vertices[(i + 1) % nVerts], s.walls)
+          );
+        }
+        const refuse = () =>
+          toast.info("This room shares a wall with its neighbors — resize is disabled");
+        if (edgeWallLists.some((list) => list.length !== 1)) {
+          refuse();
+          return;
+        }
+        const bw = [...new Map(edgeWallLists.flat().map((w) => [w.id, w])).values()];
+        const bwIds = new Set(bw.map((w) => w.id));
+        const sharesWall = s.floors.some((f) => {
+          if (f.id === floorId) return false;
+          const fn = f.vertices.length;
+          for (let i = 0; i < fn; i++) {
+            const along = wallsAlongEdge(f.vertices[i], f.vertices[(i + 1) % fn], s.walls);
+            if (along.some((w) => bwIds.has(w.id))) return true;
+          }
+          return false;
+        });
+        if (sharesWall) {
+          refuse();
+          return;
+        }
         const t = bw.length > 0 ? bw[0].thickness : s.wallThickness;
         // cm-exact new centerline bbox (preserves usable size precisely).
         const cl = rectCenterlineVerts(usableWidth, usableLength, t, cx, cz);
@@ -261,8 +343,9 @@ export const useDesignerStore = create<DesignerStore>()(
           return { ...w, start: [x, nMinZ] as [number, number], end: [x, nMaxZ] as [number, number] };
         });
 
-        const floors = findFloors(walls);
-        const openings = reassignOpeningsAfterWallChange(s.openings, s.walls, walls);
+        const floors = reconcileLoadedFloors(walls, s.floors);
+        const { openings, dropped } = reassignOpeningsAfterWallChange(s.openings, s.walls, walls);
+        notifyDroppedOpenings(dropped);
         let selId: string | null = null;
         let bestD = Infinity;
         for (const f of floors) {
@@ -275,7 +358,7 @@ export const useDesignerStore = create<DesignerStore>()(
         }
         set({
           walls,
-          floors: floors.length > 0 ? floors : s.floors,
+          floors,
           openings,
           selectedIds: selId ? [selId] : s.selectedIds,
         });

@@ -170,7 +170,12 @@ export function insetFloorPolygon(
     const b = lines[i];
     const denom = a.dx * b.dz - a.dz * b.dx;
     if (Math.abs(denom) < 1e-9) {
-      out.push([vertices[i][0], vertices[i][1]]); // parallel — keep original
+      // Consecutive collinear edges (e.g. a T-junction vertex mid-wall): no
+      // unique intersection — project the original vertex onto edge b's inset
+      // line. Keeping the raw vertex here used to leave a notch poking
+      // half-a-thickness into the wall.
+      const along = (vertices[i][0] - b.px) * b.dx + (vertices[i][1] - b.pz) * b.dz;
+      out.push([b.px + along * b.dx, b.pz + along * b.dz]);
       continue;
     }
     const t = ((b.px - a.px) * b.dz - (b.pz - a.pz) * b.dx) / denom;

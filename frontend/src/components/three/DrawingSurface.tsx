@@ -52,11 +52,12 @@ import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
 import { snapOpeningOffset, type OpeningSnapTarget } from "@/utils/openingSnap";
 import { pointInPolygon } from "@/utils/areaCalc";
 import {
-  findFloors,
+  reconcileLoadedFloors,
   addWallWithIntersections,
   snapToCorner,
   reassignOpeningsAfterWallChange,
 } from "@/utils/wallGraph";
+import { toast } from "sonner";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { checkFurnitureCollision } from "@/utils/collision";
 import type { FurnitureData, WallData, OpeningData } from "@/types/designer";
@@ -544,6 +545,16 @@ function SceneContent() {
     [snap, gridSize, walls]
   );
 
+  // Room drafts snap to the grid only. Wall-corner snapping here would pull
+  // USABLE-footprint clicks onto wall CENTERLINE corners (a ~0.1 m diagonal
+  // offset), skewing the drawn polygon before the room is even built — the
+  // room-to-wall alignment in addRoom handles attaching to neighbors instead.
+  const snapRoomPoint = useCallback(
+    (x: number, z: number): [number, number] =>
+      snap ? snapPoint(x, z, gridSize) : [x, z],
+    [snap, gridSize]
+  );
+
   // Per-frame ground-plane raycast off the GLOBAL pointer (not mesh pointer
   // events). R3F updates `pointer` before any object's stopPropagation runs, so
   // this stays glued to the cursor even when it passes over existing walls /
@@ -645,7 +656,7 @@ function SceneContent() {
     // 3. Room tool — rubber-band the in-progress polygon to the cursor.
     if (mode === "room") {
       if (!hasGround) return;
-      const snapped = snapWorldPoint(ground.x, ground.z);
+      const snapped = snapRoomPoint(ground.x, ground.z);
       if (!pointsEqual(snapped, roomCursorRef.current)) {
         roomCursorRef.current = snapped;
         setRoomCursor(snapped);
@@ -741,20 +752,28 @@ function SceneContent() {
           height: wallHeight,
         };
 
-        // Process intersections: splits walls at crossings and T-junctions
+        // Process intersections: splits walls at crossings and T-junctions,
+        // and absorbs spans drawn over existing collinear walls.
         const updatedWalls = addWallWithIntersections(newWall, walls);
-        const detectedFloors = findFloors(updatedWalls);
+        if (updatedWalls === walls) return; // fully absorbed duplicate — no-op
+        // Re-derive floors, carrying flooring materials by room centroid.
+        const detectedFloors = reconcileLoadedFloors(updatedWalls, floors);
         // Any opening on a wall that just got split would otherwise reference
         // a vanished id — reassign each to whichever child segment still
-        // contains its footprint, drop the rest.
-        const updatedOpenings = reassignOpeningsAfterWallChange(openings, walls, updatedWalls);
+        // contains its footprint (shifting it clear of new junctions when
+        // needed); openings that no longer fit anywhere are dropped.
+        const { openings: updatedOpenings, dropped } =
+          reassignOpeningsAfterWallChange(openings, walls, updatedWalls);
+        if (dropped > 0) {
+          toast.warning(
+            dropped === 1
+              ? "1 door/window no longer fit on its wall and was removed"
+              : `${dropped} doors/windows no longer fit on their walls and were removed`
+          );
+        }
 
         // Atomic update — single undo step
-        setWallsAndFloors(
-          updatedWalls,
-          detectedFloors.length > 0 ? detectedFloors : floors,
-          updatedOpenings
-        );
+        setWallsAndFloors(updatedWalls, detectedFloors, updatedOpenings);
       }
     },
     [walls, floors, openings, wallThickness, wallHeight, setWallsAndFloors]
@@ -875,8 +894,8 @@ function SceneContent() {
       // Custom room: click to drop corners; click near the first corner to close.
       if (e.button === 0 && mode === "room") {
         e.stopPropagation();
-        const point = getSnappedPoint(e);
-        if (!point) return;
+        if (!e.point) return;
+        const point = snapRoomPoint(e.point.x, e.point.z);
         const draft = useDesignerStore.getState().roomDraft ?? [];
         if (
           draft.length >= 3 &&
@@ -900,6 +919,7 @@ function SceneContent() {
       mode,
       activeFurnitureType,
       getSnappedPoint,
+      snapRoomPoint,
       setDrawingFrom,
       placeFurniture,
       select,
