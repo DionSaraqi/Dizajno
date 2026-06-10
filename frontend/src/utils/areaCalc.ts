@@ -68,6 +68,24 @@ function distance(a: readonly [number, number], b: readonly [number, number]): n
   return Math.sqrt(dx * dx + dz * dz);
 }
 
+/** Standard ray-casting point-in-polygon test in the XZ plane. */
+export function pointInPolygon(
+  point: readonly [number, number],
+  vertices: ReadonlyArray<readonly [number, number]>
+): boolean {
+  if (vertices.length < 3) return false;
+  const [px, pz] = point;
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const [xi, zi] = vertices[i];
+    const [xj, zj] = vertices[j];
+    if (zi > pz !== zj > pz && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 // ── Inner (usable) floor area ──────────────────────────────────────────────────
 // Floor polygons are traced along wall *centerlines*, so their area includes the
 // footprint under the walls. The inner usable area is the polygon inset inward

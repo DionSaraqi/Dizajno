@@ -23,6 +23,7 @@ import {
 } from "@/store/useDesignerStore";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { polygonArea } from "@/utils/areaCalc";
+import { snapOpeningOffset } from "@/utils/openingSnap";
 import { isAxisAlignedRect } from "@/utils/roomBuilder";
 import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
 import type { FurnitureCatalogItem } from "@/types/designer";
@@ -303,32 +304,37 @@ export default function SelectionBar() {
   }
 
   // ── Opening (door / window) ──
+  // Deliberately minimal: width, height, delete. Sill adjustment and the
+  // branded-fixture picker live in the opening's radial menu on the canvas.
   if (opening) {
     const isDoor = opening.type === "door";
-    const fixtureOptions = liveCatalog.filter(
-      (i) => i.family === "Fixture" && i.category === (isDoor ? "Doors" : "Windows")
-    );
+    // Width edits keep the opening centered and re-run the same validation the
+    // canvas uses, so widening can't push it into a sibling or off the wall.
+    const commitWidth = (v: number) => {
+      const width = v / 100;
+      const host = walls.find((w) => w.id === opening.wallId);
+      if (!host) return;
+      const wallLen = Math.hypot(host.end[0] - host.start[0], host.end[1] - host.start[1]);
+      const res = snapOpeningOffset(
+        opening.offsetFromStart + opening.width / 2,
+        width,
+        wallLen,
+        openings.filter((o) => o.wallId === opening.wallId && o.id !== opening.id),
+        false,
+        1
+      );
+      if (res.valid) {
+        updateOpening(opening.id, { width, offsetFromStart: res.offsetFromStart });
+      }
+    };
     return (
       <Shell title={isDoor ? "Door" : "Window"}>
         <NumberField label="Width" unit="cm" value={opening.width * 100} step={1}
           min={isDoor ? 60 : 40} max={isDoor ? 240 : 200}
-          onCommit={(v) => updateOpening(opening.id, { width: v / 100 })} />
+          onCommit={commitWidth} />
         <NumberField label="Height" unit="cm" value={opening.height * 100} step={1}
           min={isDoor ? 180 : 40} max={isDoor ? 240 : 150}
           onCommit={(v) => updateOpening(opening.id, { height: v / 100 })} />
-        {!isDoor && (
-          <NumberField label="Sill" unit="cm" value={opening.sillHeight * 100} step={1} min={30} max={120}
-            onCommit={(v) => updateOpening(opening.id, { sillHeight: v / 100 })} />
-        )}
-        {fixtureOptions.length > 0 && (
-          <VariantSelect
-            label="Fixture"
-            value={opening.productVariantId}
-            options={fixtureOptions}
-            emptyLabel="None (generic)"
-            onChange={(v) => updateOpening(opening.id, { productVariantId: v })}
-          />
-        )}
         <DeleteButton onClick={() => removeOpening(opening.id)} />
       </Shell>
     );

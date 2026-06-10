@@ -51,9 +51,15 @@ function computeSegments(
     if (cursor < opStart) {
       segments.push({ startOffset: cursor, endOffset: opStart, yBottom: 0, yTop: wallHeight });
     }
-    // Sill below opening (windows only)
+    // Sill below opening (windows only). Clamped to the rendered wall height —
+    // in 2D walls are squashed to 0.15 and an unclamped 0.9 sill would tower.
     if (op.sillHeight > 0.001) {
-      segments.push({ startOffset: opStart, endOffset: opEnd, yBottom: 0, yTop: op.sillHeight });
+      segments.push({
+        startOffset: opStart,
+        endOffset: opEnd,
+        yBottom: 0,
+        yTop: Math.min(op.sillHeight, wallHeight),
+      });
     }
     // Lintel above opening
     if (lintelBottom < wallHeight - 0.001) {

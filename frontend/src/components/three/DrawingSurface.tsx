@@ -45,8 +45,12 @@ import Measurements from "./Measurements";
 import RoomLabels from "./RoomLabels";
 import WallDimensions from "./WallDimensions";
 import RadialMenu from "./RadialMenu";
+import OpeningRadialMenu from "./OpeningRadialMenu";
+import OpeningMeasurements from "./OpeningMeasurements";
 import SnapIndicator from "./SnapIndicator";
 import { smartSnap, snapPoint, type SnapEdge } from "@/utils/snapToGrid";
+import { snapOpeningOffset, type OpeningSnapTarget } from "@/utils/openingSnap";
+import { pointInPolygon } from "@/utils/areaCalc";
 import {
   findFloors,
   addWallWithIntersections,
@@ -460,21 +464,72 @@ function SceneContent() {
   const [ghostOpening, setGhostOpening] = useState<{
     wallId: string;
     offsetFromStart: number;
+    valid: boolean;
+    snapTarget: OpeningSnapTarget | null;
     wallStart: [number, number];
     wallEnd: [number, number];
     wallThicknessLocal: number;
   } | null>(null);
 
-  // Opening drag state
+  // Opening drag state — armed on pointerdown, but movement only starts once
+  // the pointer travels OPENING_DRAG_THRESHOLD along the wall (mirrors the
+  // furniture hold-to-drag pattern so a plain click never moves the opening).
   const draggingOpeningRef = useRef<{
     openingId: string;
     wallId: string;
     width: number;
+    /** offsetFromStart when the gesture began */
+    startOffset: number;
+    /** pointer projection along the wall when the gesture began */
+    startProj: number;
+    /** threshold crossed — the opening is actually being moved */
+    dragging: boolean;
   } | null>(null);
+  // Local drag preview — the store is only written ONCE on release (also keeps
+  // the undo history at one entry per drag instead of one per frame).
+  const [openingDragPreview, setOpeningDragPreview] = useState<{
+    id: string;
+    offsetFromStart: number;
+    valid: boolean;
+    snapTarget: OpeningSnapTarget | null;
+  } | null>(null);
+  const openingDragPreviewRef = useRef<typeof openingDragPreview>(null);
+  const OPENING_DRAG_THRESHOLD = 0.05; // world meters along the wall
+  // Set when an opening drag actually moved: the DOM click that follows the
+  // release would otherwise raycast to whatever is now under the cursor
+  // (often the bare wall after a snap-back) and steal the selection.
+  const suppressClickUntilRef = useRef(0);
   const { raycaster, camera, pointer, gl, controls } = useThree();
   const groundPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
   // Pointer id captured during a wall-draw gesture (see handlePointerDown).
   const capturedPointerRef = useRef<number | null>(null);
+
+  // Project a pointer ray to a scalar offset along a wall. In 3D the ray is
+  // intersected with the wall's own vertical (centerline) plane — using a
+  // surface hit point (offset from the centerline by hitbox/frame depth) or
+  // the y=0 ground plane would introduce view-angle parallax bigger than the
+  // drag threshold, making a plain click count as a move. In 2D the top-down
+  // ortho ray is parallel to that plane, so the ground plane is used (exact).
+  const projectRayAlongWall = useCallback(
+    (ray: THREE.Ray, wall: WallData): number | null => {
+      const wdx = wall.end[0] - wall.start[0];
+      const wdz = wall.end[1] - wall.start[1];
+      const wlen = Math.hypot(wdx, wdz);
+      if (wlen < 0.01) return null;
+      const pt = new THREE.Vector3();
+      if (is3D) {
+        const wallPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+          new THREE.Vector3(-wdz / wlen, 0, wdx / wlen),
+          new THREE.Vector3(wall.start[0], 0, wall.start[1])
+        );
+        if (!ray.intersectPlane(wallPlane, pt)) return null;
+      } else {
+        if (!ray.intersectPlane(groundPlaneRef.current, pt)) return null;
+      }
+      return projectPointOntoWall(pt.x, pt.z, wall);
+    },
+    [is3D]
+  );
 
   // Snap a raw world XZ point: grid snap (when enabled) then snap to a nearby
   // existing wall corner so wall chains connect cleanly.
@@ -529,21 +584,50 @@ function SceneContent() {
     }
 
     // ── Live previews ────────────────────────────────────────────────────────
-    // 1. Opening drag — reposition the dragged opening along its host wall.
+    // 1. Opening drag — move the dragged opening along its host wall, locally.
+    // The pointer is projected against the wall's own VERTICAL plane in 3D
+    // (the y=0 ground plane lands meters behind a wall when you grab a frame
+    // at sill height); in 2D top-down the ground plane is exact. Movement is
+    // delta-based from the grab point — never re-centered under the cursor —
+    // and only starts past a hold-to-drag threshold, so clicks don't move it.
     const drag = draggingOpeningRef.current;
     if (drag) {
-      if (!hasGround) return;
       const wall = walls.find((w) => w.id === drag.wallId);
       if (!wall) return;
 
-      const offset = projectPointOntoWall(ground.x, ground.z, wall);
-      if (offset === null) return;
+      const proj = projectRayAlongWall(raycaster.ray, wall);
+      if (proj === null) return;
+
+      if (!drag.dragging) {
+        if (Math.abs(proj - drag.startProj) < OPENING_DRAG_THRESHOLD) return;
+        drag.dragging = true;
+      }
 
       const wallLen = Math.sqrt(
         (wall.end[0] - wall.start[0]) ** 2 + (wall.end[1] - wall.start[1]) ** 2
       );
-      const clamped = Math.max(0.05, Math.min(wallLen - drag.width - 0.05, offset - drag.width / 2));
-      updateOpening(drag.openingId, { offsetFromStart: clamped });
+      const desiredCenter = drag.startOffset + (proj - drag.startProj) + drag.width / 2;
+      const siblings = openings.filter(
+        (o) => o.wallId === wall.id && o.id !== drag.openingId
+      );
+      const res = snapOpeningOffset(desiredCenter, drag.width, wallLen, siblings, snap, gridSize);
+
+      const prev = openingDragPreviewRef.current;
+      if (
+        !prev ||
+        prev.offsetFromStart !== res.offsetFromStart ||
+        prev.valid !== res.valid ||
+        prev.snapTarget !== res.snapTarget
+      ) {
+        const next = {
+          id: drag.openingId,
+          offsetFromStart: res.offsetFromStart,
+          valid: res.valid,
+          snapTarget: res.snapTarget,
+        };
+        openingDragPreviewRef.current = next;
+        setOpeningDragPreview(next);
+      }
       return;
     }
 
@@ -589,17 +673,48 @@ function SceneContent() {
     }
   });
 
-  // Release opening drag on pointer up (window-level listener)
+  // Release opening drag on pointer up / cancel (window-level listeners).
+  // Commits the move to the store ONCE — only if the drag threshold was
+  // crossed, the final position is legal AND actually different, and the
+  // opening still exists (it can be Delete-keyed mid-drag). Anything else
+  // would pollute the zundo history with no-op entries.
   useEffect(() => {
-    const handlePointerUp = () => {
-      if (draggingOpeningRef.current) {
-        draggingOpeningRef.current = null;
-        setStoreDragging(false);
+    const finishOpeningDrag = (commit: boolean) => {
+      const drag = draggingOpeningRef.current;
+      if (!drag) return;
+      const preview = openingDragPreviewRef.current;
+      if (drag.dragging) {
+        // The DOM click that follows the release lands on whatever is under
+        // the cursor now (often the wall, after a snap-back) — swallow it.
+        suppressClickUntilRef.current = performance.now() + 200;
       }
+      if (
+        commit &&
+        drag.dragging &&
+        preview &&
+        preview.valid &&
+        preview.offsetFromStart !== drag.startOffset &&
+        useDesignerStore.getState().openings.some((o) => o.id === drag.openingId)
+      ) {
+        updateOpening(drag.openingId, { offsetFromStart: preview.offsetFromStart });
+      }
+      draggingOpeningRef.current = null;
+      openingDragPreviewRef.current = null;
+      setOpeningDragPreview(null);
+      setStoreDragging(false);
     };
+    const handlePointerUp = (e: PointerEvent) => {
+      if (e.button !== 0) return; // only the dragging button ends the gesture
+      finishOpeningDrag(true);
+    };
+    const handlePointerCancel = () => finishOpeningDrag(false);
     window.addEventListener("pointerup", handlePointerUp);
-    return () => window.removeEventListener("pointerup", handlePointerUp);
-  }, [setStoreDragging]);
+    window.addEventListener("pointercancel", handlePointerCancel);
+    return () => {
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
+    };
+  }, [setStoreDragging, updateOpening]);
 
   const getSnappedPoint = useCallback(
     (e: any): [number, number] | null => {
@@ -845,6 +960,77 @@ function SceneContent() {
     ghostItem !== null &&
     checkFurnitureCollision(ghostItem, furniture, walls);
 
+  // Openings as rendered this frame: while one is being dragged, substitute
+  // its local preview offset so both the frame AND the wall hole track the
+  // cursor (the store itself is untouched until release).
+  const displayOpenings = openingDragPreview
+    ? openings.map((o) =>
+        o.id === openingDragPreview.id
+          ? { ...o, offsetFromStart: openingDragPreview.offsetFromStart }
+          : o
+      )
+    : openings;
+
+  // Indicator line across the wall at a snapped opening's center.
+  const openingSnapEdge = (
+    wall: WallData,
+    offsetFromStart: number,
+    width: number
+  ): SnapEdge | null => {
+    const dx = wall.end[0] - wall.start[0];
+    const dz = wall.end[1] - wall.start[1];
+    const len = Math.hypot(dx, dz);
+    if (len < 0.01) return null;
+    const cx = wall.start[0] + (dx / len) * (offsetFromStart + width / 2);
+    const cz = wall.start[1] + (dz / len) * (offsetFromStart + width / 2);
+    const px = -dz / len;
+    const pz = dx / len;
+    const half = wall.thickness / 2 + 0.4;
+    return {
+      p1: [cx + px * half, cz + pz * half],
+      p2: [cx - px * half, cz - pz * half],
+    };
+  };
+
+  // Which side of its wall a door's 2D swing arc opens toward: prefer the
+  // side whose probe point lands inside a floor polygon (i.e. into the room).
+  // Walls carry no swing-side datum, so this is a symbolic best-effort that
+  // stays stable regardless of the wall's draw direction.
+  const doorSwingSide = (
+    wall: WallData,
+    offsetFromStart: number,
+    width: number
+  ): 1 | -1 => {
+    const dx = wall.end[0] - wall.start[0];
+    const dz = wall.end[1] - wall.start[1];
+    const len = Math.hypot(dx, dz);
+    if (len < 0.01) return 1;
+    const cx = wall.start[0] + (dx / len) * (offsetFromStart + width / 2);
+    const cz = wall.start[1] + (dz / len) * (offsetFromStart + width / 2);
+    const px = -dz / len;
+    const pz = dx / len;
+    const probe = wall.thickness / 2 + 0.3;
+    if (floors.some((f) => pointInPolygon([cx + px * probe, cz + pz * probe], f.vertices))) {
+      return 1;
+    }
+    if (floors.some((f) => pointInPolygon([cx - px * probe, cz - pz * probe], f.vertices))) {
+      return -1;
+    }
+    return 1;
+  };
+
+  // Opening whose measurements should show in 2D: the dragged one, else the
+  // single selected one (mirrors furniture's selected-measurements behavior).
+  const measuredOpening = (() => {
+    const targetId =
+      openingDragPreview?.id ?? (selectedIds.length === 1 ? selectedIds[0] : null);
+    if (!targetId) return null;
+    const op = displayOpenings.find((o) => o.id === targetId);
+    if (!op) return null;
+    const wall = walls.find((w) => w.id === op.wallId);
+    return wall ? { op, wall } : null;
+  })();
+
   return (
     <>
       <color attach="background" args={["#e8ecf0"]} />
@@ -871,10 +1057,12 @@ function SceneContent() {
           height={is3D ? wall.height : 0.15}
           selected={selectedIds.includes(wall.id)}
           hovered={hoveredId === wall.id}
-          openings={openings.filter((o) => o.wallId === wall.id)}
+          openings={displayOpenings.filter((o) => o.wallId === wall.id)}
           paintVariantId={wall.paintVariantId ?? null}
           onClick={(e: any) => {
             if (mode === "select" || mode === "draw") {
+              // Ignore the synthetic click that trails an opening drag.
+              if (performance.now() < suppressClickUntilRef.current) return;
               select(wall.id);
             }
             // Place opening directly on the clicked wall (avoids click-through)
@@ -889,14 +1077,21 @@ function SceneContent() {
               const opHeight = pendingOpeningType === "door" ? 2.1 : 1.0;
               const opSill = pendingOpeningType === "door" ? 0 : 0.9;
 
-              if (wallLen < opWidth + 0.1) return;
-              const clampedOffset = Math.max(0.05, Math.min(wallLen - opWidth - 0.05, hit - opWidth / 2));
+              const res = snapOpeningOffset(
+                hit,
+                opWidth,
+                wallLen,
+                openings.filter((o) => o.wallId === wall.id),
+                snap,
+                gridSize
+              );
+              if (!res.valid) return;
 
               addOpening({
                 id: newId(),
                 wallId: wall.id,
                 type: pendingOpeningType,
-                offsetFromStart: clampedOffset,
+                offsetFromStart: res.offsetFromStart,
                 width: opWidth,
                 height: opHeight,
                 sillHeight: opSill,
@@ -921,14 +1116,31 @@ function SceneContent() {
                 (wall.end[0] - wall.start[0]) ** 2 + (wall.end[1] - wall.start[1]) ** 2
               );
               const opWidth = pendingOpeningType === "door" ? 0.9 : 1.2;
-              const clampedOffset = Math.max(0.05, Math.min(wallLen - opWidth - 0.05, hit - opWidth / 2));
-              setGhostOpening({
-                wallId: wall.id,
-                offsetFromStart: clampedOffset,
-                wallStart: wall.start,
-                wallEnd: wall.end,
-                wallThicknessLocal: wall.thickness,
-              });
+              const res = snapOpeningOffset(
+                hit,
+                opWidth,
+                wallLen,
+                openings.filter((o) => o.wallId === wall.id),
+                snap,
+                gridSize
+              );
+              setGhostOpening((prev) =>
+                prev &&
+                prev.wallId === wall.id &&
+                prev.offsetFromStart === res.offsetFromStart &&
+                prev.valid === res.valid &&
+                prev.snapTarget === res.snapTarget
+                  ? prev
+                  : {
+                      wallId: wall.id,
+                      offsetFromStart: res.offsetFromStart,
+                      valid: res.valid,
+                      snapTarget: res.snapTarget,
+                      wallStart: wall.start,
+                      wallEnd: wall.end,
+                      wallThicknessLocal: wall.thickness,
+                    }
+              );
             }
           }}
         />
@@ -970,7 +1182,10 @@ function SceneContent() {
           selected={selectedIds.includes(floor.id)}
           hovered={hoveredId === floor.id}
           onClick={() => {
-            if (mode === "select") select(floor.id);
+            if (mode === "select") {
+              if (performance.now() < suppressClickUntilRef.current) return;
+              select(floor.id);
+            }
           }}
           onPointerOver={() => {
             if (mode === "select" && !useDesignerStore.getState().isDragging) {
@@ -991,7 +1206,7 @@ function SceneContent() {
       )}
 
       {/* Openings (door/window frames rendered in world space) */}
-      {openings.map((opening) => {
+      {displayOpenings.map((opening) => {
         const wall = walls.find((w) => w.id === opening.wallId);
         if (!wall) return null;
         return (
@@ -1004,6 +1219,14 @@ function SceneContent() {
             wallHeight={is3D ? wall.height : 0.15}
             selected={selectedIds.includes(opening.id)}
             hovered={hoveredId === opening.id}
+            flat={!is3D}
+            invalid={openingDragPreview?.id === opening.id && !openingDragPreview.valid}
+            interactive={mode === "select"}
+            swingSide={
+              !is3D && opening.type === "door"
+                ? doorSwingSide(wall, opening.offsetFromStart, opening.width)
+                : 1
+            }
             onClick={() => {
               if (mode === "select" && !draggingOpeningRef.current) select(opening.id);
             }}
@@ -1013,10 +1236,22 @@ function SceneContent() {
                 select(opening.id);
                 // Read-only viewer: select but never start a drag.
                 if (readOnly) return;
+                // Capture the grab point along the wall — the drag is
+                // delta-based from here, and nothing moves until the pointer
+                // travels past the hold-to-drag threshold. Project the EVENT
+                // RAY the same way the per-frame loop does: e.point sits on
+                // the hitbox/frame surface, off the wall centerline, and that
+                // offset reads as instant movement at oblique 3D angles.
+                if (!e.ray) return;
+                const startProj = projectRayAlongWall(e.ray, wall);
+                if (startProj === null) return;
                 draggingOpeningRef.current = {
                   openingId: opening.id,
                   wallId: opening.wallId,
                   width: opening.width,
+                  startOffset: opening.offsetFromStart,
+                  startProj,
+                  dragging: false,
                 };
                 setStoreDragging(true);
               }
@@ -1029,29 +1264,70 @@ function SceneContent() {
         );
       })}
 
-      {/* Ghost opening preview */}
+      {/* Snap indicator + live measurements for the dragged / selected opening */}
+      {openingDragPreview?.snapTarget &&
+        (() => {
+          const op = displayOpenings.find((o) => o.id === openingDragPreview.id);
+          const wall = op && walls.find((w) => w.id === op.wallId);
+          if (!op || !wall) return null;
+          const edge = openingSnapEdge(wall, op.offsetFromStart, op.width);
+          return edge ? <SnapIndicator snapEdge={edge} /> : null;
+        })()}
+      {!is3D && measuredOpening && (
+        <OpeningMeasurements
+          opening={measuredOpening.op}
+          wall={measuredOpening.wall}
+          siblings={displayOpenings.filter(
+            (o) => o.wallId === measuredOpening.op.wallId && o.id !== measuredOpening.op.id
+          )}
+        />
+      )}
+
+      {/* Ghost opening preview (+ live measurements and snap indicator) */}
       {ghostOpening && pendingOpeningType && (() => {
         const opWidth = pendingOpeningType === "door" ? 0.9 : 1.2;
         const opHeight = pendingOpeningType === "door" ? 2.1 : 1.0;
         const opSill = pendingOpeningType === "door" ? 0 : 0.9;
-        const wallH = is3D ? (walls.find((w) => w.id === ghostOpening.wallId)?.height ?? wallHeight) : 0.15;
+        const ghostWall = walls.find((w) => w.id === ghostOpening.wallId);
+        const wallH = is3D ? (ghostWall?.height ?? wallHeight) : 0.15;
+        const edge =
+          ghostWall && ghostOpening.snapTarget
+            ? openingSnapEdge(ghostWall, ghostOpening.offsetFromStart, opWidth)
+            : null;
         return (
-          <WallOpening
-            opening={{
-              id: "__ghost_opening__",
-              wallId: ghostOpening.wallId,
-              type: pendingOpeningType,
-              offsetFromStart: ghostOpening.offsetFromStart,
-              width: opWidth,
-              height: opHeight,
-              sillHeight: opSill,
-            }}
-            wallStart={ghostOpening.wallStart}
-            wallEnd={ghostOpening.wallEnd}
-            wallThickness={ghostOpening.wallThicknessLocal}
-            wallHeight={wallH}
-            ghost
-          />
+          <>
+            <WallOpening
+              opening={{
+                id: "__ghost_opening__",
+                wallId: ghostOpening.wallId,
+                type: pendingOpeningType,
+                offsetFromStart: ghostOpening.offsetFromStart,
+                width: opWidth,
+                height: opHeight,
+                sillHeight: opSill,
+              }}
+              wallStart={ghostOpening.wallStart}
+              wallEnd={ghostOpening.wallEnd}
+              wallThickness={ghostOpening.wallThicknessLocal}
+              wallHeight={wallH}
+              ghost
+              flat={!is3D}
+              invalid={!ghostOpening.valid}
+              swingSide={
+                !is3D && pendingOpeningType === "door" && ghostWall
+                  ? doorSwingSide(ghostWall, ghostOpening.offsetFromStart, opWidth)
+                  : 1
+              }
+            />
+            {edge && <SnapIndicator snapEdge={edge} />}
+            {!is3D && ghostWall && (
+              <OpeningMeasurements
+                opening={{ offsetFromStart: ghostOpening.offsetFromStart, width: opWidth }}
+                wall={ghostWall}
+                siblings={openings.filter((o) => o.wallId === ghostOpening.wallId)}
+              />
+            )}
+          </>
         );
       })()}
 
@@ -1065,7 +1341,12 @@ function SceneContent() {
         selectedIds.length === 1 &&
         (() => {
           const sel = furniture.find((f) => f.id === selectedIds[0]);
-          return sel ? <RadialMenu item={sel} /> : null;
+          if (sel) return <RadialMenu item={sel} />;
+          if (readOnly) return null;
+          const op = openings.find((o) => o.id === selectedIds[0]);
+          if (!op) return null;
+          const opWall = walls.find((w) => w.id === op.wallId);
+          return opWall ? <OpeningRadialMenu opening={op} wall={opWall} /> : null;
         })()}
 
       {/* Ghost preview when placing from sidebar */}
