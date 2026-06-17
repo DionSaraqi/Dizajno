@@ -88,8 +88,11 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 │       │   └── supplier/                  # /supplier/* — portal: picker + per-supplier products/textures/members/profile (Phase 7c)
 │       ├── components/
 │       │   ├── designer/                  # Sidebar, Toolbar, PropertiesPanel, StatusBar
-│       │   ├── three/                     # R3F 3D components
-│       │   │   ├── landing/               # Landing page 3D scene (House, BlueDoor, Yard, HouseScene)
+│       │   ├── landing/                   # Landing page (/) sections + its 3D scene
+│       │   │   ├── LandingChrome/Header/Nav/Aside/Canvas  # Sectioned 2D shell pieces
+│       │   │   ├── navItems.ts            # Left "drawing index" nav data
+│       │   │   └── three/                 # Landing 3D: LandingScene, House, Door, Lights, SketchMaterial
+│       │   ├── three/                     # Designer R3F 3D components
 │       │   │   ├── furniture/             # 3D furniture models (BedModel, ChairModel, GLTFModel, ...)
 │       │   │   ├── DrawingSurface         # Wall drawing canvas (2D mode)
 │       │   │   ├── FloorMesh              # Auto-generated floor polygons
@@ -305,10 +308,12 @@ Add the entry to `utils/furnitureCatalog.ts` with all computed values. Include `
 - Uniform scale slider (50%–200%) in properties panel scales width/depth/height proportionally from catalog base
 
 ### Landing Page
+- `app/page.tsx` is a thin client shell (blueprint-grid backdrop + cursor tracking) that composes sections from `components/landing/`: `LandingChrome` (aurora + sweep + crosshairs), `LandingHeader`, `LandingNav`, `LandingAside`, and `LandingCanvas`.
+- `LandingCanvas` mounts the 3D scene `components/landing/three/LandingScene.tsx` → `House` + `Door` + `Lights`, all shaded by `components/landing/three/SketchMaterial.tsx`. (This 3D code lives under `components/landing/three/`, separate from the designer's `components/three/`.)
 - Animated 3D house scene with rotatable house (Y-axis only, camera fixed)
 - Clicking the door → house rotates back to home → camera moves to front → door opens → fade → navigate to `/designer`
 - Grid background has a cursor-following white glow effect (CSS `mask-image`)
-- `SketchMaterial` shader uses world-space normals so wall colors don't change with rotation
+- `SketchMaterial` is a self-lit world-space toon shader (rotation-stable): warm-lit / cool-indigo-shadow 2-temperature, fresnel rim (gated via `rim`), and `emissive`/`emissiveStrength` for the glowing windows + breathing door. Uniforms: `baseColor, opacity, transparent, depthWrite, side, shadowTint, rimColor, emissive, emissiveStrength, rim, aoFloorY, aoRange`.
 
 ## Conventions
 

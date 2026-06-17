@@ -5,13 +5,13 @@ import { Group, Vector3 } from "three";
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Door from "./Door";
-import Room from "./Room";
+import House from "./House";
 import Lights from "./Lights";
 
 // Approximate center of the house model (used as pivot for rotation)
 const HOUSE_CENTER: [number, number, number] = [0, 0, 5];
 
-export default function Scene() {
+export default function LandingScene() {
   const doorRef = useRef<Group>(null!);
   const houseGroupRef = useRef<Group>(null!);
   const { camera } = useThree();
@@ -24,7 +24,9 @@ export default function Scene() {
     "idle" | "returning" | "moving-to-front" | "opening-door"
   >("idle");
   const isAnimating = animationPhase !== "idle";
-  const [progress, setProgress] = useState(0);
+  // Per-frame animation progress lives in a ref — advancing it must NOT re-render the
+  // whole house subtree (~150 meshes) every frame during the door click-through.
+  const progress = useRef(0);
   const initialCameraPos = useRef(new Vector3(6, 6, 15));
   const frontViewPos = useRef(new Vector3(0, 0, 15));
 
@@ -39,7 +41,6 @@ export default function Scene() {
   const returnFromRotation = useRef(0);
 
   // fade overlay state
-  const [isFading, setIsFading] = useState(false);
   const fadeProgress = useRef(0);
   const overlayEl = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
@@ -88,7 +89,7 @@ export default function Scene() {
       const easeInOut = (t: number) => t < 0.5
         ? 4 * t * t * t
         : 1 - Math.pow(-2 * t + 2, 3) / 2;
-      const t = Math.min(progress, 1);
+      const t = Math.min(progress.current, 1);
       const eased = easeInOut(t);
 
       // Lerp house rotation back to 0
@@ -98,7 +99,7 @@ export default function Scene() {
         houseGroupRef.current.rotation.y = currentRot;
       }
 
-      setProgress((p) => p + 0.018);
+      progress.current += 0.018;
 
       if (t >= 1) {
         houseRotation.current = 0;
@@ -107,14 +108,14 @@ export default function Scene() {
         }
         initialCameraPos.current.copy(camera.position);
         setAnimationPhase("moving-to-front");
-        setProgress(0);
+        progress.current = 0;
       }
       return;
     }
 
     if (animationPhase === "moving-to-front") {
       const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
-      const t = Math.min(progress * 2, 1);
+      const t = Math.min(progress.current * 2, 1);
 
       camera.position.lerpVectors(
         initialCameraPos.current,
@@ -129,13 +130,11 @@ export default function Scene() {
       );
       camera.lookAt(currentLookAt.current);
 
-      setProgress((p) => p + 0.009);
+      progress.current += 0.009;
 
       if (t >= 1) {
         setAnimationPhase("opening-door");
-        setProgress(0);
-        // Start fading immediately when zoom begins
-        setIsFading(true);
+        progress.current = 0;
       }
     }
 
@@ -151,9 +150,9 @@ export default function Scene() {
         );
       }
 
-      if (progress < 1) {
-        setProgress((p) => Math.min(p + 0.003, 1));
-        const eased = easeOut(progress);
+      if (progress.current < 1) {
+        progress.current = Math.min(progress.current + 0.003, 1);
+        const eased = easeOut(progress.current);
         camera.position.z = 15 - eased * 10;
         camera.lookAt(0, 0, 5);
 
@@ -188,7 +187,7 @@ export default function Scene() {
       initialLookAt.current.set(0.5, -0.13, 8);
       targetLookAt.current.set(0, 0, 5);
       setAnimationPhase("returning");
-      setProgress(0);
+      progress.current = 0;
     }
   };
 
@@ -204,7 +203,7 @@ export default function Scene() {
       >
         <group position={[-HOUSE_CENTER[0], -HOUSE_CENTER[1], -HOUSE_CENTER[2]]}>
           <Door ref={doorRef} onClick={handleDoorClick} />
-          <Room />
+          <House />
         </group>
       </group>
     </>
