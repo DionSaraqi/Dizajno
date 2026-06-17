@@ -8,35 +8,6 @@ anything that is no longer true.**
 
 ## Floors & Room Drawing
 
-### Custom room hugging an existing corner gets a slanted wall
-When a custom room is drawn hugging the existing structure and a corner is
-clicked **right on the corner where existing rooms meet**, one of the new
-room's walls comes out at a slight angle instead of staying axis-aligned.
-Observed: a 5×5 room drawn against two existing rooms came out a trapezoid —
-left side 4.85 m, right side 5.00 m, with the bottom wall slanted by exactly
-one wall thickness (0.15 m) from the shared corner outward.
-
-**Repro:** build two adjacent rooms → Rooms → *Draw custom room* → click the
-first corner exactly on the junction corner of the existing rooms, draw the
-rest of the polygon hugging a side, close. One wall of the new room is tilted.
-
-**Suspected cause:** the per-wall corner merge (`snapToCorner`, 0.2 m radius)
-inside `addWallWithIntersections` (`frontend/src/utils/wallGraph.ts`) runs
-*after* the room-to-wall alignment and pulls ONE endpoint of a generated room
-wall diagonally onto the nearby existing corner (the aligned corner sits about
-half a wall thickness away from the existing centerline corner). The far
-endpoint, metres away, stays put — tilting the whole wall. The alignment layer
-(`frontend/src/utils/roomAlign.ts`) cannot compensate because it runs before
-the walls are inserted one by one.
-
-**Decided behavior (June 2026):** the room should *square up to the
-structure* — the corner welds to the existing corner AND the connected walls
-stay straight, i.e. the whole edge shifts so the room stays rectangular (its
-drawn size may adjust slightly). Fix sketch: snap the room's centerline
-polygon vertices to existing corners during alignment (then re-rectify the
-edges as a polygon), and suppress the per-wall endpoint corner pull for
-room-generated walls whenever the weld would knock a wall off its line.
-
 ### Resizing a room with shared walls is disabled
 Rooms that share a wall with a neighbor (created by the room-merge behavior)
 refuse the W×L resize with a toast — dragging a shared wall would silently

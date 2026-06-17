@@ -327,6 +327,37 @@ public static class CatalogSeedData
             WasteFactor: 0.05m,
             BasePrice: 45m,
             TextureUrl: "/textures/engineered-hardwood.jpg"),
+
+        new ItemSeed(
+            Type: "natural-oak-plank",
+            Label: "Natural Oak Plank",
+            // Dimensions describe a single plank for reference only.
+            Width: 1.20m, Depth: 0.18m, Height: 0.014m,
+            Color: "#D8B888",
+            Icon: "square",
+            Category: "Flooring",
+            SvgPreview: NaturalOakPlankSvg,
+            Family: ProductFamily.BuildingMaterial,
+            UnitOfSale: UnitOfSale.SquareMeter,
+            WasteFactor: 0.05m,
+            BasePrice: 38m,
+            TextureUrl: "/textures/natural-oak-plank.jpg"),
+
+        new ItemSeed(
+            Type: "herringbone-parquet",
+            Label: "Herringbone Parquet",
+            // Dimensions describe a single parquet block for reference only.
+            Width: 0.60m, Depth: 0.12m, Height: 0.014m,
+            Color: "#A6743F",
+            Icon: "square",
+            Category: "Flooring",
+            SvgPreview: HerringboneParquetSvg,
+            Family: ProductFamily.BuildingMaterial,
+            UnitOfSale: UnitOfSale.SquareMeter,
+            // Herringbone lay incurs more cutting waste than straight planks.
+            WasteFactor: 0.10m,
+            BasePrice: 68m,
+            TextureUrl: "/textures/herringbone-parquet.jpg"),
     ];
 
     // â”€â”€ SVG previews (verbatim from frontend/src/utils/furnitureCatalog.ts) â”€
@@ -510,6 +541,33 @@ public static class CatalogSeedData
             <rect x="52" y="30" width="42" height="20" fill="#B0885A" stroke="currentColor" stroke-width="0.8"/>
             <rect x="6" y="54" width="42" height="20" fill="#B0885A" stroke="currentColor" stroke-width="0.8"/>
             <rect x="52" y="54" width="42" height="20" fill="#9A7244" stroke="currentColor" stroke-width="0.8"/>
+        </svg>
+        """;
+
+    private const string NaturalOakPlankSvg = """
+        <svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <rect x="4" y="4" width="92" height="72" rx="2" fill="#D8B888" stroke="currentColor" stroke-width="2"/>
+            <rect x="6" y="6" width="58" height="16" fill="#E4C99E" stroke="currentColor" stroke-width="0.6"/>
+            <rect x="68" y="6" width="26" height="16" fill="#CBA679" stroke="currentColor" stroke-width="0.6"/>
+            <rect x="6" y="24" width="26" height="16" fill="#CBA679" stroke="currentColor" stroke-width="0.6"/>
+            <rect x="36" y="24" width="58" height="16" fill="#E4C99E" stroke="currentColor" stroke-width="0.6"/>
+            <rect x="6" y="42" width="58" height="16" fill="#E4C99E" stroke="currentColor" stroke-width="0.6"/>
+            <rect x="68" y="42" width="26" height="16" fill="#CBA679" stroke="currentColor" stroke-width="0.6"/>
+            <rect x="6" y="60" width="26" height="14" fill="#CBA679" stroke="currentColor" stroke-width="0.6"/>
+            <rect x="36" y="60" width="58" height="14" fill="#E4C99E" stroke="currentColor" stroke-width="0.6"/>
+        </svg>
+        """;
+
+    private const string HerringboneParquetSvg = """
+        <svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg" fill="none">
+            <rect x="4" y="4" width="92" height="72" rx="2" fill="#A6743F" stroke="currentColor" stroke-width="2"/>
+            <g stroke="#5C3D1E" stroke-width="1.1" opacity="0.75" stroke-linecap="square">
+                <path d="M8 8 L26 26 M8 26 L26 44 M8 44 L26 62 M8 62 L26 80"/>
+                <path d="M26 26 L44 8 M26 44 L44 26 M26 62 L44 44 M26 80 L44 62"/>
+                <path d="M44 8 L62 26 M44 26 L62 44 M44 44 L62 62 M44 62 L62 80"/>
+                <path d="M62 26 L80 8 M62 44 L80 26 M62 62 L80 44 M62 80 L80 62"/>
+                <path d="M80 8 L94 22 M80 26 L94 40 M80 44 L94 58 M80 62 L94 76"/>
+            </g>
         </svg>
         """;
 

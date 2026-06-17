@@ -105,7 +105,11 @@ export default function FloorMesh({
       onPointerOver={stopAndCall(onPointerOver)}
       onPointerOut={stopAndCall(onPointerOut)}
     >
+      {/* key remounts the material when the map appears/disappears: assigning
+          .map to an already-compiled material doesn't rebuild its shader
+          (needs material.needsUpdate), so the texture would render white. */}
       <meshStandardMaterial
+        key={map ? "textured" : "flat"}
         color={surfaceColor}
         map={map ?? null}
         side={THREE.DoubleSide}

@@ -6,7 +6,9 @@ import { OPENING_END_MARGIN } from "@/utils/openingSnap";
 type Key = string;
 type Point = [number, number];
 
-const CORNER_MERGE_THRESHOLD = 0.2; // merge corners within 0.2 units
+/** Endpoint corner-merge radius. Exported so roomAlign's polygon-level corner
+ *  weld agrees with the per-wall pull on what counts as "at a corner". */
+export const CORNER_MERGE_THRESHOLD = 0.2;
 /** Two walls within ~5° of each other count as (near-)parallel — T-junction
  *  splits make no geometric sense between them and used to kink walls. */
 const PARALLEL_COS = Math.cos((5 * Math.PI) / 180);
@@ -424,9 +426,20 @@ function insertWallSegment(
   return result;
 }
 
+export interface AddWallOptions {
+  /**
+   * Skip the per-endpoint pull onto nearby corners (step 1). Room-generated
+   * walls set this: their polygon corners are already welded onto the
+   * structure as a whole (roomAlign), so the endpoint pull could only drag
+   * ONE end of a wall diagonally onto a nearby corner while the far end —
+   * metres away — stays put, tilting the wall.
+   */
+  skipEndpointCornerSnap?: boolean;
+}
+
 /**
  * Process a new wall against all existing walls:
- * 1. Merge endpoints to nearby corners
+ * 1. Merge endpoints to nearby corners (skippable for room-generated walls)
  * 2. Snap laterally onto an existing wall's centerline when drawn inside its body
  * 3. Absorb spans already covered by collinear walls (shared walls — never
  *    duplicated, existing walls never split by the merge)
@@ -437,10 +450,12 @@ function insertWallSegment(
  */
 export function addWallWithIntersections(
   newWall: WallData,
-  existingWalls: WallData[]
+  existingWalls: WallData[],
+  opts?: AddWallOptions
 ): WallData[] {
-  let start: Point = snapToCorner(newWall.start, existingWalls);
-  let end: Point = snapToCorner(newWall.end, existingWalls);
+  const pull = !opts?.skipEndpointCornerSnap;
+  let start: Point = pull ? snapToCorner(newWall.start, existingWalls) : newWall.start;
+  let end: Point = pull ? snapToCorner(newWall.end, existingWalls) : newWall.end;
   if (dist(start, end) < MIN_WALL_SEG) return existingWalls;
 
   ({ start, end } = lateralSnapToWallLine(start, end, existingWalls));

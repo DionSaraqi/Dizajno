@@ -146,7 +146,13 @@ export default function WallMesh({
             onPointerMove={onPointerMove ? stopAndCall(onPointerMove) : undefined}
           >
             <boxGeometry args={[segLen, segH, thickness]} />
-            <meshStandardMaterial color={wallSurfaceColor} map={paint.map ?? null} />
+            {/* key remounts the material when the paint map appears/disappears —
+                same shader-staleness fix as FloorMesh. */}
+            <meshStandardMaterial
+              key={paint.map ? "textured" : "flat"}
+              color={wallSurfaceColor}
+              map={paint.map ?? null}
+            />
             {edgeColor && <Edges threshold={1} color={edgeColor} />}
           </mesh>
         );

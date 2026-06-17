@@ -27,7 +27,7 @@ import {
   isAxisAlignedRect,
   roundTo2,
 } from "@/utils/roomBuilder";
-import { alignRoomToWalls } from "@/utils/roomAlign";
+import { alignRoomToWalls, roomCornersSettled } from "@/utils/roomAlign";
 
 // ── Actions Interface ───────────────────────────────────────────────────────
 
@@ -144,10 +144,20 @@ function notifyDroppedOpenings(dropped: number) {
 function commitRoom(
   s: DesignerState,
   generated: WallData[],
-  target: [number, number]
+  target: [number, number],
+  cornersSettled: boolean
 ): Partial<DesignerState> {
   let walls = s.walls;
-  for (const w of generated) walls = addWallWithIntersections(w, walls);
+  // When the room polygon is fully settled against the structure (every
+  // vertex exactly on the corner/line it touches — see roomCornersSettled),
+  // the per-endpoint corner pull has nothing left to do: suppress it so it
+  // can't drag one end of a wall diagonally onto a nearby corner and tilt it.
+  // When vertices remain unsettled (weld bailed, or snap off so alignment
+  // never ran), keep the pull — it is what connects the room there.
+  for (const w of generated)
+    walls = addWallWithIntersections(w, walls, {
+      skipEndpointCornerSnap: cornersSettled,
+    });
   // Every wall fully absorbed (e.g. a duplicate room traced over an existing
   // one): change nothing — re-deriving floors would mint fresh floor ids and
   // pollute the undo history with a visually empty step.
@@ -240,7 +250,7 @@ export const useDesignerStore = create<DesignerStore>()(
         const generated = centerlineToWalls(aligned, s.wallThickness, s.wallHeight);
         if (generated.length < 3) return;
         set({
-          ...commitRoom(s, generated, vertsCentroid(aligned)),
+          ...commitRoom(s, generated, vertsCentroid(aligned), roomCornersSettled(aligned, s.walls)),
           mode: "select",
           roomDraft: null,
         });
@@ -276,7 +286,11 @@ export const useDesignerStore = create<DesignerStore>()(
         const aligned = s.snap ? alignRoomToWalls(cl, s.walls, t) : cl;
         const generated = centerlineToWalls(aligned, t, s.wallHeight);
         if (generated.length < 3) return;
-        set({ ...commitRoom(s, generated, vertsCentroid(aligned)), mode: "select", roomDraft: null });
+        set({
+          ...commitRoom(s, generated, vertsCentroid(aligned), roomCornersSettled(aligned, s.walls)),
+          mode: "select",
+          roomDraft: null,
+        });
       },
       resizeRectRoom: (floorId, usableWidth, usableLength) => {
         const s = get();
