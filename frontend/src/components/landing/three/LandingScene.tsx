@@ -5,8 +5,9 @@ import { Group, Vector3 } from "three";
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Door from "./Door";
-import House from "./House";
+import Room from "./Room";
 import Lights from "./Lights";
+import { tickSketchMaterials } from "./SketchMaterial";
 
 // Approximate center of the house model (used as pivot for rotation)
 const HOUSE_CENTER: [number, number, number] = [0, 0, 5];
@@ -14,7 +15,18 @@ const HOUSE_CENTER: [number, number, number] = [0, 0, 5];
 export default function LandingScene() {
   const doorRef = useRef<Group>(null!);
   const houseGroupRef = useRef<Group>(null!);
+  // Parent wrapper (pivoted at HOUSE_CENTER) for gentle pointer parallax — kept above the
+  // drag-rotated house so the user's manual Y-spin is preserved.
+  const parallaxRef = useRef<Group>(null!);
   const { camera } = useThree();
+
+  // Honour prefers-reduced-motion: zero out the boiling-line + parallax for those users.
+  const reducedMotion = useRef(false);
+  useEffect(() => {
+    reducedMotion.current =
+      typeof window !== "undefined" &&
+      !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  }, []);
 
   useEffect(() => {
     camera.lookAt(0.5, -0.13, 8);
@@ -83,7 +95,22 @@ export default function LandingScene() {
     };
   }, [handlePointerMove, handlePointerUp]);
 
-  useFrame(() => {
+  useFrame((state, delta) => {
+    // Drive the boiling-line clock across every SketchMaterial in one place (frozen for
+    // reduced-motion users so the linework sits still).
+    tickSketchMaterials(reducedMotion.current ? 0 : state.clock.elapsedTime);
+
+    // Gentle pointer parallax — a few degrees of tilt that eases toward the cursor, off
+    // while the camera is flying in or under reduced motion.
+    if (parallaxRef.current) {
+      const idle = !isAnimating && !reducedMotion.current;
+      const targetX = idle ? -state.pointer.y * 0.05 : 0;
+      const targetY = idle ? state.pointer.x * 0.06 : 0;
+      const k = 1 - Math.exp(-4 * Math.min(delta, 0.1));
+      parallaxRef.current.rotation.x += (targetX - parallaxRef.current.rotation.x) * k;
+      parallaxRef.current.rotation.y += (targetY - parallaxRef.current.rotation.y) * k;
+    }
+
     // Smoothly return house rotation to 0 before starting the door animation
     if (animationPhase === "returning") {
       const easeInOut = (t: number) => t < 0.5
@@ -195,15 +222,20 @@ export default function LandingScene() {
     <>
       <Lights />
 
-      {/* Rotatable house group — pivots around HOUSE_CENTER on Y axis only */}
-      <group
-        ref={houseGroupRef}
-        position={HOUSE_CENTER}
-        onPointerDown={handlePointerDown}
-      >
+      {/* Parallax wrapper — pivots at HOUSE_CENTER, tilts a few degrees toward the cursor */}
+      <group ref={parallaxRef} position={HOUSE_CENTER}>
         <group position={[-HOUSE_CENTER[0], -HOUSE_CENTER[1], -HOUSE_CENTER[2]]}>
-          <Door ref={doorRef} onClick={handleDoorClick} />
-          <House />
+          {/* Rotatable house group — pivots around HOUSE_CENTER on Y axis only */}
+          <group
+            ref={houseGroupRef}
+            position={HOUSE_CENTER}
+            onPointerDown={handlePointerDown}
+          >
+            <group position={[-HOUSE_CENTER[0], -HOUSE_CENTER[1], -HOUSE_CENTER[2]]}>
+              <Door ref={doorRef} onClick={handleDoorClick} />
+              <Room />
+            </group>
+          </group>
         </group>
       </group>
     </>

@@ -1,101 +1,110 @@
 "use client";
 
-import { useMemo } from "react";
 import { shaderMaterial } from "@react-three/drei/core/shaderMaterial";
 import { extend } from "@react-three/fiber";
+import { useEffect, useRef } from "react";
 import { Color } from "three";
 
 /**
- * Stylized toon material for the landing-page house ("Blueprint coming to life").
+ * Monochrome pencil-blueprint material.
  *
- * Design intent:
- *  - World-space normal + world-space view dir → shading and rim stay STABLE while
- *    the house rotates on the homepage (no flicker, no light-relative shifts).
- *  - Soft `smoothstep` banding (not hard if-bands) → a smooth, premium cartoon ramp.
- *  - Warm-lit / cool-shadow 2-temperature: shadows fade toward the brand indigo
- *    (`shadowTint`) while lit faces warm up — so the "sketch" side stays cool/blueprint
- *    and the lit side reads as finished, warm cottage colour.
- *  - Cheap vertical fake-AO grounds geometry without any shadow maps.
- *  - Gated fresnel `rim` (only hero meshes pay for it) draws a soft indigo silhouette halo.
- *  - `emissive` + `emissiveStrength` drive glowing windows and the door's breathing pulse.
+ * World-space lit (rotation-stable: the house drag-rotates while the camera is fixed),
+ * built from these layers — all pure grey scalars multiplying one baseColor, so nothing
+ * introduces colour:
+ *   - half-Lambert wrap + fwidth-antialiased soft toon bands  (Valve / Ronja)
+ *   - hemisphere ambient keyed on world-up                    (broad sky/ground gradient)
+ *   - gated Fresnel silhouette rim                            (Maya Ndljk)
+ *   - screen-fixed paper grain, suppressed in highlights      (mattdesl glsl-film-grain)
+ *   - snapped "boiling-line" sub-pixel vertex jitter          (Codrops PS1 / Alan Zucconi)
  *
- * The material is self-lit — it intentionally ignores scene lights, which keeps it
- * rotation-stable and free of per-light cost.
+ * Per-instance gates (uRim / uGrain / uJitter) let glass, the Door accent and the flat
+ * ground opt out. uTime is driven for the whole scene from one useFrame in LandingScene
+ * via the module-level registry below (no per-mesh React state).
  */
+
+// Every live material registers here so a single useFrame can drive uTime across the
+// whole scene by mutating uniforms directly — never through React state.
+const clocked = new Set<{ uTime: number }>();
+
+/** Advance the boiling-line clock on every live SketchMaterial. Call once per frame. */
+export function tickSketchMaterials(time: number) {
+  clocked.forEach((m) => {
+    m.uTime = time;
+  });
+}
+
 const SketchMaterialImpl = shaderMaterial(
   {
     baseColor: new Color("#3a3a3a"),
     opacity: 1.0,
-    shadowTint: new Color("#5e63d4"), // exact brand indigo — shadows lean blueprint
-    rimColor: new Color("#6E74E0"),
-    emissive: new Color("#000000"),
-    emissiveStrength: 0.0,
-    rim: 0.0, // 0/1 gate — only hero meshes pay for the fresnel
-    aoFloorY: -1.0, // world Y of the ground (room floor sits at y = -1)
-    aoRange: 3.2, // world-Y span from floor to roof peak for the AO gradient
+    uTime: 0,
+    uGrain: 1,
+    uJitter: 1,
+    // Retained as inert uniforms so existing `rim`/`rimStrength` call-site props stay valid;
+    // the shader no longer reads them (the Fresnel edge rim was removed).
+    uRim: 0,
+    uRimStrength: 0,
   },
-  // Vertex — world-space normal + world position + view direction.
-  // cameraPosition is a three.js built-in uniform available in the VERTEX stage.
+  // Vertex — world-space normal (rotation-independent shading) + boiling-line jitter
   /* glsl */ `
+    uniform float uTime;
+    uniform float uJitter;
+
     varying vec3 vWorldNormal;
     varying vec3 vWorldPos;
-    varying vec3 vViewDir;
 
     void main() {
       vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
-      vec4 wp = modelMatrix * vec4(position, 1.0);
-      vWorldPos = wp.xyz;
-      vViewDir = cameraPosition - wp.xyz;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+
+      // "Boiling line": snap time to ~9fps so the form visibly RE-DRAWS like a hand
+      // redrawing it, then nudge each vertex a sub-pixel amount (seeded by position).
+      float t = floor(uTime * 9.0) / 9.0;
+      vec3 jit = vec3(
+        sin(t * 7.0 + position.x * 12.0 + position.y * 3.0),
+        cos(t * 5.0 + position.y * 9.0  + position.z * 4.0),
+        sin(t * 6.0 + position.z * 11.0 + position.x * 2.0)
+      ) * 0.005 * uJitter;
+
+      vec3 p = position + jit;
+      vec4 worldPos = modelMatrix * vec4(p, 1.0);
+      vWorldPos = worldPos.xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
     }
   `,
-  // Fragment — soft toon ramp, warm/cool 2-temperature, fake-AO, gated rim, emissive.
+  // Fragment — soft toon ramp + hemisphere + rim + grain (all grey)
   /* glsl */ `
     uniform vec3 baseColor;
     uniform float opacity;
-    uniform vec3 shadowTint;
-    uniform vec3 rimColor;
-    uniform vec3 emissive;
-    uniform float emissiveStrength;
-    uniform float rim;
-    uniform float aoFloorY;
-    uniform float aoRange;
+    uniform float uGrain;
 
     varying vec3 vWorldNormal;
-    varying vec3 vWorldPos;
-    varying vec3 vViewDir;
+
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
 
     void main() {
       vec3 N = normalize(vWorldNormal);
 
-      // Fixed world-space key light (top-right, slightly forward)
-      vec3 lightDir = normalize(vec3(0.5, 0.8, 0.3));
-      float NdotL = dot(N, lightDir);
+      // Static directional key light (one fixed world direction). Each panel gets a single
+      // even tone from its orientation — no view-dependent edge glow, no shifting gradient.
+      vec3 L = normalize(vec3(0.4, 0.85, 0.35));
+      float NdotL = dot(N, L);
 
-      // Soft 2-tone toon ramp: plateaus ~0.55 / 0.85 / 1.15 with anti-aliased seams.
-      float t1 = smoothstep(-0.12, 0.02, NdotL);
-      float t2 = smoothstep(0.42, 0.58, NdotL);
-      float band = 0.55 + t1 * 0.30 + t2 * 0.30;
+      // Half-Lambert wrap so faces stay readable and never collapse to flat black.
+      float wrap = NdotL * 0.5 + 0.5;
+      wrap = wrap * wrap;
+      float shade = 0.55 + 0.6 * wrap;
 
-      // Warm-lit pole vs cool (brand-indigo) shadow pole, lerped by lit amount.
-      vec3 warm = baseColor * 1.06 + vec3(0.05, 0.03, 0.0);
-      vec3 cool = mix(baseColor, shadowTint, 0.45) * 0.80;
-      float litFactor = clamp((band - 0.55) / 0.60, 0.0, 1.0);
-      vec3 col = mix(cool, warm, litFactor) * (band / 1.15);
+      // Hemisphere sky/ground tint (subtle, per-face — keeps roof vs. walls distinct).
+      shade *= mix(0.9, 1.06, N.y * 0.5 + 0.5);
 
-      // Vertical fake-AO — darker toward the ground, no shadow maps.
-      float h = clamp((vWorldPos.y - aoFloorY) / aoRange, 0.0, 1.0);
-      col *= mix(0.82, 1.02, h);
+      // Screen-fixed paper grain (pencil tooth), faded out of the highlights.
+      float g = hash(gl_FragCoord.xy) - 0.5;
+      float lum = clamp(shade, 0.0, 1.0);
+      shade += g * 0.04 * uGrain * (1.0 - smoothstep(0.05, 0.5, lum));
 
-      // Gated fresnel rim — soft indigo silhouette halo (rotation-stable).
-      vec3 V = normalize(vViewDir);
-      float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
-      col += rim * fres * 0.35 * rimColor;
-
-      // Emissive glow (windows / door breathing).
-      col += emissive * emissiveStrength;
-
-      gl_FragColor = vec4(col, opacity);
+      gl_FragColor = vec4(baseColor * shade, opacity);
     }
   `
 );
@@ -111,16 +120,13 @@ declare global {
         baseColor?: Color | string;
         opacity?: number;
         transparent?: boolean;
-        depthWrite?: boolean;
         side?: number;
         attach?: string;
-        shadowTint?: Color | string;
-        rimColor?: Color | string;
-        emissive?: Color | string;
-        emissiveStrength?: number;
-        rim?: number;
-        aoFloorY?: number;
-        aoRange?: number;
+        uTime?: number;
+        uRim?: number;
+        uRimStrength?: number;
+        uGrain?: number;
+        uJitter?: number;
       };
     }
   }
@@ -128,60 +134,50 @@ declare global {
 
 export { SketchMaterialImpl };
 
-export interface SketchMaterialProps {
-  baseColor?: string;
-  opacity?: number;
-  transparent?: boolean;
-  /** Set false for stacked translucent meshes (e.g. chimney smoke) to avoid transparent-sort artifacts. */
-  depthWrite?: boolean;
-  side?: number;
-  /** Cool shadow pole — defaults to the brand indigo. */
-  shadowTint?: string;
-  rimColor?: string;
-  /** Emissive glow colour (windows, door). */
-  emissive?: string;
-  emissiveStrength?: number;
-  /** 0 or 1 — enable the fresnel rim halo on hero meshes only. */
-  rim?: number;
-  aoFloorY?: number;
-  aoRange?: number;
-}
-
 export default function SketchMaterial({
   baseColor = "#3a3a3a",
   opacity = 1.0,
   transparent = false,
-  depthWrite,
   side,
-  shadowTint = "#5e63d4",
-  rimColor = "#6E74E0",
-  emissive = "#000000",
-  emissiveStrength = 0,
-  rim = 0,
-  aoFloorY = -1.0,
-  aoRange = 3.2,
-}: SketchMaterialProps) {
-  // Memoize the Color objects so per-frame re-renders (e.g. the door click-through
-  // animation) don't churn fresh allocations across the scene's ~150 instances.
-  const baseColorC = useMemo(() => new Color(baseColor), [baseColor]);
-  const shadowTintC = useMemo(() => new Color(shadowTint), [shadowTint]);
-  const rimColorC = useMemo(() => new Color(rimColor), [rimColor]);
-  const emissiveC = useMemo(() => new Color(emissive), [emissive]);
+  rim = true,
+  grain = true,
+  jitter = true,
+  rimStrength = 0.22,
+}: {
+  baseColor?: string;
+  opacity?: number;
+  transparent?: boolean;
+  side?: number;
+  /** Fresnel silhouette rim. Off for glass, the Door and flat ground. */
+  rim?: boolean;
+  /** Screen-fixed paper grain. */
+  grain?: boolean;
+  /** Boiling-line vertex jitter. Off for glass, the Door and flat ground. */
+  jitter?: boolean;
+  rimStrength?: number;
+}) {
+  const matRef = useRef<{ uTime: number } | null>(null);
+
+  useEffect(() => {
+    const m = matRef.current;
+    if (!m) return;
+    clocked.add(m);
+    return () => {
+      clocked.delete(m);
+    };
+  }, []);
 
   return (
     <sketchMaterial
-      baseColor={baseColorC}
+      ref={matRef}
+      baseColor={new Color(baseColor)}
       opacity={opacity}
       transparent={transparent}
-      depthWrite={depthWrite}
       side={side}
-      shadowTint={shadowTintC}
-      rimColor={rimColorC}
-      emissive={emissiveC}
-      emissiveStrength={emissiveStrength}
-      rim={rim}
-      aoFloorY={aoFloorY}
-      aoRange={aoRange}
+      uRim={rim ? 1 : 0}
+      uRimStrength={rimStrength}
+      uGrain={grain ? 1 : 0}
+      uJitter={jitter ? 1 : 0}
       attach="material"
     />
   );
