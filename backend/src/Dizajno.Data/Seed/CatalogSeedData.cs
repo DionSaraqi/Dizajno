@@ -38,7 +38,8 @@ public static class CatalogSeedData
         string? ModelUrl = null,
         IReadOnlyList<CollisionBoxSeed>? CollisionBoxes = null,
         IReadOnlyDictionary<string, string>? MaterialSlots = null,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? TextureSlots = null);
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? TextureSlots = null,
+        bool WallHugging = false);
 
     public static readonly IReadOnlyList<CategorySeed> Categories =
     [
@@ -196,7 +197,8 @@ public static class CatalogSeedData
             Icon: "door-open",
             Category: "Storage",
             SvgPreview: WardrobeSvg,
-            BasePrice: 540m),
+            BasePrice: 540m,
+            WallHugging: true),
 
         new ItemSeed(
             Type: "bookshelf",
@@ -206,7 +208,8 @@ public static class CatalogSeedData
             Icon: "book-open",
             Category: "Storage",
             SvgPreview: BookshelfSvg,
-            BasePrice: 175m),
+            BasePrice: 175m,
+            WallHugging: true),
 
         // â”€â”€ Fixtures (Phase 6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         new ItemSeed(

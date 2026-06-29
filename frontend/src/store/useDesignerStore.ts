@@ -61,10 +61,20 @@ interface DesignerActions {
 
   // Furniture actions
   placeFurniture: (item: FurnitureData) => void;
-  moveFurniture: (id: string, position: [number, number]) => void;
+  moveFurniture: (
+    id: string,
+    position: [number, number],
+    rotation?: number
+  ) => void;
   rotateFurniture: (id: string) => void;
   setFurnitureRotation: (id: string, rotation: number) => void;
   scaleFurniture: (id: string, scale: number) => void;
+  /**
+   * Uniformly grow/shrink an item by `factor` (e.g. 1.05 = +5%, 0.95 = −5%).
+   * Multiplies the item's CURRENT dimensions (preserving any custom aspect
+   * ratio), clamped so every axis stays within 50–200% of the catalog base.
+   */
+  growFurniture: (id: string, factor: number) => void;
   resizeFurniture: (
     id: string,
     dims: Partial<Pick<FurnitureData, "width" | "depth" | "height">>
@@ -397,10 +407,12 @@ export const useDesignerStore = create<DesignerStore>()(
           mode: "select",
           activeFurnitureType: null,
         })),
-      moveFurniture: (id, position) =>
+      moveFurniture: (id, position, rotation) =>
         set((s) => ({
           furniture: s.furniture.map((f) =>
-            f.id === id ? { ...f, position } : f
+            f.id === id
+              ? { ...f, position, ...(rotation !== undefined ? { rotation } : {}) }
+              : f
           ),
         })),
       rotateFurniture: (id) =>
@@ -469,6 +481,44 @@ export const useDesignerStore = create<DesignerStore>()(
               width: def.width * scale,
               depth: def.depth * scale,
               height: def.height * scale,
+            };
+          }),
+        })),
+      growFurniture: (id, factor) =>
+        set((s) => ({
+          furniture: s.furniture.map((f) => {
+            if (f.id !== id) return f;
+            const def = getFurnitureDef(f.type);
+            // Clamp the factor so no axis leaves the 50–200% band relative to
+            // the catalog base. Clamp uniformly (same factor on every axis) so
+            // the current aspect ratio — including custom per-axis edits — is
+            // preserved instead of being snapped back to catalog proportions.
+            let applied = factor;
+            if (def) {
+              const axes: Array<[number, number]> = [
+                [f.width, def.width],
+                [f.depth, def.depth],
+                [f.height, def.height],
+              ];
+              if (factor > 1) {
+                for (const [cur, base] of axes) {
+                  if (base > 0) applied = Math.min(applied, (base * 2) / cur);
+                }
+                applied = Math.max(1, applied);
+              } else if (factor < 1) {
+                for (const [cur, base] of axes) {
+                  if (base > 0) applied = Math.max(applied, (base * 0.5) / cur);
+                }
+                applied = Math.min(1, applied);
+              }
+            }
+            if (applied === 1) return f;
+            return {
+              ...f,
+              scale: (f.scale ?? 1) * applied,
+              width: f.width * applied,
+              depth: f.depth * applied,
+              height: f.height * applied,
             };
           }),
         })),

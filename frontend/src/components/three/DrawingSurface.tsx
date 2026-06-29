@@ -103,7 +103,8 @@ function DropHandler() {
       walls,
       furniture,
       snap,
-      gridSize
+      gridSize,
+      def.wallHugging ?? false
     );
     const [x, z] = result.position;
 
@@ -113,7 +114,7 @@ function DropHandler() {
       id: newId(),
       type: def.type,
       position: [x, z],
-      rotation: 0,
+      rotation: result.rotation ?? 0,
       width: def.width,
       depth: def.depth,
       height: def.height,
@@ -147,6 +148,7 @@ function DragGhost() {
 
   const [pos, setPos] = useState<[number, number] | null>(null);
   const [snapEdge, setSnapEdge] = useState<SnapEdge | null>(null);
+  const [rot, setRot] = useState(0);
 
   // Try to figure out which furniture type is being dragged
   // During HTML drag, activeFurnitureType is set from the sidebar click
@@ -173,10 +175,12 @@ function DragGhost() {
     const itemDesc = { rotation: 0, width: def.width, depth: def.depth };
     const result = smartSnap(
       intersection.x, intersection.z,
-      itemDesc, walls, furniture, snap, gridSize
+      itemDesc, walls, furniture, snap, gridSize,
+      def.wallHugging ?? false
     );
     setPos(result.position);
     setSnapEdge(result.snapEdge);
+    setRot(result.rotation ?? 0);
   }, [dragPreview, def, camera, raycaster, walls, furniture, snap, gridSize]);
 
   if (!pos || !def) return null;
@@ -185,7 +189,7 @@ function DragGhost() {
     id: "__drag_ghost__",
     type: def.type,
     position: pos,
-    rotation: 0,
+    rotation: rot,
     width: def.width,
     depth: def.depth,
     height: def.height,
@@ -197,7 +201,7 @@ function DragGhost() {
     <GhostPreview
       furnitureType={def.type}
       position={pos}
-      rotation={0}
+      rotation={rot}
       width={def.width}
       depth={def.depth}
       height={def.height}
@@ -458,6 +462,8 @@ function SceneContent() {
   // Ghost furniture state (furniture mode hover)
   const [ghostPos, setGhostPos] = useState<[number, number] | null>(null);
   const [ghostSnapEdge, setGhostSnapEdge] = useState<SnapEdge | null>(null);
+  // Wall-hug orientation for the click-to-place hover ghost (0 = none).
+  const [ghostRot, setGhostRot] = useState(0);
   // Last-pushed ghost position, to skip redundant state writes each frame.
   const ghostPosRef = useRef<[number, number] | null>(null);
 
@@ -674,11 +680,12 @@ function SceneContent() {
       const def = getFurnitureDef(activeFurnitureType);
       if (!def) return;
       const itemDesc = { rotation: 0, width: def.width, depth: def.depth };
-      const result = smartSnap(ground.x, ground.z, itemDesc, walls, furniture, snap, gridSize);
+      const result = smartSnap(ground.x, ground.z, itemDesc, walls, furniture, snap, gridSize, def.wallHugging ?? false);
       if (!pointsEqual(result.position, ghostPosRef.current)) {
         ghostPosRef.current = result.position;
         setGhostPos(result.position);
         setGhostSnapEdge(result.snapEdge);
+        setGhostRot(result.rotation ?? 0);
       }
       return;
     }
@@ -862,7 +869,8 @@ function SceneContent() {
           walls,
           furniture,
           snap,
-          gridSize
+          gridSize,
+          def.wallHugging ?? false
         );
         const [x, z] = result.position;
 
@@ -872,7 +880,7 @@ function SceneContent() {
           id: newId(),
           type: def.type,
           position: [x, z],
-          rotation: 0,
+          rotation: result.rotation ?? 0,
           width: def.width,
           depth: def.depth,
           height: def.height,
@@ -969,7 +977,7 @@ function SceneContent() {
           id: "__ghost__",
           type: ghostDef.type,
           position: ghostPos,
-          rotation: 0,
+          rotation: ghostRot,
           width: ghostDef.width,
           depth: ghostDef.depth,
           height: ghostDef.height,
@@ -1374,7 +1382,7 @@ function SceneContent() {
         <GhostPreview
           furnitureType={ghostDef.type}
           position={ghostPos}
-          rotation={0}
+          rotation={ghostRot}
           width={ghostDef.width}
           depth={ghostDef.depth}
           height={ghostDef.height}

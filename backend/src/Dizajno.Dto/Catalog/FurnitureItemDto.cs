@@ -32,4 +32,9 @@ public sealed record FurnitureItemDto(
     string UnitOfSale,
     decimal? CoverageRate,
     decimal WasteFactor,
-    string? TextureUrl);
+    string? TextureUrl,
+    // Tall, against-the-wall items (wardrobes, bookshelves). When true the
+    // frontend placement/snap pipeline auto-orients the item so its longest
+    // side runs parallel to the wall it snaps to. Sourced from the
+    // Product.Attributes jsonb ("wallHugging"), same pattern as Icon.
+    bool WallHugging);

@@ -334,6 +334,7 @@ export const furnitureCatalog: FurnitureCatalogItem[] = [
     icon: "door-open",
     category: "Storage",
     svgPreview: svgPreviews.wardrobe,
+    wallHugging: true,
   },
   {
     type: "bookshelf",
@@ -345,6 +346,7 @@ export const furnitureCatalog: FurnitureCatalogItem[] = [
     icon: "book-open",
     category: "Storage",
     svgPreview: svgPreviews.bookshelf,
+    wallHugging: true,
   },
 ];
 

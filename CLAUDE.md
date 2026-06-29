@@ -305,7 +305,8 @@ Add the entry to `utils/furnitureCatalog.ts` with all computed values. Include `
 
 #### Key Constraints
 - **Catalog width/depth must match the actual rendered model size.** The model is uniformly scaled by `Math.min(targetW/rawW, targetH/rawH, targetD/rawD)`. Mismatched dimensions cause the hitbox to be larger than the visible model.
-- Uniform scale slider (50%–200%) in properties panel scales width/depth/height proportionally from catalog base
+- The SelectionBar furniture editor exposes raw width/depth/height fields **and** a "Size" grow/shrink stepper (`growFurniture` store action) that scales the item uniformly by ±5% per click, preserving any custom aspect ratio and clamped to 50–200% of the catalog base on every axis
+- **Wall-hugging items** (`wallHugging` flag on the catalog item — wardrobe + bookshelf today) auto-orient on placement/drag so their longest side runs parallel to the wall they snap to. `smartSnap(..., wallHug)` returns the chosen rotation; the flag is sourced from the backend `Product.Attributes` jsonb (same pattern as `icon`) and mirrored in the frontend fallback catalog
 
 ### Landing Page
 - `app/page.tsx` is a thin client shell (blueprint-grid backdrop + cursor tracking) that composes sections from `components/landing/`: `LandingChrome` (aurora + sweep + crosshairs), `LandingHeader`, `LandingNav`, `LandingAside`, and `LandingCanvas`.

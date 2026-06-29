@@ -169,6 +169,13 @@ export interface FurnitureCatalogItem {
    * When null, the renderer falls back to `color`.
    */
   textureUrl?: string | null;
+  /**
+   * Tall, against-the-wall items (wardrobes, bookshelves, …). When true, the
+   * placement/snap pipeline auto-rotates the item so its longest side runs
+   * parallel to the wall it snaps to (shallow back flush against the wall).
+   * Backed by the `wallHugging` attribute on the backend catalog.
+   */
+  wallHugging?: boolean;
 }
 
 export type OpeningType = "door" | "window";

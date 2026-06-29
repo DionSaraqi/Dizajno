@@ -190,6 +190,7 @@ public sealed class CatalogService : ICatalogService
         IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, IReadOnlyList<string>>> textureSlotsByVariant)
     {
         var icon = ReadAttribute<string>(row.Product.Attributes, "icon") ?? string.Empty;
+        var wallHugging = ReadAttribute<bool?>(row.Product.Attributes, "wallHugging") ?? false;
 
         var materialSlots = string.IsNullOrWhiteSpace(row.Variant.MaterialDefaults)
             ? null
@@ -228,7 +229,8 @@ public sealed class CatalogService : ICatalogService
             UnitOfSale: row.Product.UnitOfSale.ToString(),
             CoverageRate: row.Product.CoverageRate,
             WasteFactor: row.Product.WasteFactor,
-            TextureUrl: row.Product.TextureUrl);
+            TextureUrl: row.Product.TextureUrl,
+            WallHugging: wallHugging);
     }
 
     private static T? ReadAttribute<T>(string? json, string key)

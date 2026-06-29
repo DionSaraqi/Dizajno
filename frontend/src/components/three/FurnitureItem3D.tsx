@@ -71,6 +71,9 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   // the camera. Drives the window-level pointerup listener below.
   const [active, setActive] = useState(false);
   const [dragPos, setDragPos] = useState<[number, number]>(item.position);
+  // Wall-hug orientation chosen during the current drag (null = keep item's
+  // own rotation). Only ever set for wallHugging items dragged against a wall.
+  const [dragRot, setDragRot] = useState<number | null>(null);
   const [snapEdge, setSnapEdge] = useState<SnapEdge | null>(null);
   // Actual rendered model dimensions (from GLTFModel's uniform scaling)
   const [modelBounds, setModelBounds] = useState<[number, number, number] | null>(null);
@@ -85,8 +88,9 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
   const isSelected = selectedIds.includes(item.id);
   const isHovered = hoveredId === item.id && !dragging;
   const pos = dragging ? dragPos : item.position;
+  const rot = dragging && dragRot !== null ? dragRot : item.rotation;
 
-  const tempItem: FurnitureData = { ...item, position: pos };
+  const tempItem: FurnitureData = { ...item, position: pos, rotation: rot };
   const hasCollision =
     dragging && checkFurnitureCollision(tempItem, furniture, walls);
 
@@ -170,11 +174,13 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
       walls,
       furniture,
       snap,
-      gridSize
+      gridSize,
+      catalogDef?.wallHugging ?? false
     );
 
     setDragPos(result.position);
     setSnapEdge(result.snapEdge);
+    setDragRot(result.rotation ?? null);
   });
 
   const finishDrag = useCallback(() => {
@@ -190,10 +196,13 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
     setSnapEdge(null);
 
     if (!hasCollision) {
-      moveFurniture(item.id, dragPos);
+      // Persist the wall-hug orientation alongside the new position when one
+      // was chosen during the drag; otherwise leave rotation untouched.
+      moveFurniture(item.id, dragPos, dragRot ?? undefined);
     }
     setDragPos(item.position);
-  }, [dragging, hasCollision, dragPos, item.id, item.position, moveFurniture, setStoreDragging]);
+    setDragRot(null);
+  }, [dragging, hasCollision, dragPos, dragRot, item.id, item.position, moveFurniture, setStoreDragging]);
 
   const handlePointerUp = (e: any) => {
     e.stopPropagation();
@@ -218,7 +227,7 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
       <group
         ref={groupRef}
         position={[pos[0], item.elevation ?? 0, pos[1]]}
-        rotation={[0, item.rotation, 0]}
+        rotation={[0, rot, 0]}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerOver={handlePointerOver}

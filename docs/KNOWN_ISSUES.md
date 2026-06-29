@@ -16,19 +16,6 @@ restriction.
 
 ---
 
-## Furniture
-
-### Add increase/decrease size buttons for proportional furniture
-All furniture currently scales proportionally. Editing the raw dimensions should
-not be the only way to resize — add dedicated increase/decrease (grow/shrink) size
-buttons as well.
-
-### Bookshelves & wardrobes should hug the wall with their longest side
-Tall, against-the-wall items (bookshelves, wardrobes, etc.) should orient so their
-**longest side** sits flush against the wall.
-
----
-
 ## Build & Tooling
 
 ### `pnpm build` fails type-checking (pre-existing, unrelated to designer)

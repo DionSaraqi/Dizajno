@@ -58,6 +58,13 @@ export interface SnapResult {
   position: [number, number];
   /** Which world-space edge the item snapped to (for drawing the indicator) */
   snapEdge: SnapEdge | null;
+  /**
+   * Suggested Y-rotation (radians) for wall-hugging items. Set only when
+   * `wallHug` was requested AND the item snapped to a wall — the caller should
+   * apply it so the item's longest side runs parallel to that wall. Undefined
+   * means "leave rotation as-is".
+   */
+  rotation?: number;
 }
 
 export interface SnapEdge {
@@ -242,6 +249,11 @@ export function snapToFurniture(
  *  4. Try furniture-to-furniture snap on remaining free axis
  *  5. Grid snap as fallback for any unsnapped axis
  *
+ * When `wallHug` is set (tall against-the-wall items), a pre-pass picks the
+ * orientation that lays the item's longest side parallel to the nearest wall
+ * (shallow `depth` back flush against it) BEFORE the position snap runs, and
+ * the chosen rotation is returned in `SnapResult.rotation`.
+ *
  * Returns final position and optional snap-edge for the visual indicator.
  */
 export function smartSnap(
@@ -251,17 +263,121 @@ export function smartSnap(
   walls: WallData[],
   allFurniture: FurnitureData[],
   snapEnabled: boolean,
-  gridSize: number
+  gridSize: number,
+  wallHug = false
 ): SnapResult {
-  const isRotated = Math.abs(Math.sin(item.rotation)) > 0.5;
+  // Wall-hug pre-pass: choose the orientation AND the perpendicular (into-wall)
+  // position first, then let the normal pipeline handle the along-wall axis.
+  //
+  // A horizontal wall (runs along X) → width along X; a vertical wall (runs
+  // along Z) → width along Z. Both wall-hug models face +Z at rotation 0 (back
+  // at −Z), so we pick the facing (0 vs 180 / 90 vs 270) by which side of the
+  // wall the item is on, keeping the back against the wall and the face toward
+  // the room.
+  //
+  // Engagement: we trigger whenever the item's CURRENT footprint comes within a
+  // threshold of a wall — i.e. when the user pushes its near edge to the wall,
+  // exactly like the generic snap. The reach is the item's *current*
+  // perpendicular half-extent (`curHw`/`curHd`, which depends on its present
+  // rotation) + halfThickness + SNAP_THRESHOLD, one-sided from on-the-wall
+  // outward. This matters because an un-rotated wardrobe is wide (~0.75 m) along
+  // a vertical wall, so its center is far from that wall when its edge touches —
+  // gating on the post-rotation `back` (0.3 m) would never fire.
+  //
+  // Ranking (which wall wins among engaged candidates): the one whose flush
+  // position — where the item WOULD sit after hugging — is nearest the cursor.
+  // Ranking by current-rotation overlap instead lets a perpendicular stub at a
+  // T-junction win just because a (rotated, narrow) item lines up with it; the
+  // flush-distance metric makes the wall the user is approaching win. The flush
+  // position uses `back` (the shallow depth), since after rotating it's the back
+  // that sits against the wall. It must also be alongside the wall's length
+  // (span check) so a far stub sharing a coordinate is excluded outright.
+  let hugRotation: number | null = null;
+  let hugX = x;
+  let hugZ = z;
+  let hugXSnapped = false;
+  let hugZSnapped = false;
+  let hugEdge: SnapEdge | null = null;
+  if (wallHug) {
+    const back = item.depth / 2;
+    // Current footprint half-extents (depend on the item's present rotation).
+    const curRotated = Math.abs(Math.sin(item.rotation)) > 0.5;
+    const curHw = (curRotated ? item.depth : item.width) / 2;
+    const curHd = (curRotated ? item.width : item.depth) / 2;
+    let bestPerp = Infinity;
+    for (const wall of walls) {
+      const waabb = getWallAABBSnap(wall);
+      const dx = Math.abs(wall.end[0] - wall.start[0]);
+      const dz = Math.abs(wall.end[1] - wall.start[1]);
+      const isHorizontal = dx >= dz;
+
+      if (isHorizontal) {
+        const center = (waabb.minZ + waabb.maxZ) / 2;
+        const half = (waabb.maxZ - waabb.minZ) / 2;
+        const edgeGap = Math.abs(z - center) - (curHd + half); // current near edge → wall face
+        // Must be alongside the wall's length (its X-span), not merely sharing a
+        // perpendicular coordinate with a far wall/stub (the T-junction bug).
+        const alongside = x >= waabb.minX - SNAP_THRESHOLD && x <= waabb.maxX + SNAP_THRESHOLD;
+        if (alongside && edgeGap < SNAP_THRESHOLD) {
+          // Rank by how close the cursor is to where the item WOULD sit (its
+          // flush center) — not the current-rotation overlap — so the wall the
+          // user is approaching wins over a perpendicular stub the cursor merely
+          // lines up with.
+          const flushZ = z <= center ? waabb.minZ - back : waabb.maxZ + back;
+          const flushDist = Math.abs(z - flushZ);
+          if (flushDist < bestPerp) {
+            bestPerp = flushDist;
+            // Back to the wall, face into the room. Model front = +Z at rot 0;
+            // item on the −Z side → wall is +Z → rotate 180°; on the +Z side → 0.
+            hugRotation = z <= center ? Math.PI : 0;
+            hugXSnapped = false; // along-wall axis stays free
+            hugX = x;
+            hugZSnapped = true;
+            hugZ = flushZ;
+            hugEdge = z <= center
+              ? { p1: [waabb.minX, waabb.minZ], p2: [waabb.maxX, waabb.minZ] }
+              : { p1: [waabb.minX, waabb.maxZ], p2: [waabb.maxX, waabb.maxZ] };
+          }
+        }
+      } else {
+        const center = (waabb.minX + waabb.maxX) / 2;
+        const half = (waabb.maxX - waabb.minX) / 2;
+        const edgeGap = Math.abs(x - center) - (curHw + half); // current near edge → wall face
+        const alongside = z >= waabb.minZ - SNAP_THRESHOLD && z <= waabb.maxZ + SNAP_THRESHOLD;
+        if (alongside && edgeGap < SNAP_THRESHOLD) {
+          const flushX = x <= center ? waabb.minX - back : waabb.maxX + back;
+          const flushDist = Math.abs(x - flushX);
+          if (flushDist < bestPerp) {
+            bestPerp = flushDist;
+            // Back to the wall, face into the room. Item on the −X side → wall
+            // is +X → rotate 270°; on the +X side → 90°.
+            hugRotation = x <= center ? (3 * Math.PI) / 2 : Math.PI / 2;
+            hugZSnapped = false; // along-wall axis stays free
+            hugZ = z;
+            hugXSnapped = true;
+            hugX = flushX;
+            hugEdge = x <= center
+              ? { p1: [waabb.minX, waabb.minZ], p2: [waabb.minX, waabb.maxZ] }
+              : { p1: [waabb.maxX, waabb.minZ], p2: [waabb.maxX, waabb.maxZ] };
+          }
+        }
+      }
+    }
+  }
+
+  const effRotation = hugRotation ?? item.rotation;
+  const isRotated = Math.abs(Math.sin(effRotation)) > 0.5;
   const hw = (isRotated ? item.depth : item.width) / 2;
   const hd = (isRotated ? item.width : item.depth) / 2;
 
-  let snappedX = x;
-  let snappedZ = z;
-  let xSnapped = false;
-  let zSnapped = false;
-  let bestEdge: SnapEdge | null = null;
+  // Seed the snap state from the hug pre-pass: the into-wall axis is already
+  // resolved (flush), so the loop below only fills the along-wall axis (which
+  // can still snap to a perpendicular wall for corners, or fall back to grid).
+  let snappedX = hugX;
+  let snappedZ = hugZ;
+  let xSnapped = hugXSnapped;
+  let zSnapped = hugZSnapped;
+  let bestEdge: SnapEdge | null = hugEdge;
 
   // Check all walls for potential snaps on each axis independently
   for (const wall of walls) {
@@ -338,5 +454,7 @@ export function smartSnap(
     position: [xSnapped ? snappedX : (snapEnabled ? snapToGrid(x, gridSize) : x),
                zSnapped ? snappedZ : (snapEnabled ? snapToGrid(z, gridSize) : z)],
     snapEdge: (xSnapped || zSnapped) ? bestEdge : null,
+    // Only suggest a rotation when the item actually hugged a wall.
+    rotation: hugRotation !== null && (xSnapped || zSnapped) ? hugRotation : undefined,
   };
 }

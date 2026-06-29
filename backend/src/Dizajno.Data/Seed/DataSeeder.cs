@@ -222,7 +222,7 @@ public sealed class DataSeeder : IDataSeeder
                 Name = seed.Label,
                 PreviewSvg = seed.SvgPreview,
                 TextureUrl = seed.TextureUrl,
-                Attributes = JsonSerializer.Serialize(new { icon = seed.Icon }, JsonOpts),
+                Attributes = JsonSerializer.Serialize(new { icon = seed.Icon, wallHugging = seed.WallHugging }, JsonOpts),
                 CreatedAt = now,
                 UpdatedAt = now
             };

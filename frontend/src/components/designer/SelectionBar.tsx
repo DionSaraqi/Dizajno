@@ -11,7 +11,7 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Palette, Trash2 } from "lucide-react";
+import { Palette, Trash2, Minus, Plus } from "lucide-react";
 import {
   useDesignerStore,
   useSelectedIds,
@@ -133,6 +133,46 @@ function VariantSelect({
   );
 }
 
+// ── Proportional grow / shrink control (furniture) ───────────────────────────
+// Sits alongside the raw W/D/H fields as a quick way to resize the whole item
+// without typing dimensions. Each click nudges every axis by ±5% (uniform, so
+// the aspect ratio is preserved); the readout shows size relative to the
+// catalog default, and the buttons disable once an axis hits the 50–200% band.
+function SizeStepper({
+  pct,
+  canGrow,
+  canShrink,
+  onGrow,
+  onShrink,
+}: {
+  pct: number;
+  canGrow: boolean;
+  canShrink: boolean;
+  onGrow: () => void;
+  onShrink: () => void;
+}) {
+  const btn =
+    "flex items-center justify-center w-6 h-6 rounded text-dizajno-text " +
+    "hover:bg-dizajno-accent/15 hover:text-dizajno-accent transition-colors " +
+    "disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-dizajno-text disabled:cursor-default";
+  return (
+    <label className="flex flex-col gap-0.5">
+      <span className="text-[10px] text-dizajno-muted">Size</span>
+      <div className="flex items-center gap-1 bg-dizajno-bg border border-dizajno-border rounded px-1 py-0.5">
+        <button type="button" title="Shrink 5%" onClick={onShrink} disabled={!canShrink} className={btn}>
+          <Minus size={13} />
+        </button>
+        <span className="w-10 text-center text-xs text-dizajno-text font-mono tabular-nums">
+          {pct}%
+        </span>
+        <button type="button" title="Grow 5%" onClick={onGrow} disabled={!canGrow} className={btn}>
+          <Plus size={13} />
+        </button>
+      </div>
+    </label>
+  );
+}
+
 // ── Material colors + textures popover (furniture) ────────────────────────────
 function MaterialsButton({
   def,
@@ -224,6 +264,7 @@ export default function SelectionBar() {
   const { items: liveCatalog } = useFurnitureCatalog();
 
   const resizeFurniture = useDesignerStore((s) => s.resizeFurniture);
+  const growFurniture = useDesignerStore((s) => s.growFurniture);
   const setFurnitureRotation = useDesignerStore((s) => s.setFurnitureRotation);
   const setFurnitureElevation = useDesignerStore((s) => s.setFurnitureElevation);
   const setFurnitureMaterialColors = useDesignerStore((s) => s.setFurnitureMaterialColors);
@@ -249,6 +290,12 @@ export default function SelectionBar() {
   if (furn) {
     const def = getFurnitureDef(furn.type);
     const angleDeg = ((furn.rotation * 180) / Math.PI) % 360;
+    // Size relative to the catalog default, per axis. Drives the grow/shrink
+    // readout (width axis as the representative) and disables a button once any
+    // axis would leave the 50–200% band — matching growFurniture's clamp.
+    const sizeRatios = def
+      ? [furn.width / def.width, furn.depth / def.depth, furn.height / def.height]
+      : [furn.scale ?? 1];
     return (
       <Shell title={def?.label ?? furn.type}>
         <NumberField label="Width" unit="cm" value={furn.width * 100} step={1} min={5}
@@ -257,6 +304,13 @@ export default function SelectionBar() {
           onCommit={(v) => resizeFurniture(furn.id, { depth: v / 100 })} />
         <NumberField label="Height" unit="cm" value={furn.height * 100} step={1} min={5}
           onCommit={(v) => resizeFurniture(furn.id, { height: v / 100 })} />
+        <SizeStepper
+          pct={Math.round(sizeRatios[0] * 100)}
+          canGrow={Math.max(...sizeRatios) < 2 - 1e-4}
+          canShrink={Math.min(...sizeRatios) > 0.5 + 1e-4}
+          onGrow={() => growFurniture(furn.id, 1.05)}
+          onShrink={() => growFurniture(furn.id, 0.95)}
+        />
         <NumberField label="Angle" unit="°" value={Math.round(angleDeg)} step={1}
           onCommit={(v) => setFurnitureRotation(furn.id, (v * Math.PI) / 180)} />
         <NumberField label="Levitation" unit="cm" value={(furn.elevation ?? 0) * 100} step={1} min={0}
