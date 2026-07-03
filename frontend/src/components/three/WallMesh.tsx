@@ -20,13 +20,29 @@ interface WallMeshProps {
   height: number;
   selected?: boolean;
   hovered?: boolean;
+  /** Live wall-drag preview state — indigo edges while dragging. */
+  dragging?: boolean;
+  /** Drag hit a clamp limit (min room span / furniture) — red edges. */
+  clamped?: boolean;
   openings?: OpeningData[];
   /** Phase 6.5: optional Paint variant id. When set, walls tint with the variant's color. */
   paintVariantId?: string | null;
+  /**
+   * Render the invisible widened hit proxy (2D only). In 3D the proxy would
+   * sit in front of door/window hit areas across the full wall — including
+   * the opening gaps — and steal their hover/click.
+   */
+  hitProxy?: boolean;
   onClick?: (e: any) => void;
   onPointerOver?: (e: any) => void;
   onPointerOut?: (e: any) => void;
   onPointerMove?: (e: any) => void;
+  /**
+   * Forwarded RAW (no automatic stopPropagation): the wall-drag handler must
+   * decide mode-dependently whether to swallow the event — in draw mode a
+   * pointerdown over a wall still has to reach GridPlane to start a new wall.
+   */
+  onPointerDown?: (e: any) => void;
 }
 
 function computeSegments(
@@ -88,12 +104,16 @@ export default function WallMesh({
   height,
   selected = false,
   hovered = false,
+  dragging = false,
+  clamped = false,
   openings = [],
   paintVariantId,
+  hitProxy = false,
   onClick,
   onPointerOver,
   onPointerOut,
   onPointerMove,
+  onPointerDown,
 }: WallMeshProps) {
   const startVec = new THREE.Vector3(start[0], 0, start[1]);
   const endVec = new THREE.Vector3(end[0], 0, end[1]);
@@ -121,11 +141,42 @@ export default function WallMesh({
   };
 
   const segments = computeSegments(wallLength, height, openings);
-  const edgeColor = selected ? "#ffffff" : hovered ? "#00aaff" : null;
+  const edgeColor = clamped
+    ? "#EF4444"
+    : dragging
+      ? "#6366f1"
+      : selected
+        ? "#ffffff"
+        : hovered
+          ? "#00aaff"
+          : null;
   const wallSurfaceColor = paint.map ? "#ffffff" : paint.color ?? WALL_COLOR;
+
+  // Effective grab width for the drag/select hit proxy below. A default wall
+  // is 0.15 m ≈ 5 px at the default 2D zoom — far below comfortable pointer
+  // target size — so an invisible proxy widens the hit area around the wall.
+  const hitWidth = Math.max(thickness, 0.35);
+  const wallCenter = startVec.clone().addScaledVector(unitDir, wallLength / 2);
 
   return (
     <group>
+      {/* Invisible raycast-only hit proxy (GridPlane pattern): widens the
+          pointer target for the whole wall without changing its visual. */}
+      {hitProxy && (
+        <mesh
+          position={[wallCenter.x, height / 2, wallCenter.z]}
+          rotation={[0, -angle, 0]}
+          visible={false}
+          onClick={stopAndCall(onClick)}
+          onPointerOver={stopAndCall(onPointerOver)}
+          onPointerOut={stopAndCall(onPointerOut)}
+          onPointerMove={onPointerMove ? stopAndCall(onPointerMove) : undefined}
+          onPointerDown={onPointerDown}
+        >
+          <boxGeometry args={[wallLength, height, hitWidth]} />
+        </mesh>
+      )}
+
       {segments.map((seg, i) => {
         const segLen = seg.endOffset - seg.startOffset;
         const segH = seg.yTop - seg.yBottom;
@@ -144,6 +195,7 @@ export default function WallMesh({
             onPointerOver={stopAndCall(onPointerOver)}
             onPointerOut={stopAndCall(onPointerOut)}
             onPointerMove={onPointerMove ? stopAndCall(onPointerMove) : undefined}
+            onPointerDown={onPointerDown}
           >
             <boxGeometry args={[segLen, segH, thickness]} />
             {/* key remounts the material when the paint map appears/disappears —

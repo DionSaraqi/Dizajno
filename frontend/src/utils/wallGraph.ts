@@ -2,6 +2,7 @@ import type { WallData, FloorData, OpeningData } from "@/types/designer";
 import { newId } from "@/utils/ids";
 import { insetFloorPolygon } from "@/utils/areaCalc";
 import { OPENING_END_MARGIN } from "@/utils/openingSnap";
+import { wallsAlongEdge } from "@/utils/roomBuilder";
 
 type Key = string;
 type Point = [number, number];
@@ -12,13 +13,14 @@ export const CORNER_MERGE_THRESHOLD = 0.2;
 /** Two walls within ~5° of each other count as (near-)parallel — T-junction
  *  splits make no geometric sense between them and used to kink walls. */
 const PARALLEL_COS = Math.cos((5 * Math.PI) / 180);
-/** Max perpendicular distance for treating a wall as lying ON another's line. */
-const COLLINEAR_LINE_EPS = 0.02;
+/** Max perpendicular distance for treating a wall as lying ON another's line.
+ *  Exported so wallDrag's collinear-chain test agrees with the merge here. */
+export const COLLINEAR_LINE_EPS = 0.02;
 /** Minimum wall segment worth keeping — matches the historical 0.05 checks. */
-const MIN_WALL_SEG = 0.05;
+export const MIN_WALL_SEG = 0.05;
 /** Residual endpoints within this of a chain endpoint weld onto it exactly,
  *  so the 2-decimal graph keys connect and findFloors closes the loop. */
-const ENDPOINT_WELD_EPS = 0.05;
+export const ENDPOINT_WELD_EPS = 0.05;
 /** Floors whose inner (post-inset) area is below this are slivers between
  *  near-parallel walls, not rooms — drop them. */
 const MIN_FLOOR_AREA = 0.05;
@@ -508,7 +510,12 @@ export function reassignOpeningsAfterWallChange(
     const oldWall = oldWallById.get(opening.wallId);
     if (stillHere) {
       const len = dist(stillHere.start, stillHere.end);
-      const fits = opening.offsetFromStart + opening.width <= len + 0.01;
+      // Both bounds: a wall-drag's world-position re-anchoring can produce a
+      // NEGATIVE offset (opening now beyond the shrunken wall's start) — it
+      // must fall through to the shift-to-fit pass, not be kept off-wall.
+      const fits =
+        opening.offsetFromStart >= -0.01 &&
+        opening.offsetFromStart + opening.width <= len + 0.01;
       const startMoved = oldWall ? dist(oldWall.start, stillHere.start) : 0;
       const endMoved = oldWall ? dist(oldWall.end, stillHere.end) : 0;
       if (fits && startMoved < 1e-9 && endMoved < 1e-9) {
@@ -840,25 +847,69 @@ function vertsCentroid(verts: ReadonlyArray<Point>): Point {
  * room/wall commit so adding a room doesn't wipe the neighbors' flooring.
  * Falls back to the loaded floors when the walls no longer form closed loops,
  * so we never silently drop a floor we can't re-derive.
+ *
+ * When `prevWalls` is given (wall-move commits: drag / room resize), floors are
+ * first matched by shared bounding-wall IDS — wall ids are stable across
+ * endpoint moves, so this survives large drags where the ≤1 m centroid
+ * heuristic below would silently lose a room's flooring.
  */
 export function reconcileLoadedFloors(
   walls: WallData[],
-  loadedFloors: FloorData[]
+  loadedFloors: FloorData[],
+  prevWalls?: WallData[]
 ): FloorData[] {
   const derived = findFloors(walls);
   if (derived.length === 0) return loadedFloors;
 
-  // Greedy exclusive matching, nearest pair first — each loaded floor's
-  // flooring is consumed at most once, so a new small room beside a floored
-  // room can't inherit its neighbor's material.
   const loaded = loadedFloors
     .filter((f) => f.flooringVariantId)
     .map((f) => ({ floor: f, centroid: vertsCentroid(f.vertices) }));
   const derivedInfo = derived.map((d) => ({ floor: d, centroid: vertsCentroid(d.vertices) }));
 
+  const result = [...derived];
+  const usedDerived = new Set<number>();
+  const usedLoaded = new Set<number>();
+
+  if (prevWalls) {
+    const boundingIds = (f: FloorData, ws: WallData[]): Set<string> => {
+      const out = new Set<string>();
+      const n = f.vertices.length;
+      for (let i = 0; i < n; i++) {
+        for (const w of wallsAlongEdge(f.vertices[i], f.vertices[(i + 1) % n], ws)) {
+          out.add(w.id);
+        }
+      }
+      return out;
+    };
+    const loadedIds = loaded.map((l) => boundingIds(l.floor, prevWalls));
+    const derivedIds = derivedInfo.map((d) => boundingIds(d.floor, walls));
+    const scored: { di: number; li: number; score: number }[] = [];
+    for (let di = 0; di < derivedIds.length; di++) {
+      for (let li = 0; li < loadedIds.length; li++) {
+        let score = 0;
+        for (const id of derivedIds[di]) if (loadedIds[li].has(id)) score++;
+        // ≥2 shared bounding walls = same room. A single shared id is exactly
+        // what two ADJACENT rooms have in common (their shared wall) — not
+        // enough to claim identity.
+        if (score >= 2) scored.push({ di, li, score });
+      }
+    }
+    scored.sort((a, b) => b.score - a.score);
+    for (const { di, li } of scored) {
+      if (usedDerived.has(di) || usedLoaded.has(li)) continue;
+      usedDerived.add(di);
+      usedLoaded.add(li);
+      result[di] = { ...result[di], flooringVariantId: loaded[li].floor.flooringVariantId };
+    }
+  }
+
+  // Greedy exclusive matching, nearest pair first — each loaded floor's
+  // flooring is consumed at most once, so a new small room beside a floored
+  // room can't inherit its neighbor's material.
   const pairs: { di: number; li: number; d2: number }[] = [];
   for (let di = 0; di < derivedInfo.length; di++) {
     for (let li = 0; li < loaded.length; li++) {
+      if (usedDerived.has(di) || usedLoaded.has(li)) continue;
       const d2 =
         (loaded[li].centroid[0] - derivedInfo[di].centroid[0]) ** 2 +
         (loaded[li].centroid[1] - derivedInfo[di].centroid[1]) ** 2;
@@ -868,9 +919,6 @@ export function reconcileLoadedFloors(
   }
   pairs.sort((a, b) => a.d2 - b.d2);
 
-  const result = [...derived];
-  const usedDerived = new Set<number>();
-  const usedLoaded = new Set<number>();
   for (const { di, li } of pairs) {
     if (usedDerived.has(di) || usedLoaded.has(li)) continue;
     usedDerived.add(di);

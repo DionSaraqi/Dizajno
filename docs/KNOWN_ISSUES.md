@@ -8,11 +8,18 @@ anything that is no longer true.**
 
 ## Floors & Room Drawing
 
-### Resizing a room with shared walls is disabled
-Rooms that share a wall with a neighbor (created by the room-merge behavior)
-refuse the W×L resize with a toast — dragging a shared wall would silently
-reshape the neighbor. Needs a detach-or-resize-both interaction to lift the
-restriction.
+### Wall drag-to-resize is 2D-only
+Dragging a room wall perpendicular to its axis (including shared walls, which
+resize both rooms) only arms in 2D select mode. In 3D walls stay click-to-select.
+A 3D version needs a camera-facing drag-plane projection (the ground-plane
+raycast used in 2D is parallax-distorted under the perspective camera) and is
+wanted as a follow-up.
+
+### No dimension labels in 3D mode
+`WallDimensions`, `RoomLabels`, and `Measurements` are all gated behind `!is3D`,
+so 3D mode has no dimension feedback at all — which also blocks the 3D wall-drag
+follow-up above from having usable live feedback. Wanted: 3D-friendly dimension
+labels (billboarded, likely on hover/selection only).
 
 ---
 

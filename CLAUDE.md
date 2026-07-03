@@ -218,6 +218,25 @@ Furniture movement uses a **hold-to-drag** pattern (not instant drag on click):
 - A window-level `pointerup` listener ensures drag ends even when released outside the item mesh
 - Camera is locked (`isDragging` state) during drag to prevent orbit conflicts
 
+### Wall Drag Behavior (resize rooms)
+Walls of closed rooms are draggable in **2D select mode** (same hold-to-drag
+pattern and 0.05 threshold); dragging moves the wall perpendicular to its axis
+and resizes the room live:
+- The wall's **collinear chain** moves as one straight line (a side split by a
+  neighbor's T-junction never kinks); attached walls stretch/shrink to stay welded.
+- A **shared wall resizes both rooms** — one grows, the neighbor shrinks. The
+  typed W×L inputs (`resizeRectRoom`) are built on the same primitive, so they
+  work on shared/split-side rooms too (clamped by neighbors, with a toast).
+- Clamps are live hard-stops (red tint at the limit): ≥0.5 m usable span per
+  affected room, no wall segment under 0.05 m, a dead zone before parallel
+  foreign walls, and a flush stop against furniture collision boxes.
+- Openings on the dragged wall ride along; openings on shrinking side walls
+  tint red when they won't survive and are dropped with a toast on commit.
+- Preview never writes the store; `dragWall` commits once on release (one undo
+  entry, one autosave). Escape cancels; arrow keys nudge the selected wall.
+- Core geometry: `utils/wallDrag.ts` (pure, unit-tested); gesture state machine:
+  `components/three/useWallDrag.ts`. 2D-only for now — see `docs/KNOWN_ISSUES.md`.
+
 ### Floor Detection
 When walls form a closed polygon, `wallGraph.ts` uses a planar face traversal algorithm to automatically detect enclosed rooms and generate floor geometry.
 

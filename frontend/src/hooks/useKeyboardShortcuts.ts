@@ -41,6 +41,32 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Arrow keys: nudge the selected room wall along its normal (precision
+      // fallback for the wall drag — grid-sized steps with snap on, 1 cm off).
+      // dragWall validates eligibility and clamps, so ineligible walls no-op.
+      // 2D select mode only (mirrors the drag), and no key auto-repeat — each
+      // nudge is a separate undo entry, so a held key would flood the history.
+      if (e.key.startsWith("Arrow")) {
+        if (e.repeat) return;
+        const state = useDesignerStore.getState();
+        if (state.mode !== "select" || state.is3D) return;
+        if (state.readOnly || state.selectedIds.length !== 1) return;
+        const wall = state.walls.find((w) => w.id === state.selectedIds[0]);
+        if (!wall) return;
+        const horizontal =
+          Math.abs(wall.end[0] - wall.start[0]) >= Math.abs(wall.end[1] - wall.start[1]);
+        const step = state.snap ? state.gridSize : 0.01;
+        let delta = 0;
+        if (horizontal && e.key === "ArrowUp") delta = -step;
+        else if (horizontal && e.key === "ArrowDown") delta = step;
+        else if (!horizontal && e.key === "ArrowLeft") delta = -step;
+        else if (!horizontal && e.key === "ArrowRight") delta = step;
+        if (delta === 0) return;
+        e.preventDefault();
+        state.dragWall(wall.id, delta);
+        return;
+      }
+
       // R: rotate first selected furniture
       if (e.key === "r" || e.key === "R") {
         const state = useDesignerStore.getState();

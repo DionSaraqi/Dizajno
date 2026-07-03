@@ -62,6 +62,7 @@ import { getFurnitureDef } from "@/utils/furnitureCatalog";
 import { checkFurnitureCollision } from "@/utils/collision";
 import type { FurnitureData, WallData, OpeningData } from "@/types/designer";
 import WallOpening from "./WallOpening";
+import { useWallDrag, type WallDragInfo } from "./useWallDrag";
 
 // ── Drop Handler Component (runs inside Canvas) ────────────────────────────
 
@@ -405,6 +406,45 @@ function RoomDraftPreview({
   );
 }
 
+// ── Wall drag readout ─────────────────────────────────────────────────────────
+// While a wall is being dragged: a ghost line marks the original position and a
+// chip shows the signed travel distance (red when a clamp limit is hit).
+function WallDragReadout({ info }: { info: WallDragInfo }) {
+  const { plan, delta, clamped } = info;
+  const originGeo = useMemo(() => {
+    const arr =
+      plan.axis === "z"
+        ? [plan.spanLo, 0.06, plan.lineCoord, plan.spanHi, 0.06, plan.lineCoord]
+        : [plan.lineCoord, 0.06, plan.spanLo, plan.lineCoord, 0.06, plan.spanHi];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+    return geo;
+  }, [plan]);
+
+  const mid = (plan.spanLo + plan.spanHi) / 2;
+  const movedCoord = plan.lineCoord + delta;
+  const labelPos: [number, number] =
+    plan.axis === "z" ? [mid, movedCoord] : [movedCoord, mid];
+
+  return (
+    <group>
+      <lineSegments geometry={originGeo}>
+        <lineBasicMaterial color="#94a3b8" transparent opacity={0.8} />
+      </lineSegments>
+      <Html position={[labelPos[0], 0.3, labelPos[1]]} center>
+        <div
+          className={`${
+            clamped ? "bg-red-500" : "bg-dizajno-accent"
+          } text-white px-2 py-0.5 rounded text-xs whitespace-nowrap font-mono shadow-lg pointer-events-none`}
+        >
+          {delta > 0 ? "+" : ""}
+          {delta.toFixed(2)}m
+        </div>
+      </Html>
+    </group>
+  );
+}
+
 // ── Scene Content ───────────────────────────────────────────────────────────
 
 function SceneContent() {
@@ -510,6 +550,25 @@ function SceneContent() {
   const groundPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
   // Pointer id captured during a wall-draw gesture (see handlePointerDown).
   const capturedPointerRef = useRef<number | null>(null);
+
+  // Wall drag-to-resize gesture (2D select mode). Owns its own useFrame branch
+  // and preview state; while active, the render below substitutes its preview
+  // arrays so walls, floors, labels, and openings all track the drag live.
+  const {
+    handleWallPointerDown,
+    displayWalls,
+    displayFloors,
+    displayOpenings: wallDragOpenings,
+    doomedOpeningIds,
+    wallDragSnapEdge,
+    wallDragInfo,
+  } = useWallDrag({ suppressClickUntilRef });
+  const renderWalls = displayWalls ?? walls;
+  const renderFloors = displayFloors ?? floors;
+  const dragChainIds = useMemo(
+    () => new Set(wallDragInfo?.plan.movingIds ?? []),
+    [wallDragInfo]
+  );
 
   // Project a pointer ray to a scalar offset along a wall. In 3D the ray is
   // intersected with the wall's own vertical (centerline) plane — using a
@@ -990,14 +1049,17 @@ function SceneContent() {
 
   // Openings as rendered this frame: while one is being dragged, substitute
   // its local preview offset so both the frame AND the wall hole track the
-  // cursor (the store itself is untouched until release).
+  // cursor (the store itself is untouched until release). During a WALL drag
+  // (mutually exclusive with an opening drag), riding walls' openings render
+  // with their world-anchored preview offsets instead.
+  const baseOpenings = wallDragOpenings ?? openings;
   const displayOpenings = openingDragPreview
-    ? openings.map((o) =>
+    ? baseOpenings.map((o) =>
         o.id === openingDragPreview.id
           ? { ...o, offsetFromStart: openingDragPreview.offsetFromStart }
           : o
       )
-    : openings;
+    : baseOpenings;
 
   // Indicator line across the wall at a snapped opening's center.
   const openingSnapEdge = (
@@ -1055,7 +1117,7 @@ function SceneContent() {
     if (!targetId) return null;
     const op = displayOpenings.find((o) => o.id === targetId);
     if (!op) return null;
-    const wall = walls.find((w) => w.id === op.wallId);
+    const wall = renderWalls.find((w) => w.id === op.wallId);
     return wall ? { op, wall } : null;
   })();
 
@@ -1075,8 +1137,8 @@ function SceneContent() {
         onPointerDown={handlePointerDown}
       />
 
-      {/* Rendered walls */}
-      {walls.map((wall) => (
+      {/* Rendered walls (preview positions while a wall drag is active) */}
+      {renderWalls.map((wall) => (
         <WallMesh
           key={wall.id}
           start={wall.start}
@@ -1085,8 +1147,12 @@ function SceneContent() {
           height={is3D ? wall.height : 0.15}
           selected={selectedIds.includes(wall.id)}
           hovered={hoveredId === wall.id}
+          dragging={dragChainIds.has(wall.id)}
+          clamped={(wallDragInfo?.clamped ?? false) && dragChainIds.has(wall.id)}
           openings={displayOpenings.filter((o) => o.wallId === wall.id)}
           paintVariantId={wall.paintVariantId ?? null}
+          hitProxy={!is3D}
+          onPointerDown={(e: any) => handleWallPointerDown(wall, e)}
           onClick={(e: any) => {
             if (mode === "select" || mode === "draw") {
               // Ignore the synthetic click that trails an opening drag.
@@ -1202,7 +1268,7 @@ function SceneContent() {
       {/* Floors — selectable in select mode so the user can assign flooring.
           Selecting furniture that sits on a floor no longer falls through here:
           FurnitureItem3D stops the click from reaching this onClick. */}
-      {floors.map((floor) => (
+      {renderFloors.map((floor) => (
         <FloorMesh
           key={floor.id}
           vertices={floor.vertices}
@@ -1225,17 +1291,21 @@ function SceneContent() {
       ))}
 
       {/* Planner5D-style centered room area labels (2D only) */}
-      {!is3D && <RoomLabels floors={floors} />}
+      {!is3D && <RoomLabels floors={renderFloors} />}
 
       {/* Planner5D-style wall dimensions (2D only): inner clear distance always,
           full wall length on hover. */}
       {!is3D && showDimensions && (
-        <WallDimensions walls={walls} floors={floors} hoveredId={hoveredId} />
+        <WallDimensions walls={renderWalls} floors={renderFloors} hoveredId={hoveredId} />
       )}
+
+      {/* Wall drag: grid-snap line + original-position ghost with delta chip */}
+      <SnapIndicator snapEdge={wallDragSnapEdge} />
+      {wallDragInfo && <WallDragReadout info={wallDragInfo} />}
 
       {/* Openings (door/window frames rendered in world space) */}
       {displayOpenings.map((opening) => {
-        const wall = walls.find((w) => w.id === opening.wallId);
+        const wall = renderWalls.find((w) => w.id === opening.wallId);
         if (!wall) return null;
         return (
           <WallOpening
@@ -1248,7 +1318,10 @@ function SceneContent() {
             selected={selectedIds.includes(opening.id)}
             hovered={hoveredId === opening.id}
             flat={!is3D}
-            invalid={openingDragPreview?.id === opening.id && !openingDragPreview.valid}
+            invalid={
+              (openingDragPreview?.id === opening.id && !openingDragPreview.valid) ||
+              doomedOpeningIds.has(opening.id)
+            }
             interactive={mode === "select"}
             swingSide={
               !is3D && opening.type === "door"

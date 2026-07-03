@@ -41,6 +41,7 @@ function NumberField({
   min,
   max,
   readOnly,
+  commitOnBlur,
   onCommit,
 }: {
   label: string;
@@ -50,6 +51,13 @@ function NumberField({
   min?: number;
   max?: number;
   readOnly?: boolean;
+  /**
+   * Commit only on blur / Enter instead of per keystroke. Use for actions
+   * with destructive side effects on intermediate values — e.g. room W×L,
+   * where a transient "1" while typing "12" would physically resize the room
+   * (and its neighbors) and drop openings that no longer fit.
+   */
+  commitOnBlur?: boolean;
   onCommit?: (v: number) => void;
 }) {
   const [text, setText] = useState(value.toFixed(2));
@@ -58,6 +66,14 @@ function NumberField({
   useEffect(() => {
     if (!focused) setText(value.toFixed(2));
   }, [value, focused]);
+
+  const commit = (raw: string) => {
+    const n = parseFloat(raw);
+    if (!Number.isNaN(n) && onCommit) {
+      const clamped = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n));
+      onCommit(clamped);
+    }
+  };
 
   return (
     <label className="flex flex-col gap-0.5">
@@ -72,20 +88,21 @@ function NumberField({
           readOnly={readOnly}
           value={readOnly ? value.toFixed(2) : text}
           onFocus={() => setFocused(true)}
-          onBlur={() => {
+          onBlur={(e) => {
             setFocused(false);
+            if (commitOnBlur) commit(e.target.value);
             setText(value.toFixed(2));
           }}
+          onKeyDown={
+            commitOnBlur
+              ? (e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }
+              : undefined
+          }
           onChange={(e) => {
             setText(e.target.value);
-            const n = parseFloat(e.target.value);
-            if (!Number.isNaN(n) && onCommit) {
-              const clamped = Math.min(
-                max ?? Infinity,
-                Math.max(min ?? -Infinity, n)
-              );
-              onCommit(clamped);
-            }
+            if (!commitOnBlur) commit(e.target.value);
           }}
           className="w-16 bg-transparent text-xs text-dizajno-text font-mono tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         />
@@ -415,9 +432,9 @@ export default function SelectionBar() {
         {rect ? (
           <>
             <NumberField label="Width" unit="m" value={usableW} step={0.1} min={0.5}
-              onCommit={(v) => resizeRectRoom(floor.id, v, usableL)} />
+              commitOnBlur onCommit={(v) => resizeRectRoom(floor.id, v, usableL)} />
             <NumberField label="Length" unit="m" value={usableL} step={0.1} min={0.5}
-              onCommit={(v) => resizeRectRoom(floor.id, usableW, v)} />
+              commitOnBlur onCommit={(v) => resizeRectRoom(floor.id, usableW, v)} />
           </>
         ) : (
           <NumberField label="Area" unit="m²" value={polygonArea(floor.vertices)} readOnly />

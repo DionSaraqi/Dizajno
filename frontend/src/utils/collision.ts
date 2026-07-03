@@ -1,7 +1,7 @@
 import type { FurnitureData, WallData, CollisionBox } from "@/types/designer";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
 
-interface AABB {
+export interface AABB {
   minX: number;
   maxX: number;
   minZ: number;
@@ -25,8 +25,9 @@ export function getFurnitureAABB(item: FurnitureData): AABB {
  * If the catalog defines collisionBoxes (for L-shapes etc), returns multiple
  * sub-AABBs rotated and positioned in world space.
  * Otherwise returns the single full AABB.
+ * Exported for wallDrag's flush clamp (a dragged wall stops at these faces).
  */
-function getFurnitureCollisionBoxes(item: FurnitureData): AABB[] {
+export function getFurnitureCollisionBoxes(item: FurnitureData): AABB[] {
   const def = getFurnitureDef(item.type);
   if (!def?.collisionBoxes || def.collisionBoxes.length === 0) {
     return [getFurnitureAABB(item)];

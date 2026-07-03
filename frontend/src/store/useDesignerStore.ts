@@ -28,6 +28,11 @@ import {
   roundTo2,
 } from "@/utils/roomBuilder";
 import { alignRoomToWalls, roomCornersSettled } from "@/utils/roomAlign";
+import {
+  planWallDrag,
+  applyWallDrag,
+  normalizeRidingOpenings,
+} from "@/utils/wallDrag";
 
 // ── Actions Interface ───────────────────────────────────────────────────────
 
@@ -45,6 +50,12 @@ interface DesignerActions {
     id: string,
     changes: Partial<Pick<WallData, "thickness" | "height" | "paintVariantId">>
   ) => void;
+  /**
+   * Commit a perpendicular wall drag: the wall's collinear chain translates by
+   * `delta` along its normal and every attached wall stretches to follow —
+   * shared walls resize BOTH adjacent rooms. One atomic set() per gesture.
+   */
+  dragWall: (wallId: string, delta: number) => void;
   setDrawingFrom: (point: [number, number] | null) => void;
   setFloors: (floors: FloorData[]) => void;
 
@@ -307,67 +318,97 @@ export const useDesignerStore = create<DesignerStore>()(
         if (s.readOnly) return;
         const floor = s.floors.find((f) => f.id === floorId);
         if (!floor || !isAxisAlignedRect(floor.vertices)) return;
+        const usableW = Math.max(0.5, usableWidth);
+        const usableL = Math.max(0.5, usableLength);
 
         const xs = floor.vertices.map((v) => v[0]);
         const zs = floor.vertices.map((v) => v[1]);
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
         const cz = (Math.min(...zs) + Math.max(...zs)) / 2;
 
-        // Resize moves each side's wall wholesale, so it needs every side to
-        // be exactly ONE unshared segment. A side split into several segments
-        // (a neighbor T-joins it) or a wall also bounding another room cannot
-        // be dragged without silently reshaping the neighbor — refuse until a
-        // detach/resize-both interaction exists.
+        // One anchor wall per side. A side split into several collinear
+        // segments is fine — the drag plan pulls the whole chain along.
         const nVerts = floor.vertices.length;
-        const edgeWallLists: WallData[][] = [];
+        const sideWalls: WallData[] = [];
         for (let i = 0; i < nVerts; i++) {
-          edgeWallLists.push(
-            wallsAlongEdge(floor.vertices[i], floor.vertices[(i + 1) % nVerts], s.walls)
+          const vi = floor.vertices[i];
+          const vj = floor.vertices[(i + 1) % nVerts];
+          const along = wallsAlongEdge(vi, vj, s.walls);
+          if (along.length === 0) {
+            toast.error("Couldn't resolve this room's walls — resize aborted");
+            return;
+          }
+          // Anchor on the wall NEAREST the edge line — wallsAlongEdge accepts
+          // parallels within 0.2 m, and array order could hand us a stray
+          // foreign wall whose chain would then be dragged instead.
+          const horizontal = Math.abs(vj[0] - vi[0]) >= Math.abs(vj[1] - vi[1]);
+          const mid = horizontal ? (vi[1] + vj[1]) / 2 : (vi[0] + vj[0]) / 2;
+          sideWalls.push(
+            along.reduce((best, w) => {
+              const dw = horizontal
+                ? Math.abs(w.start[1] - mid)
+                : Math.abs(w.start[0] - mid);
+              const db = horizontal
+                ? Math.abs(best.start[1] - mid)
+                : Math.abs(best.start[0] - mid);
+              return dw < db ? w : best;
+            })
           );
         }
-        const refuse = () =>
-          toast.info("This room shares a wall with its neighbors — resize is disabled");
-        if (edgeWallLists.some((list) => list.length !== 1)) {
-          refuse();
-          return;
-        }
-        const bw = [...new Map(edgeWallLists.flat().map((w) => [w.id, w])).values()];
-        const bwIds = new Set(bw.map((w) => w.id));
-        const sharesWall = s.floors.some((f) => {
-          if (f.id === floorId) return false;
-          const fn = f.vertices.length;
-          for (let i = 0; i < fn; i++) {
-            const along = wallsAlongEdge(f.vertices[i], f.vertices[(i + 1) % fn], s.walls);
-            if (along.some((w) => bwIds.has(w.id))) return true;
-          }
-          return false;
-        });
-        if (sharesWall) {
-          refuse();
-          return;
-        }
-        const t = bw.length > 0 ? bw[0].thickness : s.wallThickness;
+
+        const t = sideWalls[0].thickness;
         // cm-exact new centerline bbox (preserves usable size precisely).
-        const cl = rectCenterlineVerts(usableWidth, usableLength, t, cx, cz);
+        const cl = rectCenterlineVerts(usableW, usableL, t, cx, cz);
         const nMinX = cl[0][0];
         const nMinZ = cl[0][1];
         const nMaxX = cl[2][0];
         const nMaxZ = cl[2][1];
 
-        const movedIds = new Set(bw.map((w) => w.id));
-        const walls = s.walls.map((w) => {
-          if (!movedIds.has(w.id)) return w;
-          const horizontal =
-            Math.abs(w.end[0] - w.start[0]) >= Math.abs(w.end[1] - w.start[1]);
-          if (horizontal) {
-            const z = (w.start[1] + w.end[1]) / 2 > cz ? nMaxZ : nMinZ;
-            return { ...w, start: [nMinX, z] as [number, number], end: [nMaxX, z] as [number, number] };
+        // Each side is one perpendicular wall-drag: the side's collinear chain
+        // translates onto the new bbox line and every attached wall — the
+        // room's own corners, a neighbor's shared or T-joined walls — rides
+        // along, so a shared wall resizes BOTH rooms instead of refusing.
+        // Clamps (neighbor min span, furniture) may cut a side short.
+        let walls = s.walls;
+        let clamped = false;
+        for (const side of sideWalls) {
+          const plan = planWallDrag(side.id, walls, s.floors, s.furniture);
+          if (!plan) {
+            // A side that can't be planned (tilted past the axis tolerance,
+            // no longer bounding a floor) would silently resize only 3 sides.
+            toast.error("Couldn't resolve this room's walls — resize aborted");
+            return;
           }
-          const x = (w.start[0] + w.end[0]) / 2 > cx ? nMaxX : nMinX;
-          return { ...w, start: [x, nMinZ] as [number, number], end: [x, nMaxZ] as [number, number] };
-        });
+          const target =
+            plan.axis === "z"
+              ? (side.start[1] + side.end[1]) / 2 > cz
+                ? nMaxZ
+                : nMinZ
+              : (side.start[0] + side.end[0]) / 2 > cx
+                ? nMaxX
+                : nMinX;
+          const requested = roundTo2(target - plan.lineCoord);
+          const applied = Math.max(plan.minDelta, Math.min(plan.maxDelta, requested));
+          if (Math.abs(applied - requested) > 0.005) clamped = true;
+          walls = applyWallDrag(plan, walls, requested);
+        }
+        if (walls === s.walls) {
+          // Fully clamped: nothing moved — say why instead of going silent.
+          if (clamped) toast.info("Resize was limited by neighboring rooms or furniture");
+          return;
+        }
 
-        const floors = reconcileLoadedFloors(walls, s.floors);
+        const floors = reconcileLoadedFloors(walls, s.floors, s.walls);
+        // floors === s.floors is reconcile's empty-derived fallback: the walls
+        // no longer close any face at all (total floor loss) — same refusal as
+        // the count check, which alone misses the single-room scene.
+        if (floors === s.floors || floors.length < s.floors.length) {
+          toast.error("This resize would break the room layout — no changes applied");
+          return;
+        }
+        if (clamped) {
+          toast.info("Resize was limited by neighboring rooms or furniture");
+        }
         const { openings, dropped } = reassignOpeningsAfterWallChange(s.openings, s.walls, walls);
         notifyDroppedOpenings(dropped);
         let selId: string | null = null;
@@ -386,6 +427,36 @@ export const useDesignerStore = create<DesignerStore>()(
           openings,
           selectedIds: selId ? [selId] : s.selectedIds,
         });
+      },
+      dragWall: (wallId, delta) => {
+        const s = get();
+        if (s.readOnly) return;
+        // Re-plan against LIVE state — the gesture's preview plan may be stale
+        // (Delete mid-drag, undo, collaborative edits) — and re-clamp inside
+        // applyWallDrag, so a hostile delta can never break the graph.
+        const plan = planWallDrag(wallId, s.walls, s.floors, s.furniture);
+        if (!plan) return;
+        const walls = applyWallDrag(plan, s.walls, delta);
+        if (walls === s.walls) return; // zero effective delta — no undo entry
+        const floors = reconcileLoadedFloors(walls, s.floors, s.walls);
+        // A moved corner failing to stay key-identical would open a face loop
+        // and silently drop that room's floor — refuse the commit instead.
+        // floors === s.floors is reconcile's empty-derived fallback (ALL faces
+        // lost), which the count comparison alone misses in single-room scenes.
+        if (floors === s.floors || floors.length < s.floors.length) {
+          toast.error("This drag would break the room layout — no changes applied");
+          return;
+        }
+        const normalized = normalizeRidingOpenings(plan, s.walls, s.openings, delta);
+        const { openings, dropped } = reassignOpeningsAfterWallChange(
+          normalized,
+          s.walls,
+          walls
+        );
+        notifyDroppedOpenings(dropped);
+        // The dragged wall's id survives the move — selection (and the wall's
+        // SelectionBar) stays put; floors re-derive with fresh ids anyway.
+        set({ walls, floors, openings });
       },
       removeFloor: (id) => set((s) => (s.readOnly ? {} : {
         floors: s.floors.filter((f) => f.id !== id),
