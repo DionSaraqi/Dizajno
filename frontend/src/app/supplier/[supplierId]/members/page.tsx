@@ -38,7 +38,7 @@ export default function SupplierMembersPage() {
   const qc = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [removeTarget, setRemoveTarget] = useState<api.SupplierPortalMember | null>(
+  const [removeTarget, setRemoveTarget] = useState<api.SupplierMemberRow | null>(
     null,
   );
   const [revokeTarget, setRevokeTarget] = useState<api.SupplierInvite | null>(

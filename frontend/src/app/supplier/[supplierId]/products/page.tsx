@@ -35,7 +35,7 @@ export default function SupplierProductsPage() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
   const [search, setSearch] = useState("");
-  const [removeTarget, setRemoveTarget] = useState<api.SupplierProductListItem | null>(
+  const [removeTarget, setRemoveTarget] = useState<api.SupplierProductSummary | null>(
     null,
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

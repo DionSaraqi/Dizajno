@@ -25,7 +25,7 @@ export default function SupplierTexturesPage() {
   const supplierId = params.supplierId;
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<api.SupplierTexture | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<api.SupplierTextureRow | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const textures = useQuery({

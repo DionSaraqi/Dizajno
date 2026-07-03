@@ -3,7 +3,8 @@
 import React, { forwardRef } from "react";
 import { ChevronDown } from "lucide-react";
 
-export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+export interface SelectProps
+  extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "size"> {
   invalid?: boolean;
   size?: "sm" | "md";
 }

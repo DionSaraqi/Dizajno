@@ -34,7 +34,7 @@ export default function AdminSuppliersPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [suspendTarget, setSuspendTarget] = useState<api.AdminSupplierListItem | null>(
+  const [suspendTarget, setSuspendTarget] = useState<api.AdminSupplier | null>(
     null,
   );
 
