@@ -44,6 +44,7 @@ public sealed class DataSeeder : IDataSeeder
         await SeedRolesAsync();
         await SeedAdminAsync();
         var supplier = await SeedSupplierAsync(cancellationToken);
+        await SeedDemoAccountsAsync(supplier, cancellationToken);
         var categories = await SeedCategoriesAsync(cancellationToken);
         await SeedProductsAsync(supplier, categories, cancellationToken);
         await SeedTextureLibraryAsync(supplier, cancellationToken);
@@ -100,6 +101,85 @@ public sealed class DataSeeder : IDataSeeder
         await _users.AddToRoleAsync(admin, "Admin");
         await _users.AddToRoleAsync(admin, "User");
         _log.LogInformation("Seeded admin user {Email}", _options.AdminEmail);
+    }
+
+    /// <summary>
+    /// One demo login per role so a fresh dev database is fully explorable:
+    /// a supplier Owner + supplier Staff bound to the seeded 'dizajno'
+    /// supplier, and a plain customer with no memberships. All share the
+    /// configured admin password. Gated behind Seed:SeedDemoAccounts (only
+    /// Development turns it on) and idempotent like every other step.
+    /// </summary>
+    private async Task SeedDemoAccountsAsync(Supplier supplier, CancellationToken cancellationToken)
+    {
+        if (!_options.SeedDemoAccounts)
+        {
+            return;
+        }
+
+        var owner = await EnsureUserAsync("owner@dizajno.local", "Demo Supplier Owner");
+        var staff = await EnsureUserAsync("staff@dizajno.local", "Demo Supplier Staff");
+        await EnsureUserAsync("user@dizajno.local", "Demo Customer");
+
+        await EnsureMembershipAsync(supplier, owner, SupplierMemberRole.Owner, cancellationToken);
+        await EnsureMembershipAsync(supplier, staff, SupplierMemberRole.Staff, cancellationToken);
+    }
+
+    private async Task<ApplicationUser> EnsureUserAsync(string email, string displayName)
+    {
+        var existing = await _users.FindByEmailAsync(email);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            DisplayName = displayName,
+            Locale = "sq",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var result = await _users.CreateAsync(user, _options.AdminPassword);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(
+                $"Failed to create seed user '{email}': {string.Join("; ", result.Errors.Select(e => e.Description))}");
+        }
+
+        await _users.AddToRoleAsync(user, "User");
+        _log.LogInformation("Seeded demo user {Email}", email);
+        return user;
+    }
+
+    private async Task EnsureMembershipAsync(
+        Supplier supplier,
+        ApplicationUser user,
+        SupplierMemberRole role,
+        CancellationToken cancellationToken)
+    {
+        var exists = await _db.SupplierMembers.AnyAsync(
+            m => m.SupplierId == supplier.Id && m.UserId == user.Id, cancellationToken);
+        if (exists)
+        {
+            return;
+        }
+
+        _db.SupplierMembers.Add(new SupplierMember
+        {
+            Id = Guid.NewGuid(),
+            SupplierId = supplier.Id,
+            UserId = user.Id,
+            Role = role,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+        _log.LogInformation(
+            "Seeded supplier membership {Email} -> {Supplier} as {Role}", user.Email, supplier.Slug, role);
     }
 
     private async Task<Supplier> SeedSupplierAsync(CancellationToken cancellationToken)

@@ -45,7 +45,10 @@ dotnet run --project src/Dizajno.Api                          # API on http://lo
 dotnet test tests/Dizajno.IntegrationTests                    # Testcontainers + WebApplicationFactory
 ```
 
-Seeded admin (dev only): `admin@dizajno.local` / `Admin1234!`. The frontend reads the
+Seeded accounts (dev only, all with password `Admin1234!`): `admin@dizajno.local` (Admin),
+`owner@dizajno.local` (Owner of the seeded `dizajno` supplier), `staff@dizajno.local`
+(Staff of `dizajno`), `user@dizajno.local` (plain customer). The demo trio is gated by
+`Seed:SeedDemoAccounts` (on only in Development). The frontend reads the
 API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 
 ## Tech Stack

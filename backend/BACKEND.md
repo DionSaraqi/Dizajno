@@ -36,6 +36,15 @@ Then:
 
 Default admin: `admin@dizajno.local` / `Admin1234!` (dev only; override via env vars).
 
+Demo accounts (dev only — seeded when `Seed:SeedDemoAccounts` is true, which
+`appsettings.Development.json` sets; all share the admin password `Admin1234!`):
+
+| Email | Role | Supplier membership |
+|---|---|---|
+| `owner@dizajno.local` | User | **Owner** of the seeded `dizajno` supplier — full supplier portal incl. Members + Profile tabs |
+| `staff@dizajno.local` | User | **Staff** of `dizajno` — supplier portal without Owner-only tabs |
+| `user@dizajno.local`  | User | none — plain customer |
+
 ## Project layout
 
 ```
@@ -113,6 +122,7 @@ Environment variables use the standard double-underscore syntax:
 | `Seed:AdminEmail` | yes | `admin@dizajno.local` | |
 | `Seed:AdminPassword` | yes | `Admin1234!` (Development only) | **Override in production** |
 | `Seed:AdminDisplayName` | no | `Dizajno Admin` | |
+| `Seed:SeedDemoAccounts` | no | `false` (`true` in Development) | Seeds owner@/staff@/user@dizajno.local demo accounts + `dizajno` supplier memberships |
 | `R2:AccountId` | no¹ | empty | Cloudflare account id |
 | `R2:AccessKeyId` | no¹ | empty | R2 API token access key |
 | `R2:SecretAccessKey` | no¹ | empty | R2 API token secret |
