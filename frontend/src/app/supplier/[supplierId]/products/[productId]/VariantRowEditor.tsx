@@ -1,19 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Box,
   Check,
+  Eye,
   ImageIcon,
   Layers,
   Palette,
   Plus,
+  Ruler,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
 import * as api from "@/lib/api";
+import { analyzeGlbFile, analyzeGlbUrl } from "@/utils/glbAnalysis";
+import {
+  collectGlbWarnings,
+  measuredDimsForApply,
+  type GlbMeasurement,
+} from "@/utils/glbChecks";
 import {
   Badge,
   Button,
@@ -27,6 +37,9 @@ import {
   Spinner,
   Tooltip,
 } from "@/components/ui";
+
+// R3F needs the browser — never render the preview during SSR.
+const GlbPreview = dynamic(() => import("./GlbPreview"), { ssr: false });
 
 export default function VariantRowEditor({
   supplierId,
@@ -63,6 +76,34 @@ export default function VariantRowEditor({
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // GLB analysis: run on file pick (parse failure blocks the upload — the
+  // designer would fail to render the model too) or on demand for the
+  // already-attached asset. Warnings recompute live as the dims fields change.
+  const [glbCheck, setGlbCheck] = useState<GlbMeasurement | null>(null);
+  const [glbCheckError, setGlbCheckError] = useState<string | null>(null);
+  const [checkingGlb, setCheckingGlb] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // Revoke a picked file's blob URL when it's replaced or the row unmounts.
+  useEffect(() => {
+    return () => {
+      if (previewUrl?.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const typedDims = useMemo(() => {
+    const w = Number(width);
+    const h = Number(height);
+    const d = Number(depth);
+    return w > 0 && h > 0 && d > 0 ? { width: w, height: h, depth: d } : null;
+  }, [width, height, depth]);
+
+  const glbWarnings = useMemo(
+    () => (glbCheck && typedDims ? collectGlbWarnings(glbCheck, typedDims) : []),
+    [glbCheck, typedDims],
+  );
 
   useEffect(() => {
     if (!savedAt) return;
@@ -143,6 +184,63 @@ export default function VariantRowEditor({
     onSuccess: onChanged,
     onError: (e: Error) => setError(e.message),
   });
+
+  async function handleGlbSelected(file: File) {
+    setGlbCheckError(null);
+    setCheckingGlb(true);
+    try {
+      const measurement = await analyzeGlbFile(file);
+      setGlbCheck(measurement);
+      setPreviewUrl(URL.createObjectURL(file));
+      setPreviewOpen(true);
+      // Warnings are advisory — upload proceeds; only a parse failure blocks.
+      attachGlb.mutate(file);
+    } catch (e: unknown) {
+      setGlbCheck(null);
+      setGlbCheckError(
+        e instanceof Error ? e.message : "Could not analyze the model.",
+      );
+    } finally {
+      setCheckingGlb(false);
+    }
+  }
+
+  async function checkCurrentGlb() {
+    if (!variant.glbAssetUrl) return;
+    setGlbCheckError(null);
+    setCheckingGlb(true);
+    try {
+      const measurement = await analyzeGlbUrl(variant.glbAssetUrl);
+      setGlbCheck(measurement);
+      setPreviewUrl(variant.glbAssetUrl);
+      setPreviewOpen(true);
+    } catch (e: unknown) {
+      setGlbCheckError(
+        e instanceof Error ? e.message : "Could not analyze the model.",
+      );
+    } finally {
+      setCheckingGlb(false);
+    }
+  }
+
+  function applyMeasuredDims() {
+    if (!glbCheck) return;
+    const dims = measuredDimsForApply(typedDims, glbCheck.size);
+    if (!dims) return;
+    const format = (v: number) => String(Math.round(v * 1000) / 1000);
+    setWidth(format(dims.width));
+    setHeight(format(dims.height));
+    setDepth(format(dims.depth));
+  }
+
+  function addMaterialSlotsFromModel() {
+    if (!glbCheck) return;
+    const existing = new Set(materialSlots.map((r) => r.slot.trim()));
+    const additions = glbCheck.materialNames
+      .filter((n) => !existing.has(n))
+      .map((n) => ({ slot: n, color: "#888888" }));
+    if (additions.length > 0) setMaterialSlots([...materialSlots, ...additions]);
+  }
 
   return (
     <>
@@ -252,10 +350,119 @@ export default function VariantRowEditor({
             currentUrl={variant.glbAssetUrl}
             currentId={variant.glbAssetId}
             accept="model/gltf-binary,.glb"
-            uploading={attachGlb.isPending || detachGlb.isPending}
-            onUpload={(file) => attachGlb.mutate(file)}
+            uploading={attachGlb.isPending || detachGlb.isPending || checkingGlb}
+            onUpload={(file) => void handleGlbSelected(file)}
             onDetach={() => detachGlb.mutate()}
           />
+
+          {/* Model check: measured bounds vs typed dims + live 3D preview */}
+          {(checkingGlb || glbCheckError || glbCheck || variant.glbAssetUrl) && (
+            <div className="rounded-lg border border-dizajno-border bg-dizajno-bg/40 px-3 py-3 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-[11px] font-medium uppercase tracking-label text-dizajno-muted flex items-center gap-1.5">
+                  <Ruler size={11} />
+                  Model check
+                </p>
+                <div className="flex gap-1.5">
+                  {/* Also gated on the upload mutations: while a just-picked
+                      file is still uploading, glbAssetUrl points at the OLD
+                      asset — measuring it would overwrite the new file's
+                      stats and preview with stale ones. */}
+                  {variant.glbAssetUrl &&
+                    !checkingGlb &&
+                    !attachGlb.isPending &&
+                    !detachGlb.isPending && (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => void checkCurrentGlb()}>
+                      Measure current model
+                    </Button>
+                  )}
+                  {previewUrl && typedDims && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      leftIcon={<Eye />}
+                      onClick={() => setPreviewOpen((v) => !v)}
+                    >
+                      {previewOpen ? "Hide preview" : "Preview"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {checkingGlb && (
+                <div className="flex items-center gap-2 text-[12.5px] text-dizajno-muted">
+                  <Spinner size={12} /> Analyzing model…
+                </div>
+              )}
+
+              {glbCheckError && (
+                <div className="rounded-md border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[12.5px] text-dizajno-danger">
+                  {glbCheckError}
+                </div>
+              )}
+
+              {glbCheck && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[12.5px] text-dizajno-text-subtle">
+                    <div>
+                      <span className="text-dizajno-muted">Bounding box: </span>
+                      <span className="font-mono">
+                        {glbCheck.size.map((v) => v.toFixed(3)).join(" × ")}
+                      </span>{" "}
+                      <span className="text-dizajno-muted">(file units, X×Y×Z)</span>
+                    </div>
+                    <div>
+                      <span className="text-dizajno-muted">Triangles: </span>
+                      <span className="font-mono">{glbCheck.triangleCount.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-dizajno-muted">Materials: </span>
+                      <span className="font-mono">
+                        {glbCheck.materialNames.length > 0
+                          ? glbCheck.materialNames.join(", ")
+                          : "none named"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {glbWarnings.length > 0 && (
+                    <ul className="space-y-1">
+                      {glbWarnings.map((w) => (
+                        <li
+                          key={w}
+                          className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[12.5px] text-amber-600 dark:text-amber-400"
+                        >
+                          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                          <span>{w}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <div className="flex gap-1.5 flex-wrap">
+                    <Button type="button" variant="secondary" size="sm" onClick={applyMeasuredDims}>
+                      Apply measured dimensions
+                    </Button>
+                    {glbCheck.materialNames.length > 0 && (
+                      <Button type="button" variant="ghost" size="sm" onClick={addMaterialSlotsFromModel}>
+                        Add material slots from model
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {previewOpen && previewUrl && typedDims && (
+                <GlbPreview
+                  url={previewUrl}
+                  width={typedDims.width}
+                  depth={typedDims.depth}
+                  height={typedDims.height}
+                />
+              )}
+            </div>
+          )}
 
           <AssetSlot
             label="SVG preview"
