@@ -33,6 +33,7 @@ Then:
 - API: <http://localhost:5000>
 - Swagger: <http://localhost:5000/swagger> (`/` redirects here in Development)
 - Adminer: <http://localhost:8081>  → System `PostgreSQL`, Server `postgres`, Username `dizajno`, Password `dizajno-dev`, Database `dizajno`
+- MinIO (local R2 stand-in): S3 API on <http://localhost:9000>, web console on <http://localhost:9001> (`dizajno` / `dizajno-dev-minio`). The `minio-init` one-shot container creates the `dizajno-assets` bucket with anonymous downloads; `appsettings.Development.json` points `R2:ServiceUrl` at it, so supplier asset uploads work fully offline. Production keeps using real Cloudflare R2 via `R2:AccountId` (leave `ServiceUrl` empty).
 
 Default admin: `admin@dizajno.local` / `Admin1234!` (dev only; override via env vars).
 
@@ -123,7 +124,8 @@ Environment variables use the standard double-underscore syntax:
 | `Seed:AdminPassword` | yes | `Admin1234!` (Development only) | **Override in production** |
 | `Seed:AdminDisplayName` | no | `Dizajno Admin` | |
 | `Seed:SeedDemoAccounts` | no | `false` (`true` in Development) | Seeds owner@/staff@/user@dizajno.local demo accounts + `dizajno` supplier memberships |
-| `R2:AccountId` | no¹ | empty | Cloudflare account id |
+| `R2:AccountId` | no¹ | empty | Cloudflare account id (endpoint = `https://{id}.r2.cloudflarestorage.com`) |
+| `R2:ServiceUrl` | no¹ | empty (`http://localhost:9000` in Development) | S3 endpoint override for local MinIO; replaces `AccountId`. Presigned URLs adopt its scheme |
 | `R2:AccessKeyId` | no¹ | empty | R2 API token access key |
 | `R2:SecretAccessKey` | no¹ | empty | R2 API token secret |
 | `R2:Bucket` | no¹ | empty | Bucket name (e.g. `dizajno-assets`) |

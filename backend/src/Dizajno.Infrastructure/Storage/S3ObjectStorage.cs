@@ -57,7 +57,11 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
             Verb = HttpVerb.PUT,
             Expires = expiresAt,
             ContentType = contentType,
-            Protocol = Protocol.HTTPS
+            // A plain-http ServiceUrl (local MinIO) must produce a plain-http
+            // presigned URL or the signature won't match the request.
+            Protocol = opts.ServiceUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                ? Protocol.HTTP
+                : Protocol.HTTPS
         };
 
         var url = _client.Value.GetPreSignedURL(request);
@@ -93,16 +97,21 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
     private R2Options GetValidatedOptions()
     {
         var o = _options.CurrentValue;
-        if (string.IsNullOrWhiteSpace(o.AccountId) ||
+        // AccountId is only needed to derive the R2 endpoint; a ServiceUrl
+        // override (local MinIO) replaces it.
+        var missingEndpoint = string.IsNullOrWhiteSpace(o.AccountId) &&
+                              string.IsNullOrWhiteSpace(o.ServiceUrl);
+        if (missingEndpoint ||
             string.IsNullOrWhiteSpace(o.AccessKeyId) ||
             string.IsNullOrWhiteSpace(o.SecretAccessKey) ||
             string.IsNullOrWhiteSpace(o.Bucket) ||
             string.IsNullOrWhiteSpace(o.PublicBaseUrl))
         {
             throw new InvalidOperationException(
-                "Cloudflare R2 is not configured. Set R2:AccountId, R2:AccessKeyId, " +
-                "R2:SecretAccessKey, R2:Bucket, and R2:PublicBaseUrl in configuration " +
-                "or via DIZAJNO_R2__* environment variables.");
+                "Object storage is not configured. Set R2:AccountId (or R2:ServiceUrl " +
+                "for a local S3-compatible store), R2:AccessKeyId, R2:SecretAccessKey, " +
+                "R2:Bucket, and R2:PublicBaseUrl in configuration or via DIZAJNO_R2__* " +
+                "environment variables.");
         }
         return o;
     }
@@ -113,9 +122,12 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         var credentials = new BasicAWSCredentials(o.AccessKeyId, o.SecretAccessKey);
         var config = new AmazonS3Config
         {
-            ServiceURL = $"https://{o.AccountId}.r2.cloudflarestorage.com",
+            ServiceURL = string.IsNullOrWhiteSpace(o.ServiceUrl)
+                ? $"https://{o.AccountId}.r2.cloudflarestorage.com"
+                : o.ServiceUrl,
             ForcePathStyle = true,
-            // R2 ignores region, but the SDK requires a non-empty value.
+            // R2 ignores region, but the SDK requires a non-empty value. The
+            // MinIO container pins MINIO_SITE_REGION=auto to match.
             AuthenticationRegion = "auto"
         };
         return new AmazonS3Client(credentials, config);

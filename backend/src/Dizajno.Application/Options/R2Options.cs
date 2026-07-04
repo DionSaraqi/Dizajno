@@ -11,6 +11,14 @@ public sealed class R2Options
     /// <summary>Cloudflare account id used to build the S3-compatible endpoint URL.</summary>
     public string AccountId { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Optional S3 endpoint override for local development (e.g. MinIO at
+    /// "http://localhost:9000"). When set, <see cref="AccountId"/> is not
+    /// required and presigned URLs use this endpoint's scheme. Leave empty in
+    /// production so the endpoint derives from <see cref="AccountId"/>.
+    /// </summary>
+    public string ServiceUrl { get; init; } = string.Empty;
+
     /// <summary>Access key id of an R2 API token scoped to <see cref="Bucket"/>.</summary>
     public string AccessKeyId { get; init; } = string.Empty;
 

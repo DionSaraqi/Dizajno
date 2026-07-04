@@ -31,5 +31,46 @@ services:
       ADMINER_DEFAULT_SERVER: postgres
       ADMINER_DESIGN: dracula
 
+  # Local S3-compatible store standing in for Cloudflare R2 in dev.
+  # The API points at it via R2:ServiceUrl (appsettings.Development.json).
+  minio:
+    image: minio/minio:latest
+    container_name: dizajno-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: dizajno
+      MINIO_ROOT_PASSWORD: dizajno-dev-minio
+      # Must match S3ObjectStorage's AuthenticationRegion ("auto") or SigV4
+      # presigned URLs won't validate.
+      MINIO_SITE_REGION: auto
+    ports:
+      - "9000:9000" # S3 API (presigned PUTs + public asset GETs)
+      - "9001:9001" # Web console (dizajno / dizajno-dev-minio)
+    volumes:
+      - dizajno-minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: create the dizajno-assets bucket and allow anonymous downloads
+  # (assets are served by public URL, like R2's public bucket). Idempotent.
+  minio-init:
+    image: minio/mc:latest
+    container_name: dizajno-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 dizajno dizajno-dev-minio &&
+      mc mb --ignore-existing local/dizajno-assets &&
+      mc anonymous set download local/dizajno-assets
+      "
+    restart: "no"
+
 volumes:
   dizajno-pgdata:
+  dizajno-minio:

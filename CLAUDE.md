@@ -39,7 +39,7 @@ cd frontend && pnpm dev
 Backend commands (from `backend/` — full reference in [backend/BACKEND.md](backend/BACKEND.md)):
 
 ```bash
-docker compose up -d                                         # Postgres on host port 5433 + Adminer on 8081
+docker compose up -d                                         # Postgres on 5433 + Adminer on 8081 + MinIO on 9000/9001 (local R2 stand-in for asset uploads)
 dotnet ef database update --project src/Dizajno.Data --startup-project src/Dizajno.Api
 dotnet run --project src/Dizajno.Api                          # API on http://localhost:5000
 dotnet test tests/Dizajno.IntegrationTests                    # Testcontainers + WebApplicationFactory
