@@ -46,7 +46,45 @@ interface ApiFetchOptions extends RequestInit {
   jsonBody?: unknown;
 }
 
+// Called after a background token refresh so state holders (the auth store)
+// can sync the rotated session without api.ts depending on the store.
+let tokenRefreshedListener: ((auth: AuthResponse) => void) | null = null;
+
+export function onTokenRefreshed(listener: (auth: AuthResponse) => void): void {
+  tokenRefreshedListener = listener;
+}
+
+// Single-flight refresh: when several requests 401 at once (15-minute access
+// tokens expire mid-session), they all await the same refresh call instead of
+// racing the rotating refresh cookie.
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefreshSession(): Promise<boolean> {
+  refreshInFlight ??= (async () => {
+    try {
+      const auth = await refresh();
+      if (!auth) return false;
+      setAccessToken(auth.accessToken);
+      tokenRefreshedListener?.(auth);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
 async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise<T> {
+  return apiFetchInternal<T>(path, init, /* allowAuthRetry */ true);
+}
+
+async function apiFetchInternal<T>(
+  path: string,
+  init: ApiFetchOptions | undefined,
+  allowAuthRetry: boolean
+): Promise<T> {
   const url = `${getBaseUrl()}${path}`;
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -77,6 +115,15 @@ async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise<T> {
   }
 
   if (!response.ok) {
+    // Expired access token mid-session (they only live 15 minutes): refresh
+    // via the HttpOnly cookie and retry the request once. The refresh call
+    // itself is not `auth`-flagged, so it can never recurse here.
+    if (response.status === 401 && init?.auth && allowAuthRetry) {
+      const refreshed = await tryRefreshSession();
+      if (refreshed) {
+        return apiFetchInternal<T>(path, init, false);
+      }
+    }
     let detail = "";
     try {
       detail = await response.text();

@@ -102,6 +102,18 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   },
 }));
 
+// Keep the store in sync when the API client refreshes the session in the
+// background (401 → refresh-cookie → retry). Without this the store would
+// hold a stale access token and user snapshot after the silent rotation.
+api.onTokenRefreshed((auth) => {
+  useAuthStore.setState({
+    status: "authenticated",
+    accessToken: auth.accessToken,
+    user: auth.user,
+    error: null,
+  });
+});
+
 export const useAuthStatus = (): AuthStatus => useAuthStore((s) => s.status);
 export const useAuthUser = (): UserSummary | null => useAuthStore((s) => s.user);
 export const useIsAuthenticated = (): boolean =>
