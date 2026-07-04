@@ -28,6 +28,7 @@ import { mapApiSceneToStore, mapStoreToApiScene } from "@/utils/sceneMapper";
 import { reconcileLoadedFloors } from "@/utils/wallGraph";
 import { captureCanvasThumbnail } from "@/utils/captureCanvas";
 import * as api from "@/lib/api";
+import { toast } from "sonner";
 import { Logo, Spinner } from "@/components/ui";
 
 const DrawingSurface = dynamic(
@@ -132,8 +133,20 @@ export default function ProjectDesignerPage() {
   }, [authStatus, projectId, router]);
 
   // ── Initial load: hydrate the store from the server scene ────────────────
+  // Waits for the catalog fetch to settle (lookup.isReady): hydrating against
+  // an empty variant lookup silently drops every placed item, and the next
+  // autosave would persist that loss. A settled *error* is fatal for the same
+  // reason — never hydrate with the fallback lookup. React Query refetches on
+  // focus/reconnect, so a recovered catalog re-runs this effect and loads.
   useEffect(() => {
-    if (authStatus !== "authenticated" || !projectId) return;
+    if (authStatus !== "authenticated" || !projectId || !lookup.isReady) return;
+    if (lookup.isError) {
+      setHydrated(false);
+      setLoadError(
+        "The furniture catalog failed to load, so the project was not opened (this protects its contents). Retry once the backend is reachable."
+      );
+      return;
+    }
     let cancelled = false;
     setHydrated(false);
     setLoadError(null);
@@ -144,6 +157,14 @@ export default function ProjectDesignerPage() {
         if (cancelled) return;
         const store = useDesignerStore.getState();
         const mapped = mapApiSceneToStore(detail.scene, lookupRef.current);
+        // Items whose product variant vanished from the catalog (hidden /
+        // suspended supplier) can't be rendered or re-saved — say so instead
+        // of silently dropping them on the next autosave.
+        if (mapped.unmappedPlacedItems.length > 0) {
+          toast.warning(
+            `${mapped.unmappedPlacedItems.length} placed item(s) reference products that are no longer available and were not loaded. Saving this project will remove them.`
+          );
+        }
         // Re-derive floors from the walls so their geometry uses the current
         // inner-usable-polygon convention (self-heals projects saved under the
         // old centerline convention), carrying flooring assignments across.
@@ -174,7 +195,7 @@ export default function ProjectDesignerPage() {
       // the next project (or the standalone /designer) doesn't see stale state.
       useDesignerStore.getState().clearAll();
     };
-  }, [projectId, authStatus]);
+  }, [projectId, authStatus, lookup.isReady, lookup.isError]);
 
   // ── Debounced save: subscribe to scene-changing slices and PUT /scene ────
   useEffect(() => {

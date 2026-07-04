@@ -8,18 +8,20 @@
  * grouping (type → room), not backend driven. Search overrides with a flat list.
  */
 
-import React, { useCallback, useState, DragEvent } from "react";
+import React, { useCallback, useMemo, useState, DragEvent } from "react";
 import { ChevronLeft } from "lucide-react";
 import {
   useDesignerStore,
   useActiveFurnitureType,
 } from "@/store/useDesignerStore";
-import {
-  furnitureCatalog,
-  furnitureCategories,
-  getFurnitureByCategory,
-} from "@/utils/furnitureCatalog";
+import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
 import type { FurnitureCatalogItem } from "@/types/designer";
+
+// Families that are drag-placed on the canvas. Fixtures attach to openings via
+// their own picker and building materials flow through the wall/floor pickers,
+// so neither belongs in the Furnish list. The offline fallback catalog carries
+// no `family` — it is furniture-only, so default to "Furniture".
+const PLACEABLE_FAMILIES = new Set(["Furniture", "Lighting", "Appliance"]);
 
 // Curated room → furniture-type grouping. Types absent from the catalog are
 // skipped (filter), so this stays safe as the catalog evolves.
@@ -46,6 +48,14 @@ export default function FurnishPanel({ search }: FurnishPanelProps) {
   const setActiveFurniture = useDesignerStore((s) => s.setActiveFurniture);
   const [tab, setTab] = useState<"rooms" | "categories">("categories");
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+
+  // Live backend catalog (falls back to the bundled array while loading /
+  // offline) — this is what makes supplier-uploaded products browsable.
+  const { items } = useFurnitureCatalog();
+  const placeable = useMemo(
+    () => items.filter((i) => PLACEABLE_FAMILIES.has(i.family ?? "Furniture")),
+    [items]
+  );
 
   const handleDragStart = useCallback(
     (e: DragEvent<HTMLButtonElement>, item: FurnitureCatalogItem) => {
@@ -80,7 +90,7 @@ export default function FurnishPanel({ search }: FurnishPanelProps) {
 
   // Search overrides tabs + drill-down with a flat result list.
   const filtered = search.trim()
-    ? furnitureCatalog.filter(
+    ? placeable.filter(
         (item) =>
           item.label.toLowerCase().includes(search.toLowerCase()) ||
           item.type.toLowerCase().includes(search.toLowerCase()) ||
@@ -99,15 +109,19 @@ export default function FurnishPanel({ search }: FurnishPanelProps) {
     );
   }
 
+  // Categories are derived from the live items (catalog order) so supplier
+  // products under brand-new categories get a card automatically.
   const groups: Group[] =
     tab === "categories"
-      ? furnitureCategories
-          .map((c) => ({ key: c, name: c, items: getFurnitureByCategory(c) }))
-          .filter((g) => g.items.length > 0)
+      ? Array.from(new Set(placeable.map((i) => i.category))).map((c) => ({
+          key: c,
+          name: c,
+          items: placeable.filter((i) => i.category === c),
+        }))
       : ROOMS.map((r) => ({
           key: r.name,
           name: r.name,
-          items: furnitureCatalog.filter((i) => r.types.includes(i.type)),
+          items: placeable.filter((i) => r.types.includes(i.type)),
         })).filter((g) => g.items.length > 0);
 
   const switchTab = (t: "rooms" | "categories") => {

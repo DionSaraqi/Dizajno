@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useRef, useState, useCallback, useEffect, Suspense } from "react";
 import { Edges } from "@react-three/drei";
 import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
@@ -17,9 +17,11 @@ import type { FurnitureData } from "@/types/designer";
 import { checkFurnitureCollision } from "@/utils/collision";
 import { smartSnap, type SnapEdge } from "@/utils/snapToGrid";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
+import { useCatalogVersion } from "@/hooks/useCatalogVersion";
 import Measurements from "./Measurements";
 import SnapIndicator from "./SnapIndicator";
 import GLTFModel from "./furniture/GLTFModel";
+import { ModelErrorBoundary, FallbackBox } from "./furniture/ModelErrorBoundary";
 import BedModel from "./furniture/BedModel";
 import TableModel from "./furniture/TableModel";
 import ChairModel from "./furniture/ChairModel";
@@ -48,6 +50,10 @@ function getModel(type: string) {
 }
 
 export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
+  // Re-render when the runtime catalog arrives — items restored before the
+  // catalog fetch resolves would otherwise keep their fallback (model-less)
+  // definition forever.
+  useCatalogVersion();
   const selectedIds = useSelectedIds();
   const snap = useSnap();
   const gridSize = useGridSize();
@@ -96,7 +102,25 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
 
   const ModelComponent = getModel(item.type);
   const catalogDef = getFurnitureDef(item.type);
-  const hasGLTF = !!catalogDef?.modelUrl;
+  const modelUrl = catalogDef?.modelUrl;
+
+  // Rendered while a GLB loads, when it fails, and for types with no model at
+  // all: the procedural model when one exists, else a box at catalog size.
+  const placeholderModel = ModelComponent ? (
+    <ModelComponent
+      width={item.width}
+      depth={item.depth}
+      height={item.height}
+      color={hasCollision ? "#EF4444" : item.color}
+    />
+  ) : (
+    <FallbackBox
+      width={item.width}
+      depth={item.depth}
+      height={item.height}
+      color={hasCollision ? "#EF4444" : item.color}
+    />
+  );
 
   // Item descriptor for snap calculations
   const itemDesc = { id: item.id, rotation: item.rotation, width: item.width, depth: item.depth };
@@ -236,26 +260,29 @@ export default function FurnitureItem3D({ item }: FurnitureItem3DProps) {
         // mesh underneath, whose onClick would otherwise steal the selection.
         onClick={(e) => e.stopPropagation()}
       >
-        {hasGLTF ? (
-          <GLTFModel
-            url={catalogDef!.modelUrl!}
-            width={item.width}
-            depth={item.depth}
-            height={item.height}
-            color={hasCollision ? "#EF4444" : item.color}
-            opacity={1}
-            materialColors={item.materialColors}
-            materialTextures={item.materialTextures}
-            onBoundsComputed={handleBoundsComputed}
-          />
-        ) : ModelComponent ? (
-          <ModelComponent
-            width={item.width}
-            depth={item.depth}
-            height={item.height}
-            color={hasCollision ? "#EF4444" : item.color}
-          />
-        ) : null}
+        {modelUrl ? (
+          // Boundary catches load/parse failures (fallback rendered instead of
+          // unmounting the canvas); the per-item Suspense keeps the rest of the
+          // scene visible while this one GLB streams in, showing the same
+          // fallback as a placeholder meanwhile.
+          <ModelErrorBoundary resetKey={modelUrl} fallback={placeholderModel}>
+            <Suspense fallback={placeholderModel}>
+              <GLTFModel
+                url={modelUrl}
+                width={item.width}
+                depth={item.depth}
+                height={item.height}
+                color={hasCollision ? "#EF4444" : item.color}
+                opacity={1}
+                materialColors={item.materialColors}
+                materialTextures={item.materialTextures}
+                onBoundsComputed={handleBoundsComputed}
+              />
+            </Suspense>
+          </ModelErrorBoundary>
+        ) : (
+          placeholderModel
+        )}
 
         {/* Always-present invisible pick box — a forgiving, full-bounds hit
             target so selection/hover doesn't depend on landing precisely on the

@@ -1,13 +1,16 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listProducts } from "@/lib/api";
 import { furnitureCatalog } from "@/utils/furnitureCatalog";
+import { setRuntimeCatalog } from "@/utils/catalogRegistry";
 import type { FurnitureCatalogItem, FurnitureCategory } from "@/types/designer";
 
 export interface UseFurnitureCatalogResult {
   items: FurnitureCatalogItem[];
   isLoading: boolean;
   isError: boolean;
+  /** True once the fetch has settled (success or error). Scene hydration waits on this. */
+  isFetched: boolean;
   categories: FurnitureCategory[];
 }
 
@@ -26,6 +29,13 @@ export function useFurnitureCatalog(): UseFurnitureCatalogResult {
 
   const items = query.data ?? furnitureCatalog;
 
+  // Publish into the sync registry so non-React lookups (getFurnitureDef in
+  // collision / store mutations) and render-time consumers see supplier
+  // products, not just the bundled fallback.
+  useEffect(() => {
+    if (query.data) setRuntimeCatalog(query.data);
+  }, [query.data]);
+
   const categories = useMemo(() => {
     const unique = new Set(items.map((item) => item.category));
     return Array.from(unique).sort() as FurnitureCategory[];
@@ -35,6 +45,7 @@ export function useFurnitureCatalog(): UseFurnitureCatalogResult {
     items,
     isLoading: query.isLoading,
     isError: query.isError,
+    isFetched: query.isFetched,
     categories,
   };
 }

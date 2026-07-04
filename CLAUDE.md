@@ -100,7 +100,7 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 │       │   │   ├── CameraController       # Bounded OrbitControls for 3D mode
 │       │   │   └── GridPlane              # Snap grid overlay
 │       │   └── ui/                        # Reusable UI primitives
-│       ├── hooks/                         # useFurnitureCatalog (TanStack Query), useKeyboardShortcuts
+│       ├── hooks/                         # useFurnitureCatalog (TanStack Query), useCatalogVersion, useKeyboardShortcuts
 │       ├── lib/
 │       │   └── api.ts                     # Typed backend fetch client (listProducts, listCategories, ...)
 │       ├── store/                         # Zustand store (useDesignerStore)
@@ -109,6 +109,7 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 │           ├── wallGraph.ts               # Planar face traversal for floor detection
 │           ├── collision.ts               # Furniture/wall collision detection
 │           ├── furnitureCatalog.ts        # Fallback baseline for the API (see Known Patterns)
+│           ├── catalogRegistry.ts         # Runtime catalog registry (fetched catalog for sync lookups)
 │           └── snapToGrid.ts              # Grid snapping helpers
 │
 ├── backend/                               # .NET 10 Web API — full reference: backend/BACKEND.md
@@ -163,7 +164,10 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 - The frontend's `useFurnitureCatalog` hook fetches via TanStack Query with a 60s staleTime and `retry: 1`.
 - API client lives in `lib/api.ts` — base URL from `NEXT_PUBLIC_API_URL` (default `http://localhost:5000`).
 - DTOs returned by the API map 1:1 onto `FurnitureCatalogItem` in `types/designer.ts` — no transformation needed.
-- `utils/furnitureCatalog.ts` is a **fallback baseline** used during the initial fetch and when the backend is offline. `getFurnitureDef(type)` (synchronous, called by collision and store mutations) reads from this fallback.
+- `utils/furnitureCatalog.ts` is a **fallback baseline** used during the initial fetch and when the backend is offline. `getFurnitureDef(type)` (synchronous, called by collision and store mutations) reads the **runtime catalog registry** (`utils/catalogRegistry.ts`) first — populated by `useFurnitureCatalog` on every successful fetch — and falls back per-type to this bundled array. This is what lets supplier-uploaded products (types that don't exist in the bundled file) render in the designer.
+- Components that call `getFurnitureDef` during render subscribe via `hooks/useCatalogVersion.ts` (`useSyncExternalStore`) so a catalog that arrives after mount re-renders them (`FurnitureItem3D`, `RadialMenu`; `SelectionBar` is already reactive through `useFurnitureCatalog`).
+- **Scene hydration waits for the catalog**: `useVariantLookup().isReady` (true once the catalog query settles) gates the load effects in `/projects/[id]` and `/share/[token]` — hydrating against an empty variant lookup would silently drop every placed item and the next autosave would persist the loss.
+- **GLB loads degrade gracefully**: `components/three/furniture/ModelErrorBoundary.tsx` wraps `GLTFModel` in `FurnitureItem3D` and the drag ghost — a model URL that 404s, fails CORS, or fails to parse falls back to the procedural model (or a `FallbackBox` at catalog dimensions) instead of unmounting the canvas. Supplier GLBs served from R2 require the bucket to allow cross-origin `GET` from the app origin.
 - The seeded backend rows are sourced from `backend/src/Dizajno.Data/Seed/CatalogSeedData.cs`, which mirrors the frontend fallback file. Keep both in sync until the supplier portal ships (Phase 7 of the master plan).
 
 ### Supplier-side endpoints (Phase 5)
@@ -347,7 +351,7 @@ Add the entry to `utils/furnitureCatalog.ts` with all computed values. Include `
 ## Known Patterns
 
 - The designer has two parallel state systems: the older `DesignerProvider` (React Context + useReducer in `components/designer/`) and the newer Zustand store (`store/useDesignerStore.ts`). The Zustand store is the canonical one going forward.
-- **Adding a new furniture item**: add it to **both** `frontend/src/utils/furnitureCatalog.ts` (fallback + sync lookups via `getFurnitureDef`) **and** `backend/src/Dizajno.Data/Seed/CatalogSeedData.cs` (backend seed). The seeder is idempotent — restart the API to pick up the new item; existing seeded rows are not touched. Long-term, the supplier portal (Phase 4) replaces both with admin-uploaded products.
+- **Adding a new furniture item**: add it to **both** `frontend/src/utils/furnitureCatalog.ts` (fallback + sync lookups via `getFurnitureDef`) **and** `backend/src/Dizajno.Data/Seed/CatalogSeedData.cs` (backend seed). The seeder is idempotent — restart the API to pick up the new item; existing seeded rows are not touched. Supplier-uploaded products don't need either file: they flow through the runtime catalog registry (`utils/catalogRegistry.ts`) and render via their attached GLB's `modelUrl`.
 - Each catalog item has `svgPreview` for the sidebar thumbnail, optional `modelUrl` for GLTF loading, `materialSlots` for color customization, and `textureSlots` for texture customization.
 - Properties panel is a collapsible section inside the left sidebar (not a separate right panel).
 - **Backend port collision**: Postgres runs on host port **5433** (not 5432) to avoid colliding with host-installed Postgres services. The API runs on **5000** in dev. Frontend dev server picks 3000 unless taken (Next auto-increments).

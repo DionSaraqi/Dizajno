@@ -10,15 +10,17 @@
  *      the API query is in flight and when the backend is unreachable.
  *   2. Sync lookups: `getFurnitureDef(type)` is called from non-React code
  *      (collision, store mutations) where async fetches are inappropriate. The
- *      backend is seeded from this exact array (backend/src/Dizajno.Infrastructure/
- *      Persistence/Seed/CatalogSeedData.cs), so the lookup stays correct.
+ *      backend is seeded from this exact array (backend/src/Dizajno.Data/
+ *      Seed/CatalogSeedData.cs), so the lookup stays correct.
  *
- * When the backend grows products beyond this seed (supplier portal, Phase 7 of
- * the master plan), `getFurnitureDef` will need to shift to a runtime cache
- * populated by the hook.
+ * Supplier-uploaded products exist only in the backend, so `getFurnitureDef`
+ * consults the runtime registry (utils/catalogRegistry.ts) first — populated
+ * by `useFurnitureCatalog` on every successful fetch — and falls back to this
+ * bundled array per-type.
  */
 
 import type { FurnitureCatalogItem, FurnitureCategory } from "@/types/designer";
+import { lookupRuntimeDef, getRuntimeCatalog } from "@/utils/catalogRegistry";
 
 // ── SVG Previews ─────────────────────────────────────────────────────────────
 // All SVGs use a 100×100 viewBox. Shapes are top-down (floor-plan) views.
@@ -358,11 +360,13 @@ export const furnitureCategories: FurnitureCategory[] = [
 ];
 
 export function getFurnitureDef(type: string): FurnitureCatalogItem | undefined {
-  return furnitureCatalog.find((f) => f.type === type);
+  return lookupRuntimeDef(type) ?? furnitureCatalog.find((f) => f.type === type);
 }
 
 export function getFurnitureByCategory(
   category: FurnitureCategory
 ): FurnitureCatalogItem[] {
-  return furnitureCatalog.filter((f) => f.category === category);
+  return (getRuntimeCatalog() ?? furnitureCatalog).filter(
+    (f) => f.category === category
+  );
 }

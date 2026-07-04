@@ -22,6 +22,7 @@ import {
   useReadOnly,
 } from "@/store/useDesignerStore";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
+import { useCatalogVersion } from "@/hooks/useCatalogVersion";
 import { polygonArea } from "@/utils/areaCalc";
 import { snapOpeningOffset } from "@/utils/openingSnap";
 import { isAxisAlignedRect } from "@/utils/roomBuilder";
@@ -273,6 +274,10 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function SelectionBar() {
+  // getFurnitureDef reads the runtime catalog registry, which is populated in
+  // an effect *after* the commit that delivers query.data — subscribe so this
+  // component re-renders once the registry actually holds the new catalog.
+  useCatalogVersion();
   const selectedIds = useSelectedIds();
   const furniture = useFurniture();
   const walls = useWalls();

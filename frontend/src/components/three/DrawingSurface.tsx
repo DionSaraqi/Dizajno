@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo, Suspense } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { Html, Edges } from "@react-three/drei";
 import * as THREE from "three";
@@ -59,6 +59,7 @@ import {
 } from "@/utils/wallGraph";
 import { toast } from "sonner";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
+import { ModelErrorBoundary, FallbackBox } from "./furniture/ModelErrorBoundary";
 import { checkFurnitureCollision } from "@/utils/collision";
 import type { FurnitureData, WallData, OpeningData } from "@/types/designer";
 import WallOpening from "./WallOpening";
@@ -274,22 +275,46 @@ function GhostPreview({
 
   const ModelComponent = getGhostModel(furnitureType);
   const catalogDef = getFurnitureDef(furnitureType);
-  const hasGLTF = !!catalogDef?.modelUrl;
+  const modelUrl = catalogDef?.modelUrl;
+
+  // Shown while the ghost's GLB streams in and when it fails to load: the
+  // procedural ghost model when one exists, else a translucent box.
+  const ghostPlaceholder = ModelComponent ? (
+    <ModelComponent
+      width={width}
+      depth={depth}
+      height={height}
+      color={hasCollision ? "#EF4444" : color}
+      opacity={0.45}
+    />
+  ) : (
+    <FallbackBox
+      width={width}
+      depth={depth}
+      height={height}
+      color={hasCollision ? "#EF4444" : color}
+      opacity={0.45}
+    />
+  );
 
   return (
     <>
       <group position={[position[0], 0, position[1]]} rotation={[0, rotation, 0]}>
         {/* Render actual furniture model with transparency */}
-        {hasGLTF ? (
+        {modelUrl ? (
           <group>
-            <GLTFModel
-              url={catalogDef!.modelUrl!}
-              width={width}
-              depth={depth}
-              height={height}
-              color={hasCollision ? "#EF4444" : color}
-              opacity={0.45}
-            />
+            <ModelErrorBoundary resetKey={modelUrl} fallback={ghostPlaceholder}>
+              <Suspense fallback={ghostPlaceholder}>
+                <GLTFModel
+                  url={modelUrl}
+                  width={width}
+                  depth={depth}
+                  height={height}
+                  color={hasCollision ? "#EF4444" : color}
+                  opacity={0.45}
+                />
+              </Suspense>
+            </ModelErrorBoundary>
             <mesh position={[0, height / 2, 0]}>
               <boxGeometry args={[width + 0.01, height + 0.01, depth + 0.01]} />
               <meshBasicMaterial visible={false} />

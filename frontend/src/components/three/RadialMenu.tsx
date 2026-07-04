@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useDesignerStore } from "@/store/useDesignerStore";
 import { getFurnitureDef } from "@/utils/furnitureCatalog";
+import { useCatalogVersion } from "@/hooks/useCatalogVersion";
 import MaterialPicker from "@/components/designer/MaterialPicker";
 import type { FurnitureData } from "@/types/designer";
 
@@ -33,6 +34,9 @@ interface RadialMenuProps {
 }
 
 export default function RadialMenu({ item }: RadialMenuProps) {
+  // Re-render when the runtime catalog arrives so the Materials button appears
+  // for supplier products resolved after mount.
+  useCatalogVersion();
   const rotateFurniture = useDesignerStore((s) => s.rotateFurniture);
   const setFurnitureRotation = useDesignerStore((s) => s.setFurnitureRotation);
   const duplicateFurniture = useDesignerStore((s) => s.duplicateFurniture);

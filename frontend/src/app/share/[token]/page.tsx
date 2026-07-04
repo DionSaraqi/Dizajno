@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -44,8 +44,23 @@ export default function SharedProjectPage() {
   const [hydrated, setHydrated] = useState(false);
   const [project, setProject] = useState<api.SharedProject | null>(null);
 
+  // Ref so the hydrate effect can read the latest lookup without depending on
+  // its identity — the memo gets a new reference on every catalog refetch with
+  // changed content, and re-running the effect would blank + reload the viewer.
+  const lookupRef = useRef(lookup);
+  lookupRef.current = lookup;
+
   useEffect(() => {
-    if (!token) return;
+    // Wait for the catalog fetch to settle — mapping against an empty variant
+    // lookup would drop every placed item from the read-only view. A settled
+    // error is fatal for the same reason; React Query refetches on focus/
+    // reconnect, so recovery re-runs this effect.
+    if (!token || !lookup.isReady) return;
+    if (lookup.isError) {
+      setHydrated(false);
+      setLoadError("The furniture catalog failed to load — try again in a moment.");
+      return;
+    }
     let cancelled = false;
     setHydrated(false);
     setLoadError(null);
@@ -54,7 +69,7 @@ export default function SharedProjectPage() {
       try {
         const detail = await api.loadSharedProject(token);
         if (cancelled) return;
-        const mapped = mapApiSceneToStore(detail.scene, lookup);
+        const mapped = mapApiSceneToStore(detail.scene, lookupRef.current);
         // Re-derive floors from walls so old centerline-convention scenes render
         // at the correct inner-usable size in the read-only viewer.
         const floors = reconcileLoadedFloors(mapped.walls, mapped.floors);
@@ -86,7 +101,7 @@ export default function SharedProjectPage() {
       cancelled = true;
       useDesignerStore.getState().clearAll();
     };
-  }, [token, lookup]);
+  }, [token, lookup.isReady, lookup.isError]);
 
   if (loadError) {
     return (
