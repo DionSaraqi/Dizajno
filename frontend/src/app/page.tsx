@@ -20,6 +20,7 @@ export default function HomePage() {
   useEffect(() => {
     router.prefetch("/designer");
     router.prefetch("/projects");
+    router.prefetch("/login");
   }, [router]);
 
   // Track cursor — drives the blueprint grid highlight + indigo aurora via CSS vars.

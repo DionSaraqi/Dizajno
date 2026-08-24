@@ -4,14 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import {
-  ArrowLeft,
-  Cloud,
-  CloudOff,
-  FileText,
-  Save,
-  Share2,
-} from "lucide-react";
+import { Cloud, CloudOff, FileText, Save, Share2 } from "lucide-react";
+import DesignerHeader from "@/components/designer/DesignerHeader";
 import LeftDock from "@/components/designer/LeftDock";
 import Toolbar from "@/components/designer/Toolbar";
 import StatusBar from "@/components/designer/StatusBar";
@@ -29,7 +23,7 @@ import { reconcileLoadedFloors } from "@/utils/wallGraph";
 import { captureCanvasThumbnail } from "@/utils/captureCanvas";
 import * as api from "@/lib/api";
 import { toast } from "sonner";
-import { Logo, Spinner } from "@/components/ui";
+import { Button, Spinner } from "@/components/ui";
 
 const DrawingSurface = dynamic(
   () => import("@/components/three/DrawingSurface"),
@@ -298,48 +292,40 @@ export default function ProjectDesignerPage() {
 
   return (
     <DesignerProvider>
-      <div className="w-full h-screen flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden">
-        <header className="flex items-center gap-3 px-4 h-12 border-b border-white/[0.07] bg-zinc-950/95 backdrop-blur">
-          <Link
-            href="/projects"
-            className="inline-flex items-center justify-center w-7 h-7 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors"
-            aria-label="Back to projects"
-          >
-            <ArrowLeft size={15} />
-          </Link>
-          <div className="w-px h-5 bg-white/10" />
-          <Link
-            href="/projects"
-            className="inline-flex items-center gap-1.5 shrink-0 text-zinc-100"
-            aria-label="Dizajno"
-          >
-            <Logo size={18} />
-          </Link>
-          <div className="flex-1 min-w-0 flex items-baseline gap-2">
-            <span className="text-[13.5px] font-medium text-zinc-100 truncate">
-              {projectName || "Loading…"}
-            </span>
-            <SaveBadge status={saveStatus} />
-          </div>
-          <button
-            onClick={() => setQuoteOpen(true)}
-            disabled={!sceneHasContent}
-            title={
-              !sceneHasContent
-                ? "Add furniture, walls, or openings before requesting a quote"
-                : undefined
-            }
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-40 disabled:cursor-not-allowed text-[12.5px] text-zinc-200 transition-colors"
-          >
-            <FileText size={13} /> Quote
-          </button>
-          <button
-            onClick={() => setShareOpen(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md bg-white text-zinc-900 hover:bg-zinc-100 text-[12.5px] font-medium transition-colors"
-          >
-            <Share2 size={13} /> Share
-          </button>
-        </header>
+      <div className="w-full h-screen flex flex-col bg-dizajno-bg overflow-hidden">
+        <DesignerHeader
+          backHref="/projects"
+          backLabel="Back to projects"
+          homeHref="/projects"
+          title={projectName || "Loading…"}
+          badge={<SaveBadge status={saveStatus} />}
+          actions={
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={<FileText />}
+                onClick={() => setQuoteOpen(true)}
+                disabled={!sceneHasContent}
+                title={
+                  !sceneHasContent
+                    ? "Add furniture, walls, or openings before requesting a quote"
+                    : undefined
+                }
+              >
+                Quote
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<Share2 />}
+                onClick={() => setShareOpen(true)}
+              >
+                Share
+              </Button>
+            </>
+          }
+        />
         <ShareDialog
           projectId={projectId}
           open={shareOpen}
@@ -367,21 +353,21 @@ export default function ProjectDesignerPage() {
 function SaveBadge({ status }: { status: SaveStatus }) {
   if (status === "saving") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-[11.5px] text-zinc-400">
+      <span className="inline-flex items-center gap-1.5 text-[11.5px] text-dizajno-muted">
         <Save size={11} className="animate-pulse" /> Saving…
       </span>
     );
   }
   if (status === "saved") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-[11.5px] text-emerald-400/90">
+      <span className="inline-flex items-center gap-1.5 text-[11.5px] text-dizajno-success">
         <Cloud size={11} /> Saved
       </span>
     );
   }
   if (status === "error") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-[11.5px] text-red-400">
+      <span className="inline-flex items-center gap-1.5 text-[11.5px] text-dizajno-danger">
         <CloudOff size={11} /> Save failed
       </span>
     );

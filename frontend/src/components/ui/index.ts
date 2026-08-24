@@ -79,5 +79,8 @@ export type { AvatarProps } from "./Avatar";
 export { default as TopBar } from "./TopBar";
 export type { TopBarProps, TopBarLink } from "./TopBar";
 
+export { default as AccountMenu, AccountMenuLink } from "./AccountMenu";
+export type { AccountMenuProps } from "./AccountMenu";
+
 export { default as Logo } from "./Logo";
 export type { LogoProps } from "./Logo";

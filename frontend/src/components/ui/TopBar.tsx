@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, ChevronDown } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
-import Avatar from "./Avatar";
+import React from "react";
+import AccountMenu from "./AccountMenu";
 import Logo from "./Logo";
 
 export interface TopBarLink {
@@ -41,23 +40,6 @@ export default function TopBar({
   userMenu,
   flush = false,
 }: TopBarProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (
-        menuOpen &&
-        menuRef.current &&
-        !menuRef.current.contains(e.target as Node)
-      ) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
-
   return (
     <header
       className={[
@@ -111,61 +93,11 @@ export default function TopBar({
           {actions}
 
           {user && (
-            <div className="relative" ref={menuRef}>
-              <button
-                onClick={() => setMenuOpen((o) => !o)}
-                className="inline-flex items-center gap-2 h-9 pl-1.5 pr-2 rounded-lg border border-transparent hover:border-dizajno-border hover:bg-dizajno-surface transition-colors"
-              >
-                <Avatar
-                  size={26}
-                  fallback={
-                    (user.displayName?.[0] ?? user.email[0] ?? "U") +
-                    (user.displayName?.split(" ")[1]?.[0] ??
-                      user.email[1] ??
-                      "")
-                  }
-                  alt={user.displayName ?? user.email}
-                />
-                <span className="text-[13px] text-dizajno-text-subtle hidden md:inline">
-                  {user.displayName || user.email.split("@")[0]}
-                </span>
-                <ChevronDown
-                  size={13}
-                  className="text-dizajno-muted hidden md:inline"
-                />
-              </button>
-              {menuOpen && (
-                <div className="absolute top-full right-0 mt-2 w-64 rounded-xl border border-dizajno-border bg-dizajno-surface shadow-card-lg overflow-hidden animate-scale-in origin-top-right">
-                  <div className="px-4 py-3 border-b border-dizajno-border">
-                    {user.displayName && (
-                      <div className="text-[13px] font-medium text-dizajno-text truncate">
-                        {user.displayName}
-                      </div>
-                    )}
-                    <div className="text-[12px] text-dizajno-muted truncate">
-                      {user.email}
-                    </div>
-                  </div>
-                  {userMenu && (
-                    <div className="py-1.5 border-b border-dizajno-border">
-                      {userMenu}
-                    </div>
-                  )}
-                  <div className="py-1.5">
-                    <button
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onSignOut?.();
-                      }}
-                      className="w-full flex items-center gap-2 px-4 py-1.5 text-[13px] text-dizajno-text-subtle hover:bg-dizajno-elevated hover:text-dizajno-text transition-colors"
-                    >
-                      <LogOut size={14} />
-                      Sign out
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+            <AccountMenu
+              user={user}
+              onSignOut={onSignOut}
+              userMenu={userMenu}
+            />
           )}
         </div>
       </div>

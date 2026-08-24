@@ -14,16 +14,15 @@ import {
 } from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
+import NewProjectDialog from "@/components/projects/NewProjectDialog";
 import {
   Button,
   Card,
   ConfirmDialog,
   EmptyState,
-  Input,
   PageHeader,
   Skeleton,
   TopBar,
-  Modal,
 } from "@/components/ui";
 
 export default function ProjectsPage() {
@@ -33,9 +32,7 @@ export default function ProjectsPage() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
-  const [newName, setNewName] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     name: string;
@@ -53,17 +50,6 @@ export default function ProjectsPage() {
     enabled: status === "authenticated",
   });
 
-  const createMutation = useMutation({
-    mutationFn: (name: string) => api.createProject(name),
-    onSuccess: (project) => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      router.push(`/projects/${project.id}`);
-    },
-    onError: (error) => {
-      setCreateError(error instanceof Error ? error.message : "Failed to create");
-    },
-  });
-
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteProject(id),
     onSuccess: () => {
@@ -71,17 +57,6 @@ export default function ProjectsPage() {
       setDeleteTarget(null);
     },
   });
-
-  function handleCreate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setCreateError(null);
-    const name = newName.trim();
-    if (!name) {
-      setCreateError("Please enter a name.");
-      return;
-    }
-    createMutation.mutate(name);
-  }
 
   async function handleLogout() {
     await logout();
@@ -141,10 +116,7 @@ export default function ProjectsPage() {
             <Button
               variant="primary"
               leftIcon={<Plus />}
-              onClick={() => {
-                setCreateError(null);
-                setCreateOpen(true);
-              }}
+              onClick={() => setCreateOpen(true)}
             >
               New project
             </Button>
@@ -252,55 +224,10 @@ export default function ProjectsPage() {
         </section>
       </div>
 
-      {/* New project modal */}
-      <Modal
+      <NewProjectDialog
         open={createOpen}
-        onClose={() => {
-          setCreateOpen(false);
-          setNewName("");
-          setCreateError(null);
-        }}
-        title="New project"
-        description="Name it anything — you can rename it later."
-        size="sm"
-        footer={
-          <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setCreateOpen(false);
-                setNewName("");
-              }}
-              disabled={createMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              loading={createMutation.isPending}
-              onClick={() =>
-                handleCreate(
-                  new Event("submit") as unknown as React.FormEvent<HTMLFormElement>,
-                )
-              }
-            >
-              Create
-            </Button>
-          </>
-        }
-      >
-        <form onSubmit={handleCreate} className="space-y-3">
-          <Input
-            autoFocus
-            placeholder="e.g. Studio loft — Tirana"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          {createError && (
-            <p className="text-[12px] text-dizajno-danger">{createError}</p>
-          )}
-        </form>
-      </Modal>
+        onClose={() => setCreateOpen(false)}
+      />
 
       {/* Delete confirmation */}
       <ConfirmDialog

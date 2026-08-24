@@ -1,12 +1,33 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, LogIn } from "lucide-react";
-import { navItems, type NavItem } from "@/components/landing/navItems";
+import { buildNavItems, type NavItem } from "@/components/landing/navItems";
+import { useSessionChrome } from "@/hooks/useSessionChrome";
+import NewProjectDialog from "@/components/projects/NewProjectDialog";
+import { Skeleton } from "@/components/ui";
 
-/** Left "drawing index" navigation + sign-in. */
+/**
+ * Left "drawing index" navigation. The sign-in affordance below it is only for
+ * anonymous visitors — once signed in, identity lives in the top-right meta row
+ * (see LandingHeader) so there's exactly one account indicator on the page.
+ */
 export default function LandingNav() {
   const router = useRouter();
+  const session = useSessionChrome();
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const items = buildNavItems(session.state);
+
+  function handleClick(item: NavItem): void {
+    if (!item.enabled) return;
+    if (item.opens === "new-project") {
+      setCreateOpen(true);
+      return;
+    }
+    router.push(item.href);
+  }
 
   return (
     <nav className="absolute top-1/2 left-10 -translate-y-1/2 z-10 w-[290px]">
@@ -24,41 +45,43 @@ export default function LandingNav() {
       </div>
 
       <ul className="space-y-0.5">
-        {navItems.map((item, i) => (
+        {items.map((item, i) => (
           <li
-            key={item.label}
+            key={item.num}
             className="animate-slide-up"
             style={{
               animationDelay: `${200 + i * 55}ms`,
               animationFillMode: "backwards",
             }}
           >
-            <NavRow
-              item={item}
-              onClick={() => item.enabled && router.push(item.href)}
-            />
+            <NavRow item={item} onClick={() => handleClick(item)} />
           </li>
         ))}
       </ul>
 
-      <div
-        className="mt-5 pt-5 border-t border-dizajno-border animate-slide-up"
-        style={{ animationDelay: "520ms", animationFillMode: "backwards" }}
-      >
-        <button
-          type="button"
-          onClick={() => router.push("/login")}
-          className="group inline-flex items-center gap-2 text-[13px] font-medium text-dizajno-text-subtle hover:text-dizajno-text transition-colors"
+      {/* Anonymous only — signed-in identity lives in the top-right meta row. */}
+      {session.isAnonymous && (
+        <div
+          className="mt-5 pt-5 border-t border-dizajno-border animate-slide-up"
+          style={{ animationDelay: "520ms", animationFillMode: "backwards" }}
         >
-          <LogIn size={14} strokeWidth={1.75} />
-          <span>Sign in</span>
-          <ArrowUpRight
-            size={12}
-            strokeWidth={2}
-            className="opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-hover:text-dizajno-accent transition-all duration-200"
-          />
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => router.push("/login")}
+            className="group inline-flex items-center gap-2 text-[13px] font-medium text-dizajno-text-subtle hover:text-dizajno-text transition-colors"
+          >
+            <LogIn size={14} strokeWidth={1.75} />
+            <span>Sign in</span>
+            <ArrowUpRight
+              size={12}
+              strokeWidth={2}
+              className="opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 group-hover:text-dizajno-accent transition-all duration-200"
+            />
+          </button>
+        </div>
+      )}
+
+      <NewProjectDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </nav>
   );
 }
@@ -93,16 +116,22 @@ function NavRow({ item, onClick }: { item: NavItem; onClick: () => void }) {
         <Icon size={14} strokeWidth={1.5} />
       </span>
 
-      <span
-        className={[
-          "flex-1 min-w-0 text-[13.5px] font-medium tracking-tight transition-colors leading-snug",
-          item.enabled ? "text-dizajno-text" : "text-dizajno-text-subtle",
-        ].join(" ")}
-      >
-        {item.label}
+      <span className="flex-1 min-w-0 leading-snug">
+        {item.loading ? (
+          <Skeleton className="h-3 w-[6.5rem]" />
+        ) : (
+          <span
+            className={[
+              "text-[13.5px] font-medium tracking-tight transition-colors",
+              item.enabled ? "text-dizajno-text" : "text-dizajno-text-subtle",
+            ].join(" ")}
+          >
+            {item.label}
+          </span>
+        )}
       </span>
 
-      {item.enabled ? (
+      {item.loading ? null : item.enabled ? (
         <ArrowUpRight
           size={14}
           strokeWidth={1.75}
