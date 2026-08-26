@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import * as api from "@/lib/api";
 import {
+  ApiErrorAlert,
   Button,
   Card,
   CardBody,
@@ -46,7 +47,7 @@ export default function ProductInfoTab({
   const [previewSvg, setPreviewSvg] = useState(product.previewSvg ?? "");
   const [textureUrl, setTextureUrl] = useState(product.textureUrl ?? "");
   const [attributes, setAttributes] = useState(product.attributes);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   const categories = useQuery({
@@ -85,7 +86,8 @@ export default function ProductInfoTab({
       setSavedAt(Date.now());
       onSaved();
     },
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: setError,
   });
 
   const isBuildingMaterial = product.family === "BuildingMaterial";
@@ -253,10 +255,8 @@ export default function ProductInfoTab({
         </CardBody>
       </Card>
 
-      {error && (
-        <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-          {error}
-        </div>
+      {error != null && (
+        <ApiErrorAlert error={error} action="save this product" size="sm" />
       )}
 
       <div className="flex items-center justify-end gap-3">

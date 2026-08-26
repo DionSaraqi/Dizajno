@@ -162,6 +162,57 @@ API base URL from `NEXT_PUBLIC_API_URL` (see `frontend/.env.example`).
 
 ## Architecture
 
+### Error handling & feedback
+
+- **One parse, one shape.** `lib/apiError.ts` normalises every backend failure
+  envelope into `ApiError` — `{ kind, title, detail, messages, fieldErrors,
+  retryable, traceId, technical }`. `apiFetch` is the only caller; nothing
+  downstream ever sees a raw payload. The parser is pure and unit-tested
+  (`lib/apiError.test.ts`) against all seven shapes the API can emit:
+  `ProblemDetails`, `ValidationProblemDetails`, Identity's `errors` **array**,
+  `{ error }`, an empty body, a leaked `ex.Message`, and the dev exception HTML page.
+  Note `errors` is an array in one shape and a **map** in another — disambiguated
+  by `Array.isArray`.
+- **`ApiError.message` is the primary human sentence**, so any legacy
+  `{err.message}` render improves without being touched. `allMessages` falls back
+  to the written per-status copy when the response had no body.
+- **Never rendered:** stack traces, `.NET` inner-exception chains, Windows paths,
+  SQL, and anything naming `R2:*` / `DIZAJNO_*` (see `isLeakyDetail`). Those go to
+  `technical`, which is console-logged always and shown — behind a collapsed
+  disclosure — only outside production.
+- **Four UI primitives** in `components/ui/`, all built on `Alert`:
+  | Component | Use for |
+  |---|---|
+  | `Alert` | the primitive: tone + icon + title + body + action + optional dismiss |
+  | `ApiErrorAlert` | a failure scoped to a form, panel, or action — the default choice |
+  | `ErrorState` | a section/page with **no content to show** because the load failed |
+  | `ErrorSummary` | a failed form submit: anchor links to each bad field, takes focus |
+- **Placement rule:** inline field → form summary → section alert → section
+  `ErrorState`. A toast (`lib/errorToast.ts`) is the last resort, for background
+  work with nowhere to put a message; error toasts never auto-dismiss.
+- **`FormField error`** wires `aria-invalid` + `aria-describedby` + `role="alert"`.
+  Pair it with `fieldErrorFor(error, "email")` to attach a server validation
+  message to its input.
+- **Announcements:** `Alert` sets `role="alert"` for danger and `role="status"`
+  otherwise; pass `live="off"` for an alert already present on first paint.
+  `ErrorSummary` moves focus *instead* of announcing — doing both makes several
+  screen readers read it twice.
+- **Global safety nets** in `app/providers.tsx`: a `MutationCache.onError` toasts
+  any mutation that doesn't opt out with `meta: { errorHandled: true }` (so a new
+  mutation can never fail silently), and a `QueryCache.onError` toasts only
+  *refetch* failures where stale data is still on screen — a failed first load is
+  the screen's own job to render. Queries no longer retry 4xx.
+- **Session expiry:** a rejected refresh fires `api.onSessionExpired`, which sets
+  `sessionExpired` on the auth store and raises `SessionExpiredBanner`. It
+  deliberately does **not** flip `status` to `unauthenticated` — that would trip
+  every route guard and navigate the designer away from unsaved work. A refresh
+  that merely fails to reach the server is not an expiry.
+- **`?redirect=` is validated** through `utils/safeRedirect.ts` before reaching
+  `router.replace`.
+- Route boundaries: `app/error.tsx` (root), plus `/designer`, `/projects/[id]`,
+  and `/share/[token]`, all rendering `components/errors/RouteErrorScreen`. A
+  render throw's `message` is developer text, so it is logged, not shown.
+
 ### Catalog API integration
 - The catalog (12 furniture items + categories + suppliers) is **owned by the backend** and served from `GET /api/catalog/products|categories|suppliers`.
 - The frontend's `useFurnitureCatalog` hook fetches via TanStack Query with a 60s staleTime and `retry: 1`.

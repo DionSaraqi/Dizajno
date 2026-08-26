@@ -7,8 +7,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EyeOff, Send } from "lucide-react";
 import * as api from "@/lib/api";
 import {
+  ApiErrorAlert,
   Badge,
   Button,
+  ErrorState,
   PageHeader,
   Spinner,
   Tabs,
@@ -23,7 +25,7 @@ export default function SupplierProductEditorPage() {
   const { supplierId, productId } = params;
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("info");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<unknown>(null);
 
   const product = useQuery({
     queryKey: ["supplier", supplierId, "products", productId],
@@ -40,12 +42,14 @@ export default function SupplierProductEditorPage() {
   const publish = useMutation({
     mutationFn: () => api.publishSupplierProduct(productId),
     onSuccess: invalidate,
-    onError: (e: Error) => setErrorMessage(e.message),
+    meta: { errorHandled: true },
+    onError: setActionError,
   });
   const hide = useMutation({
     mutationFn: () => api.hideSupplierProduct(productId),
     onSuccess: invalidate,
-    onError: (e: Error) => setErrorMessage(e.message),
+    meta: { errorHandled: true },
+    onError: setActionError,
   });
 
   if (product.isLoading) {
@@ -58,9 +62,11 @@ export default function SupplierProductEditorPage() {
   if (product.error) {
     return (
       <div className="py-12 max-w-xl">
-        <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-          {(product.error as Error).message}
-        </div>
+        <ErrorState
+          error={product.error}
+          action="load this product"
+          onRetry={() => void product.refetch()}
+        />
       </div>
     );
   }
@@ -131,16 +137,13 @@ export default function SupplierProductEditorPage() {
       />
 
       <section className="py-6">
-        {errorMessage && (
-          <div className="mb-4 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger flex items-start justify-between gap-3">
-            <span>{errorMessage}</span>
-            <button
-              onClick={() => setErrorMessage(null)}
-              className="text-dizajno-danger/70 hover:text-dizajno-danger text-[12px] font-medium"
-            >
-              Dismiss
-            </button>
-          </div>
+        {actionError != null && (
+          <ApiErrorAlert
+            error={actionError}
+            size="sm"
+            className="mb-4"
+            onDismiss={() => setActionError(null)}
+          />
         )}
 
         {tab === "info" && (

@@ -25,6 +25,7 @@ import {
   type GlbMeasurement,
 } from "@/utils/glbChecks";
 import {
+  ApiErrorAlert,
   Badge,
   Button,
   Card,
@@ -73,7 +74,12 @@ export default function VariantRowEditor({
     parseMaterialDefaults(variant.materialDefaults),
   );
 
-  const [error, setError] = useState<string | null>(null);
+  // Paired with the operation that failed, so one shared slot can still name
+  // what the user was doing.
+  const [error, setError] = useState<{ value: unknown; action?: string } | null>(
+    null,
+  );
+  const fail = (action?: string) => (value: unknown) => setError({ value, action });
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
@@ -81,7 +87,7 @@ export default function VariantRowEditor({
   // designer would fail to render the model too) or on demand for the
   // already-attached asset. Warnings recompute live as the dims fields change.
   const [glbCheck, setGlbCheck] = useState<GlbMeasurement | null>(null);
-  const [glbCheckError, setGlbCheckError] = useState<string | null>(null);
+  const [glbCheckError, setGlbCheckError] = useState<unknown>(null);
   const [checkingGlb, setCheckingGlb] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -132,7 +138,8 @@ export default function VariantRowEditor({
       setSavedAt(Date.now());
       onChanged();
     },
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: fail("save this variant"),
   });
 
   const deleteVariant = useMutation({
@@ -141,7 +148,8 @@ export default function VariantRowEditor({
       onDeleted();
       setDeleteOpen(false);
     },
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: fail("delete this variant"),
   });
 
   // Asset uploads — each handler picks a file, calls the three-step helper,
@@ -154,13 +162,15 @@ export default function VariantRowEditor({
       return asset;
     },
     onSuccess: onChanged,
-    onError: (e: Error) => setError(`GLB upload failed: ${e.message}`),
+    meta: { errorHandled: true },
+    onError: fail("upload the model"),
   });
   const detachGlb = useMutation({
     mutationFn: () =>
       api.attachVariantGlb(variant.id, "00000000-0000-0000-0000-000000000000"),
     onSuccess: onChanged,
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: fail("update this variant"),
   });
   const attachPreview = useMutation({
     mutationFn: async (file: File) => {
@@ -173,7 +183,8 @@ export default function VariantRowEditor({
       return asset;
     },
     onSuccess: onChanged,
-    onError: (e: Error) => setError(`SVG upload failed: ${e.message}`),
+    meta: { errorHandled: true },
+    onError: fail("upload the preview"),
   });
   const detachPreview = useMutation({
     mutationFn: () =>
@@ -182,7 +193,8 @@ export default function VariantRowEditor({
         "00000000-0000-0000-0000-000000000000",
       ),
     onSuccess: onChanged,
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: fail("update this variant"),
   });
 
   async function handleGlbSelected(file: File) {
@@ -197,9 +209,7 @@ export default function VariantRowEditor({
       attachGlb.mutate(file);
     } catch (e: unknown) {
       setGlbCheck(null);
-      setGlbCheckError(
-        e instanceof Error ? e.message : "Could not analyze the model.",
-      );
+      setGlbCheckError(e);
     } finally {
       setCheckingGlb(false);
     }
@@ -215,9 +225,7 @@ export default function VariantRowEditor({
       setPreviewUrl(variant.glbAssetUrl);
       setPreviewOpen(true);
     } catch (e: unknown) {
-      setGlbCheckError(
-        e instanceof Error ? e.message : "Could not analyze the model.",
-      );
+      setGlbCheckError(e);
     } finally {
       setCheckingGlb(false);
     }
@@ -396,10 +404,13 @@ export default function VariantRowEditor({
                 </div>
               )}
 
-              {glbCheckError && (
-                <div className="rounded-md border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[12.5px] text-dizajno-danger">
-                  {glbCheckError}
-                </div>
+              {glbCheckError != null && (
+                <ApiErrorAlert
+                  error={glbCheckError}
+                  action="analyze the model"
+                  size="sm"
+                  onDismiss={() => setGlbCheckError(null)}
+                />
               )}
 
               {glbCheck && (
@@ -478,15 +489,12 @@ export default function VariantRowEditor({
           <TextureSlotsBinder supplierId={supplierId} variantId={variant.id} qc={qc} />
 
           {error && (
-            <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger flex items-start justify-between gap-3">
-              <span>{error}</span>
-              <button
-                onClick={() => setError(null)}
-                className="text-dizajno-danger/70 hover:text-dizajno-danger text-[12px] font-medium shrink-0"
-              >
-                Dismiss
-              </button>
-            </div>
+            <ApiErrorAlert
+              error={error.value}
+              action={error.action}
+              size="sm"
+              onDismiss={() => setError(null)}
+            />
           )}
 
           {/* Footer */}
@@ -847,7 +855,7 @@ function TextureSlotsBinder({
   const [draft, setDraft] = useState<
     { slotName: string; supplierTextureId: string; isDefault: boolean }[]
   >([]);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<unknown>(null);
 
   useEffect(() => {
     if (slots.data) {
@@ -874,7 +882,8 @@ function TextureSlotsBinder({
         queryKey: ["supplier", "variant", variantId, "texture-slots"],
       });
     },
-    onError: (e: Error) => setSaveError(e.message),
+    meta: { errorHandled: true },
+    onError: setSaveError,
   });
 
   const labelRow = useMemo(
@@ -991,10 +1000,13 @@ function TextureSlotsBinder({
             </Tooltip>
           </div>
         ))}
-        {saveError && (
-          <div className="rounded-md border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-1.5 text-[12px] text-dizajno-danger">
-            {saveError}
-          </div>
+        {saveError != null && (
+          <ApiErrorAlert
+            error={saveError}
+            action="save these texture slots"
+            size="sm"
+            onDismiss={() => setSaveError(null)}
+          />
         )}
         <div className="flex items-center justify-between gap-2 pt-1">
           <Button

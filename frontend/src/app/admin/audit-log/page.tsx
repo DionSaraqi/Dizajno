@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   EmptyState,
+  ErrorState,
   FormField,
   Input,
   PageHeader,
@@ -86,6 +87,14 @@ export default function AuditLogPage() {
           Reset
         </Button>
       </form>
+
+      {page.error && (
+        <ErrorState
+          error={page.error}
+          action="load the audit log"
+          onRetry={() => void page.refetch()}
+        />
+      )}
 
       {page.isLoading && (
         <Card flush>

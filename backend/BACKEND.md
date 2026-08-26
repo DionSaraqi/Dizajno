@@ -184,6 +184,42 @@ becomes obsolete.
 If you change the host port in `docker-compose.yml`, update the connection string
 in `appsettings.Development.json` to match.
 
+## Error responses
+
+Every failure returns a JSON body. Three pipeline registrations in `Program.cs`
+guarantee it without touching any of the ~260 individual return sites:
+
+| Registration | Covers |
+|---|---|
+| `AddProblemDetails()` | adds `traceId` to every problem response |
+| `AddExceptionHandler<UnhandledExceptionHandler>()` + `UseExceptionHandler()` | an unhandled exception → 500 `ProblemDetails`. Previously this was the developer exception **HTML page** in Development and an empty body in Production |
+| `UseStatusCodePages()` | gives the ~154 bodiless `NotFound()` / `Unauthorized()` / `Forbid()` results — and the 401/403 the JWT middleware emits before an action runs — a `ProblemDetails` body |
+
+Shapes a client can receive:
+
+- **`ProblemDetails`** — `{ status, detail, traceId }`, sometimes `title`. The
+  ~100 service-level validation and conflict messages. `detail` is the human text.
+- **`ValidationProblemDetails`** — the above plus `errors: { Field: [...] }`.
+  Emitted by the automatic `[ApiController]` model-validation 400 **and** by
+  `AuthService.RegisterAsync`, which groups Identity failures by field
+  (`FieldForIdentityError`) so a client can attach "that email is already taken"
+  to the email input. Keys are PascalCase C# property names.
+- **`{ error: "..." }`** — the 5 auth 401s in `AuthService`.
+
+Rules when adding an error return:
+
+- **Never put an exception message in `detail`.** Log it; return written copy.
+  The unconfigured-R2 503 used to forward `ex.Message`, which names
+  `R2:AccessKeyId`, `R2:SecretAccessKey`, and the `DIZAJNO_R2__*` env vars
+  straight into the client's error banner.
+- Prefer `[Required]`/`[Range]` DataAnnotations on a request DTO over a
+  hand-rolled `ProblemDetails`: the automatic 400 is keyed by field, so the
+  client can show the message on the offending input. A `ProblemDetails` with
+  free-text `detail` cannot be attached to anything.
+- `ErrorResponseShapeTests` asserts the shapes above, that a 404/401 carries a
+  body, that login cannot be used to enumerate accounts, and that no response
+  leaks credential keys, `Exception`, or HTML.
+
 ## Endpoints
 
 ### Health

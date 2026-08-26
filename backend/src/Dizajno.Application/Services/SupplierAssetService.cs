@@ -98,11 +98,13 @@ public sealed class SupplierAssetService : ISupplierAssetService
             presigned = await _storage.CreatePresignedUploadUrlAsync(
                 key, contentType, request.SizeBytes, cancellationToken);
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
+            // See ProjectService: the exception message names R2 credential
+            // configuration keys, and the client renders `detail` to the user.
             return new ObjectResult(new ProblemDetails
             {
-                Detail = ex.Message,
+                Detail = "File uploads aren't available right now. Try again shortly.",
                 Status = StatusCodes.Status503ServiceUnavailable
             })
             { StatusCode = StatusCodes.Status503ServiceUnavailable };

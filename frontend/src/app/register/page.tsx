@@ -3,10 +3,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, ArrowRight, Lock, Mail, User } from "lucide-react";
+import { ArrowRight, Lock, Mail, User } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import AuthShell from "@/components/auth/AuthShell";
-import { Button, FormField, Input } from "@/components/ui";
+import { Button, ErrorSummary, FormField, Input } from "@/components/ui";
+import { fieldErrorFor } from "@/lib/apiError";
+import { safeRedirect } from "@/utils/safeRedirect";
 
 export default function RegisterPage() {
   return (
@@ -19,14 +21,15 @@ export default function RegisterPage() {
 function RegisterForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const redirect = params.get("redirect") ?? "/projects";
+  // Never hand an unvalidated query value to router.replace — see safeRedirect.
+  const redirect = safeRedirect(params.get("redirect"), "/projects");
   const status = useAuthStore((s) => s.status);
   const register = useAuthStore((s) => s.register);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -41,12 +44,11 @@ function RegisterForm() {
     setSubmitting(true);
     try {
       await register(email, password, displayName.trim() || null);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Registration failed. Password must be 8+ chars with a digit and an uppercase letter.",
-      );
+    } catch (caught) {
+      // Identity returns an array of human messages ("Email 'x' is already
+      // taken."); the model-validation 400 returns a per-field map. Keeping the
+      // thrown value lets the summary route each one to the right input.
+      setError(caught);
     } finally {
       setSubmitting(false);
     }
@@ -83,7 +85,20 @@ function RegisterForm() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <FormField label="Display name" htmlFor="displayName" hint="Optional">
+        {/* Summary first, so a failed submit announces itself and links to the
+            fields that need fixing rather than burying the reason. */}
+        <ErrorSummary
+          error={error}
+          action="create your account"
+          fieldIds={{ email: "email", password: "password", displayName: "displayName" }}
+        />
+
+        <FormField
+          label="Display name"
+          htmlFor="displayName"
+          hint="Optional"
+          error={fieldErrorFor(error, "displayName")}
+        >
           <Input
             id="displayName"
             type="text"
@@ -95,7 +110,12 @@ function RegisterForm() {
           />
         </FormField>
 
-        <FormField label="Email" htmlFor="email" required>
+        <FormField
+          label="Email"
+          htmlFor="email"
+          required
+          error={fieldErrorFor(error, "email")}
+        >
           <Input
             id="email"
             type="email"
@@ -111,6 +131,7 @@ function RegisterForm() {
         <FormField
           label="Password"
           htmlFor="password"
+          error={fieldErrorFor(error, "password")}
           required
           hint={
             password.length === 0 ? "8+ characters with a digit and an uppercase letter" : undefined
@@ -152,16 +173,6 @@ function RegisterForm() {
             </div>
           )}
         </FormField>
-
-        {error && (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2.5 text-[13px] text-dizajno-danger"
-          >
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <span className="leading-snug">{error}</span>
-          </div>
-        )}
 
         <Button
           type="submit"

@@ -14,11 +14,13 @@ import {
 } from "lucide-react";
 import * as api from "@/lib/api";
 import {
+  ApiErrorAlert,
   Badge,
   Button,
   Card,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   FormField,
   IconButton,
   Input,
@@ -109,9 +111,11 @@ export default function AdminSuppliersPage() {
         )}
 
         {suppliers.error && (
-          <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-            {(suppliers.error as Error).message}
-          </div>
+          <ErrorState
+            error={suppliers.error}
+            action="load suppliers"
+            onRetry={() => void suppliers.refetch()}
+          />
         )}
 
         {suppliers.data && suppliers.data.length === 0 && (
@@ -274,7 +278,7 @@ function CreateSupplierModal({
   const [slug, setSlug] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   const create = useMutation({
     mutationFn: () =>
@@ -284,7 +288,8 @@ function CreateSupplierModal({
         description: description.trim() || null,
       }),
     onSuccess: () => onCreated(),
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: setError,
   });
 
   return (
@@ -344,10 +349,8 @@ function CreateSupplierModal({
             rows={3}
           />
         </FormField>
-        {error && (
-          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger">
-            {error}
-          </div>
+        {error != null && (
+          <ApiErrorAlert error={error} action="create this supplier" size="sm" />
         )}
       </form>
     </Modal>

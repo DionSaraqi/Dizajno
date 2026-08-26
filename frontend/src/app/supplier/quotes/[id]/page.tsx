@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertCircle,
   Lock,
   Paperclip,
   Send,
@@ -15,10 +14,12 @@ import {
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
+  ApiErrorAlert,
   Badge,
   Button,
   Card,
   ConfirmDialog,
+  ErrorState,
   FormField,
   IconButton,
   Input,
@@ -56,7 +57,7 @@ export default function SupplierQuoteDetailPage() {
   const [currency, setCurrency] = useState("EUR");
   const [body, setBody] = useState("");
   const [attachments, setAttachments] = useState<api.AssetSummary[]>([]);
-  const [respondError, setRespondError] = useState<string | null>(null);
+  const [respondError, setRespondError] = useState<unknown>(null);
   const [uploading, setUploading] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
@@ -96,15 +97,16 @@ export default function SupplierQuoteDetailPage() {
       setRespondError(null);
       queryClient.invalidateQueries({ queryKey: ["supplier"] });
     },
-    onError: (err) =>
-      setRespondError(
-        err instanceof Error ? err.message : "Failed to send response.",
-      ),
+    // Rendered inline beside the form, so the global toast net stands down.
+    meta: { errorHandled: true },
+    onError: setRespondError,
   });
 
   const decline = useMutation({
     mutationFn: (reason: string) =>
       api.declineSupplierQuote(requestId, reason || null),
+    meta: { errorHandled: true },
+    onError: setRespondError,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["supplier"] });
       setDeclineOpen(false);
@@ -150,7 +152,7 @@ export default function SupplierQuoteDetailPage() {
       });
       setAttachments((prev) => [...prev, asset]);
     } catch (err) {
-      setRespondError(err instanceof Error ? err.message : "Upload failed.");
+      setRespondError(err);
     } finally {
       setUploading(false);
     }
@@ -239,9 +241,11 @@ export default function SupplierQuoteDetailPage() {
             </div>
           )}
           {quote.error && (
-            <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-              {(quote.error as Error).message}
-            </div>
+            <ErrorState
+              error={quote.error}
+              action="load this request"
+              onRetry={() => void quote.refetch()}
+            />
           )}
 
           {data?.message && (
@@ -418,11 +422,13 @@ export default function SupplierQuoteDetailPage() {
                   </label>
                 </div>
 
-                {respondError && (
-                  <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger flex items-start gap-2">
-                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                    <span>{respondError}</span>
-                  </div>
+                {respondError != null && (
+                  <ApiErrorAlert
+                    error={respondError}
+                    action="send your response"
+                    size="sm"
+                    onDismiss={() => setRespondError(null)}
+                  />
                 )}
 
                 <div className="flex items-center justify-between gap-2 pt-1">

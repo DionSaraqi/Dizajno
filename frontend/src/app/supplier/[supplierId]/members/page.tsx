@@ -16,12 +16,14 @@ import {
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
+  ApiErrorAlert,
   Avatar,
   Badge,
   Button,
   Card,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   FormField,
   IconButton,
   Input,
@@ -37,7 +39,7 @@ export default function SupplierMembersPage() {
   const supplierId = params.supplierId;
   const qc = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<unknown>(null);
   const [removeTarget, setRemoveTarget] = useState<api.SupplierMemberRow | null>(
     null,
   );
@@ -69,7 +71,8 @@ export default function SupplierMembersPage() {
       api.changeSupplierMemberRole(id, role),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["supplier", supplierId, "members"] }),
-    onError: (e: Error) => setErrorMessage(e.message),
+    meta: { errorHandled: true },
+    onError: setActionError,
   });
   const removeMember = useMutation({
     mutationFn: (id: string) => api.removeSupplierMember(id),
@@ -77,7 +80,8 @@ export default function SupplierMembersPage() {
       qc.invalidateQueries({ queryKey: ["supplier", supplierId, "members"] });
       setRemoveTarget(null);
     },
-    onError: (e: Error) => setErrorMessage(e.message),
+    meta: { errorHandled: true },
+    onError: setActionError,
   });
   const revokeInvite = useMutation({
     mutationFn: (id: string) => api.revokeSupplierPortalInvite(id),
@@ -85,7 +89,8 @@ export default function SupplierMembersPage() {
       qc.invalidateQueries({ queryKey: ["supplier", supplierId, "invites"] });
       setRevokeTarget(null);
     },
-    onError: (e: Error) => setErrorMessage(e.message),
+    meta: { errorHandled: true },
+    onError: setActionError,
   });
 
   return (
@@ -118,19 +123,24 @@ export default function SupplierMembersPage() {
           </div>
         )}
 
-        {errorMessage && (
-          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger flex items-start justify-between gap-3">
-            <span className="flex items-start gap-2">
-              <AlertCircle size={14} className="mt-0.5 shrink-0" />
-              {errorMessage}
-            </span>
-            <button
-              onClick={() => setErrorMessage(null)}
-              className="text-dizajno-danger/70 hover:text-dizajno-danger text-[12px] font-medium"
-            >
-              Dismiss
-            </button>
-          </div>
+        {actionError != null && (
+          <ApiErrorAlert
+            error={actionError}
+            size="sm"
+            onDismiss={() => setActionError(null)}
+          />
+        )}
+
+        {(members.error || invites.error) && (
+          <ErrorState
+            error={members.error ?? invites.error}
+            action="load members"
+            onRetry={() => {
+              void members.refetch();
+              void invites.refetch();
+            }}
+            className="mb-4"
+          />
         )}
 
         {/* Members */}
@@ -376,7 +386,7 @@ function InviteModal({
   const [days, setDays] = useState(14);
   const [issued, setIssued] = useState<api.SupplierInvite | null>(null);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   const issue = useMutation({
     mutationFn: () =>
@@ -390,7 +400,8 @@ function InviteModal({
       setIssued(dto);
       onIssued();
     },
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: setError,
   });
 
   if (issued) {
@@ -503,10 +514,8 @@ function InviteModal({
             onChange={(e) => setDays(Number(e.target.value))}
           />
         </FormField>
-        {error && (
-          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger">
-            {error}
-          </div>
+        {error != null && (
+          <ApiErrorAlert error={error} action="send this invite" size="sm" />
         )}
       </form>
     </Modal>

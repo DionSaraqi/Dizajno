@@ -12,7 +12,7 @@ import { reconcileLoadedFloors } from "@/utils/wallGraph";
 import * as api from "@/lib/api";
 import DesignerHeader from "@/components/designer/DesignerHeader";
 import { CommentsPanel } from "@/components/share/CommentsPanel";
-import { Button, Spinner } from "@/components/ui";
+import { Button, ErrorState, Spinner } from "@/components/ui";
 
 const DrawingSurface = dynamic(
   () => import("@/components/three/DrawingSurface"),
@@ -35,7 +35,7 @@ export default function SharedProjectPage() {
   const is3D = useIs3D();
   const toggleIs3D = useDesignerStore((s) => s.toggleIs3D);
 
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [hydrated, setHydrated] = useState(false);
   const [project, setProject] = useState<api.SharedProject | null>(null);
 
@@ -53,7 +53,9 @@ export default function SharedProjectPage() {
     if (!token || !lookup.isReady) return;
     if (lookup.isError) {
       setHydrated(false);
-      setLoadError("The furniture catalog failed to load — try again in a moment.");
+      setLoadError(
+        new Error("The furniture catalog failed to load — try again in a moment."),
+      );
       return;
     }
     let cancelled = false;
@@ -82,13 +84,14 @@ export default function SharedProjectPage() {
         setHydrated(true);
       } catch (error) {
         if (cancelled) return;
-        const message =
+        // A 404 here has one meaning worth spelling out, which beats the
+        // generic not-found copy. Everything else is already human by the time
+        // it reaches us.
+        setLoadError(
           error instanceof api.ApiError && error.status === 404
-            ? "This share link is invalid, revoked, or expired."
-            : error instanceof Error
-              ? error.message
-              : "Failed to load shared project.";
-        setLoadError(message);
+            ? new Error("This share link is invalid, revoked, or expired.")
+            : error,
+        );
       }
     })();
 
@@ -98,16 +101,11 @@ export default function SharedProjectPage() {
     };
   }, [token, lookup.isReady, lookup.isError]);
 
-  if (loadError) {
+  if (loadError != null) {
     return (
       <main className="min-h-screen w-screen flex flex-col items-center justify-center gap-4 bg-dizajno-bg px-6">
-        <div className="max-w-md w-full rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-5 py-4 text-center">
-          <p className="text-[13px] font-medium text-dizajno-danger">
-            Couldn&apos;t load this share
-          </p>
-          <p className="text-[12.5px] text-dizajno-danger/80 mt-1">
-            {loadError}
-          </p>
+        <div className="max-w-md w-full">
+          <ErrorState error={loadError} action="load this share" />
         </div>
         <Link
           href="/"

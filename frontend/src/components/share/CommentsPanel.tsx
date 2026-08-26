@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertCircle,
   Lock,
   MapPin,
   MessageSquare,
@@ -11,7 +10,7 @@ import {
 } from "lucide-react";
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
-import { Badge, Button, Input, Textarea } from "@/components/ui";
+import { ApiErrorAlert, Badge, Button, Input, Textarea } from "@/components/ui";
 
 interface CommentsPanelProps {
   token: string;
@@ -29,7 +28,7 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
 
   const [body, setBody] = useState("");
   const [guestName, setGuestName] = useState("");
-  const [postError, setPostError] = useState<string | null>(null);
+  const [postError, setPostError] = useState<unknown>(null);
 
   const comments = useQuery({
     queryKey: ["share", token, "comments"],
@@ -45,9 +44,9 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
       setPostError(null);
       queryClient.invalidateQueries({ queryKey: ["share", token, "comments"] });
     },
-    onError: (error) => {
-      setPostError(error instanceof Error ? error.message : "Failed to post.");
-    },
+    // Rendered inline under the box, so the global toast net stands down.
+    meta: { errorHandled: true },
+    onError: setPostError,
   });
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -55,11 +54,11 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
     setPostError(null);
     const trimmed = body.trim();
     if (!trimmed) {
-      setPostError("Type something first.");
+      setPostError(new Error("Type something first."));
       return;
     }
     if (!isSignedIn && !guestName.trim()) {
-      setPostError("Pick a display name.");
+      setPostError(new Error("Pick a display name."));
       return;
     }
     postMutation.mutate({
@@ -143,11 +142,13 @@ export function CommentsPanel({ token, mode }: CommentsPanelProps) {
               {!postMutation.isPending && <Send size={13} />}
             </Button>
           </div>
-          {postError && (
-            <div className="flex items-start gap-1.5 text-[11.5px] text-dizajno-danger">
-              <AlertCircle size={12} className="mt-0.5 shrink-0" />
-              <span>{postError}</span>
-            </div>
+          {postError != null && (
+            <ApiErrorAlert
+              error={postError}
+              action="post this comment"
+              size="sm"
+              onDismiss={() => setPostError(null)}
+            />
           )}
         </form>
       ) : (

@@ -8,7 +8,17 @@ interface AuthState {
   status: AuthStatus;
   accessToken: string | null;
   user: UserSummary | null;
-  error: string | null;
+  /**
+   * The last sign-in/registration failure, kept as the thrown value rather than
+   * a string so the auth screens can read its per-field validation map.
+   */
+  error: unknown;
+  /**
+   * Set when a mid-session refresh was rejected by the server. Distinct from
+   * `status`: see the listener at the bottom of this file for why the status is
+   * deliberately left alone.
+   */
+  sessionExpired: boolean;
 }
 
 interface AuthActions {
@@ -20,6 +30,7 @@ interface AuthActions {
     displayName?: string | null
   ) => Promise<void>;
   logout: () => Promise<void>;
+  dismissSessionExpiry: () => void;
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -29,6 +40,7 @@ const initialState: AuthState = {
   accessToken: null,
   user: null,
   error: null,
+  sessionExpired: false,
 };
 
 function applyAuthResponse(set: (partial: Partial<AuthState>) => void, auth: AuthResponse): void {
@@ -38,6 +50,7 @@ function applyAuthResponse(set: (partial: Partial<AuthState>) => void, auth: Aut
     accessToken: auth.accessToken,
     user: auth.user,
     error: null,
+    sessionExpired: false,
   });
 }
 
@@ -66,9 +79,8 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       const auth = await api.login({ email, password });
       applyAuthResponse(set, auth);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Login failed";
       api.setAccessToken(null);
-      set({ status: "unauthenticated", accessToken: null, user: null, error: message });
+      set({ status: "unauthenticated", accessToken: null, user: null, error });
       throw error;
     }
   },
@@ -84,9 +96,8 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       });
       applyAuthResponse(set, auth);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Registration failed";
       api.setAccessToken(null);
-      set({ status: "unauthenticated", accessToken: null, user: null, error: message });
+      set({ status: "unauthenticated", accessToken: null, user: null, error });
       throw error;
     }
   },
@@ -98,8 +109,16 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       // best effort — clear local state regardless
     }
     api.setAccessToken(null);
-    set({ status: "unauthenticated", accessToken: null, user: null, error: null });
+    set({
+      status: "unauthenticated",
+      accessToken: null,
+      user: null,
+      error: null,
+      sessionExpired: false,
+    });
   },
+
+  dismissSessionExpiry: () => set({ sessionExpired: false }),
 }));
 
 // Keep the store in sync when the API client refreshes the session in the
@@ -111,7 +130,24 @@ api.onTokenRefreshed((auth) => {
     accessToken: auth.accessToken,
     user: auth.user,
     error: null,
+    sessionExpired: false,
   });
+});
+
+// The refresh cookie was rejected: the session is genuinely over. Fired once
+// per expiry even when a dozen requests 401 together, because the refresh is
+// single-flight.
+//
+// `status` is deliberately NOT flipped to "unauthenticated" here. Every guarded
+// page redirects to /login on that transition, which on /projects/[id] would
+// unmount the designer and take unsaved canvas work with it. Instead the flag
+// raises a persistent banner offering to sign in, so the user chooses when to
+// leave the page — the "continue without loss of data" requirement in
+// WCAG 2.2.5. Signing out explicitly, or a guard on a fresh page load, still
+// moves the status as before.
+api.onSessionExpired(() => {
+  api.setAccessToken(null);
+  useAuthStore.setState({ accessToken: null, sessionExpired: true });
 });
 
 export const useAuthStatus = (): AuthStatus => useAuthStore((s) => s.status);

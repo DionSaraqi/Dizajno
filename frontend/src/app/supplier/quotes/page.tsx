@@ -17,6 +17,7 @@ import {
   Button,
   Card,
   EmptyState,
+  ErrorState,
   PageHeader,
   Skeleton,
   Spinner,
@@ -159,9 +160,11 @@ export default function SupplierQuotesPage() {
           )}
 
           {inbox.error && (
-            <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-              {(inbox.error as Error).message}
-            </div>
+            <ErrorState
+              error={inbox.error}
+              action="load your quote inbox"
+              onRetry={() => void inbox.refetch()}
+            />
           )}
 
           {inbox.data && inbox.data.length === 0 && (

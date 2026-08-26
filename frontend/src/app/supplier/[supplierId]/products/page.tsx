@@ -14,11 +14,13 @@ import {
 } from "lucide-react";
 import * as api from "@/lib/api";
 import {
+  ApiErrorAlert,
   Badge,
   Button,
   Card,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   IconButton,
   PageHeader,
   SearchInput,
@@ -38,7 +40,7 @@ export default function SupplierProductsPage() {
   const [removeTarget, setRemoveTarget] = useState<api.SupplierProductSummary | null>(
     null,
   );
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<unknown>(null);
 
   const products = useQuery({
     queryKey: ["supplier", supplierId, "products", statusFilter, search],
@@ -53,18 +55,22 @@ export default function SupplierProductsPage() {
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["supplier", supplierId, "products"] });
   }
-  function handleError(e: Error) {
-    setErrorMessage(e.message);
+  // Shown in the dismissible alert above the list; the global toast net
+  // stands down for these via `meta.errorHandled`.
+  function handleError(error: unknown) {
+    setActionError(error);
   }
 
   const publish = useMutation({
     mutationFn: (id: string) => api.publishSupplierProduct(id),
     onSuccess: invalidate,
+    meta: { errorHandled: true },
     onError: handleError,
   });
   const hide = useMutation({
     mutationFn: (id: string) => api.hideSupplierProduct(id),
     onSuccess: invalidate,
+    meta: { errorHandled: true },
     onError: handleError,
   });
   const remove = useMutation({
@@ -73,6 +79,7 @@ export default function SupplierProductsPage() {
       invalidate();
       setRemoveTarget(null);
     },
+    meta: { errorHandled: true },
     onError: handleError,
   });
 
@@ -113,16 +120,13 @@ export default function SupplierProductsPage() {
       />
 
       <section className="py-6">
-        {errorMessage && (
-          <div className="mb-4 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger flex items-start justify-between gap-3">
-            <span>{errorMessage}</span>
-            <button
-              onClick={() => setErrorMessage(null)}
-              className="text-dizajno-danger/70 hover:text-dizajno-danger text-[12px] font-medium"
-            >
-              Dismiss
-            </button>
-          </div>
+        {actionError != null && (
+          <ApiErrorAlert
+            error={actionError}
+            size="sm"
+            className="mb-4"
+            onDismiss={() => setActionError(null)}
+          />
         )}
 
         {products.isLoading && (
@@ -139,9 +143,11 @@ export default function SupplierProductsPage() {
         )}
 
         {products.error && (
-          <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-            {(products.error as Error).message}
-          </div>
+          <ErrorState
+            error={products.error}
+            action="load your products"
+            onRetry={() => void products.refetch()}
+          />
         )}
 
         {products.data && products.data.length === 0 && (

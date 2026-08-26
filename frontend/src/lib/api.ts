@@ -6,6 +6,11 @@
  */
 
 import type { FurnitureCatalogItem } from "@/types/designer";
+import {
+  ApiError,
+  normalizeErrorResponse,
+  normalizeNetworkError,
+} from "./apiError";
 
 const FALLBACK_BASE_URL = "http://localhost:5000";
 
@@ -17,16 +22,10 @@ function getBaseUrl(): string {
   return url.replace(/\/$/, "");
 }
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-    public readonly path: string
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
+// Re-exported so the ~90 call sites that already do `api.ApiError` keep working.
+// The class itself lives in ./apiError alongside the parser that populates it.
+export { ApiError };
+export type { ApiErrorKind, NormalizedApiError } from "./apiError";
 
 // Access token is set by the auth store once the user has logged in. The
 // module-scoped variable is mutated via setAccessToken so apiFetch can attach
@@ -54,21 +53,44 @@ export function onTokenRefreshed(listener: (auth: AuthResponse) => void): void {
   tokenRefreshedListener = listener;
 }
 
+// Fired when a refresh attempt proves the session is genuinely dead, so the
+// auth store can clear itself and the app can route to /login exactly once.
+// Deliberately NOT fired when the refresh call merely failed to reach the
+// server — see RefreshOutcome below.
+let sessionExpiredListener: (() => void) | null = null;
+
+export function onSessionExpired(listener: () => void): void {
+  sessionExpiredListener = listener;
+}
+
+/**
+ * `expired` means the server rejected the refresh token — the session is over.
+ * `unavailable` means the refresh call never got an answer (offline, backend
+ * down). Conflating the two signs the user out every time their wifi hiccups,
+ * so `unavailable` deliberately leaves the session intact and surfaces as a
+ * network error instead.
+ */
+type RefreshOutcome = "refreshed" | "expired" | "unavailable";
+
 // Single-flight refresh: when several requests 401 at once (15-minute access
 // tokens expire mid-session), they all await the same refresh call instead of
 // racing the rotating refresh cookie.
-let refreshInFlight: Promise<boolean> | null = null;
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
-async function tryRefreshSession(): Promise<boolean> {
+async function tryRefreshSession(): Promise<RefreshOutcome> {
   refreshInFlight ??= (async () => {
     try {
       const auth = await refresh();
-      if (!auth) return false;
+      // refresh() maps a 401 to null: the rotating token was rejected.
+      if (!auth) return "expired" as const;
       setAccessToken(auth.accessToken);
       tokenRefreshedListener?.(auth);
-      return true;
+      return "refreshed" as const;
     } catch {
-      return false;
+      // Anything that throws here (transport failure, 5xx, malformed response)
+      // is not proof the session is dead — only the 401 handled above is.
+      // Keeping the session lets the original request surface its own error.
+      return "unavailable" as const;
     } finally {
       refreshInFlight = null;
     }
@@ -109,31 +131,49 @@ async function apiFetchInternal<T>(
       credentials: "include",
     });
   } catch (error: unknown) {
-    const message =
-      error instanceof Error ? error.message : "Network request failed";
-    throw new ApiError(message, 0, path);
+    // Raw transport failures read as "Failed to fetch" (Chrome) or
+    // "NetworkError when attempting to fetch resource." (Firefox) — neither is
+    // copy anyone should be shown, so the real message becomes diagnostics.
+    throw new ApiError(0, path, normalizeNetworkError(error));
   }
 
   if (!response.ok) {
     // Expired access token mid-session (they only live 15 minutes): refresh
     // via the HttpOnly cookie and retry the request once. The refresh call
     // itself is not `auth`-flagged, so it can never recurse here.
+    let sessionExpired = false;
     if (response.status === 401 && init?.auth && allowAuthRetry) {
-      const refreshed = await tryRefreshSession();
-      if (refreshed) {
+      const outcome = await tryRefreshSession();
+      if (outcome === "refreshed") {
         return apiFetchInternal<T>(path, init, false);
       }
+      // Only a server-rejected refresh proves the session is over. Notifying
+      // here (rather than at every display site) keeps it to one signal even
+      // when a dozen requests 401 together, since the refresh is single-flight.
+      if (outcome === "expired") {
+        sessionExpired = true;
+        sessionExpiredListener?.();
+      }
     }
-    let detail = "";
+
+    let body = "";
     try {
-      detail = await response.text();
+      body = await response.text();
     } catch {
-      // ignore — already have a status
+      // Body already consumed or the stream broke — the status still classifies it.
     }
+
     throw new ApiError(
-      `Request failed: ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ""}`,
       response.status,
-      path
+      path,
+      normalizeErrorResponse({
+        status: response.status,
+        statusText: response.statusText,
+        body,
+        contentType: response.headers.get("content-type"),
+        retryAfter: response.headers.get("retry-after"),
+        sessionExpired,
+      }),
     );
   }
 

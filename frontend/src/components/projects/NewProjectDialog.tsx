@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import * as api from "@/lib/api";
-import { Button, Input, Modal } from "@/components/ui";
+import { ApiErrorAlert, Button, Input, Modal } from "@/components/ui";
 
 export interface NewProjectDialogProps {
   open: boolean;
@@ -45,7 +45,7 @@ export default function NewProjectDialog({
   const queryClient = useQueryClient();
 
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   // Survives a failed `afterCreate` so retrying reuses the project instead of
   // littering the user's list with orphaned empty rows.
@@ -62,7 +62,7 @@ export default function NewProjectDialog({
   async function handleSubmit(): Promise<void> {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Please enter a name.");
+      setError(new Error("Enter a name for this project."));
       return;
     }
     setError(null);
@@ -87,7 +87,7 @@ export default function NewProjectDialog({
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       router.push(`/projects/${project.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create project.");
+      setError(err);
       setBusy(false);
     }
     // On success we intentionally stay busy — the route change unmounts us.
@@ -128,8 +128,10 @@ export default function NewProjectDialog({
           onChange={(e) => setName(e.target.value)}
           disabled={busy}
         />
-        {error && <p className="text-[12px] text-dizajno-danger">{error}</p>}
-        {retrying && !error && (
+        {error != null && (
+          <ApiErrorAlert error={error} action="save this project" size="sm" />
+        )}
+        {retrying && error == null && (
           <p className="text-[12px] text-dizajno-muted">
             The project was created — retrying the scene save.
           </p>
