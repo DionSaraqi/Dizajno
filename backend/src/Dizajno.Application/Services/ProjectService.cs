@@ -291,13 +291,16 @@ public sealed class ProjectService : IProjectService
             presigned = await _storage.CreatePresignedUploadUrlAsync(
                 key, contentType, request.SizeBytes, cancellationToken);
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
             // R2 not configured in this environment â€” surface as 503 so the
             // client can degrade gracefully.
+            // The exception message is deliberately NOT forwarded: it names
+            // R2:AccessKeyId, R2:SecretAccessKey and the DIZAJNO_R2__* env vars,
+            // and the client renders `detail` straight to the user.
             return new ObjectResult(new ProblemDetails
             {
-                Detail = ex.Message,
+                Detail = "File uploads aren't available right now. Try again shortly.",
                 Status = StatusCodes.Status503ServiceUnavailable
             })
             { StatusCode = StatusCodes.Status503ServiceUnavailable };

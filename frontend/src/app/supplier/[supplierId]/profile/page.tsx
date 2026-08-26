@@ -14,6 +14,7 @@ import {
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
+  ApiErrorAlert,
   Badge,
   Button,
   Card,
@@ -81,7 +82,7 @@ function ProfileForm({
     initial.logoAssetId,
   );
   const [logoUrl, setLogoUrl] = useState<string | null>(initial.logoAssetUrl);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -105,7 +106,8 @@ function ProfileForm({
       setSavedAt(Date.now());
       setLogoUrl(dto.logoAssetUrl);
     },
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: setError,
   });
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -119,7 +121,7 @@ function ProfileForm({
       setLogoAssetId(asset.id);
       setLogoUrl(asset.url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err);
     } finally {
       setUploading(false);
     }
@@ -312,10 +314,8 @@ function ProfileForm({
           </CardBody>
         </Card>
 
-        {error && (
-          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-            {error}
-          </div>
+        {error != null && (
+          <ApiErrorAlert error={error} action="save this profile" size="sm" />
         )}
 
         <div className="flex items-center justify-end gap-3">

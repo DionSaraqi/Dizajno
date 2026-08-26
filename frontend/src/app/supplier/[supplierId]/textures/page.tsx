@@ -6,11 +6,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ImageOff, Palette, Plus, Trash2, Upload } from "lucide-react";
 import * as api from "@/lib/api";
 import {
+  ApiErrorAlert,
   Badge,
   Button,
   Card,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   FormField,
   IconButton,
   Input,
@@ -26,7 +28,7 @@ export default function SupplierTexturesPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<api.SupplierTextureRow | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<unknown>(null);
 
   const textures = useQuery({
     queryKey: ["supplier", supplierId, "textures"],
@@ -39,7 +41,8 @@ export default function SupplierTexturesPage() {
       qc.invalidateQueries({ queryKey: ["supplier", supplierId, "textures"] });
       setDeleteTarget(null);
     },
-    onError: (e: Error) => setErrorMessage(e.message),
+    meta: { errorHandled: true },
+    onError: setActionError,
   });
 
   return (
@@ -60,16 +63,21 @@ export default function SupplierTexturesPage() {
       />
 
       <section className="py-6">
-        {errorMessage && (
-          <div className="mb-4 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger flex items-start justify-between gap-3">
-            <span>{errorMessage}</span>
-            <button
-              onClick={() => setErrorMessage(null)}
-              className="text-dizajno-danger/70 hover:text-dizajno-danger text-[12px] font-medium"
-            >
-              Dismiss
-            </button>
-          </div>
+        {actionError != null && (
+          <ApiErrorAlert
+            error={actionError}
+            size="sm"
+            className="mb-4"
+            onDismiss={() => setActionError(null)}
+          />
+        )}
+
+        {textures.error && (
+          <ErrorState
+            error={textures.error}
+            action="load your texture library"
+            onRetry={() => void textures.refetch()}
+          />
         )}
 
         {textures.isLoading && (
@@ -227,13 +235,13 @@ function CreateTextureModal({
   const [repeatU, setRepeatU] = useState(4);
   const [repeatV, setRepeatV] = useState(4);
   const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [uploading, setUploading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!file) {
-      setError("Pick an image file first.");
+      setError(new Error("Pick an image file first."));
       return;
     }
     setError(null);
@@ -253,7 +261,7 @@ function CreateTextureModal({
       });
       onCreated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err);
     } finally {
       setUploading(false);
     }
@@ -351,10 +359,8 @@ function CreateTextureModal({
           </FormField>
         </div>
 
-        {error && (
-          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger">
-            {error}
-          </div>
+        {error != null && (
+          <ApiErrorAlert error={error} action="upload this texture" size="sm" />
         )}
       </form>
     </Modal>

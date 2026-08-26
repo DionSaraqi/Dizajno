@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 import RouteErrorScreen from "@/components/errors/RouteErrorScreen";
 
-export default function DesignerError({
+export default function ProjectDesignerError({
   error,
   reset,
 }: {
@@ -13,7 +13,7 @@ export default function DesignerError({
 }) {
   useEffect(() => {
     // eslint-disable-next-line no-console
-    console.error("Designer error:", error);
+    console.error("Project designer error:", error);
   }, [error]);
 
   return (
@@ -22,7 +22,7 @@ export default function DesignerError({
       reset={reset}
       surface="The designer"
       homeHref="/projects"
-      homeLabel="Go to projects"
+      homeLabel="Back to projects"
     />
   );
 }

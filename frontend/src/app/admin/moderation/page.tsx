@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   EmptyState,
+  ErrorState,
   IconButton,
   PageHeader,
   Skeleton,
@@ -81,6 +82,17 @@ function PendingProducts() {
 
   if (products.isLoading) {
     return <QueueSkeleton />;
+  }
+  // Without this the list below renders empty, which reads as "nothing to
+  // moderate" — the worst possible misreading of a failed fetch on a queue.
+  if (products.error) {
+    return (
+      <ErrorState
+        error={products.error}
+        action="load the moderation queue"
+        onRetry={() => void products.refetch()}
+      />
+    );
   }
   if (products.data?.length === 0) {
     return (
@@ -164,10 +176,21 @@ function PendingCategories() {
       qc.invalidateQueries({
         queryKey: ["admin", "moderation", "categories"],
       }),
-    onError: (e: Error) => alert(e.message),
+    // No local handler: the global mutation net toasts this, the same way it
+    // does for the other three queue actions on this page. Previously only
+    // this one spoke up, and it did so through a native alert().
   });
 
   if (cats.isLoading) return <QueueSkeleton />;
+  if (cats.error) {
+    return (
+      <ErrorState
+        error={cats.error}
+        action="load category suggestions"
+        onRetry={() => void cats.refetch()}
+      />
+    );
+  }
   if (cats.data?.length === 0) {
     return (
       <EmptyState

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Send, Store } from "lucide-react";
+import { Send, Store } from "lucide-react";
 import { useDesignerStore } from "@/store/useDesignerStore";
 import { useFurnitureCatalog } from "@/hooks/useFurnitureCatalog";
 import { polygonArea, unitLabel } from "@/utils/areaCalc";
@@ -13,6 +13,8 @@ import type {
   FurnitureData,
 } from "@/types/designer";
 import {
+  Alert,
+  ApiErrorAlert,
   Button,
   EmptyState,
   Modal,
@@ -221,6 +223,8 @@ export function RequestQuoteDialog({
       onClose();
       router.push(`/quotes/${detail.id}`);
     },
+    // Rendered inline in the dialog, so the global toast net stands down.
+    meta: { errorHandled: true },
   });
 
   const sceneEmpty = totalLines === 0;
@@ -365,15 +369,12 @@ export function RequestQuoteDialog({
                 ))}
               </ul>
               {groups.orphans.length > 0 && (
-                <div className="mt-3 rounded-lg border border-dizajno-warning/30 bg-dizajno-warning-soft px-3 py-2 flex items-start gap-2 text-[12px] text-dizajno-warning">
-                  <AlertCircle size={13} className="mt-0.5 shrink-0" />
-                  <span>
-                    {groups.orphans.length} placed item
-                    {groups.orphans.length === 1 ? "" : "s"} can&apos;t be
-                    quoted — the catalog couldn&apos;t resolve their supplier.
-                    They&apos;ll be skipped.
-                  </span>
-                </div>
+                <Alert tone="warning" size="sm" live="off" className="mt-3">
+                  {groups.orphans.length} placed item
+                  {groups.orphans.length === 1 ? "" : "s"} can&apos;t be quoted —
+                  the catalog couldn&apos;t resolve their supplier. They&apos;ll
+                  be skipped.
+                </Alert>
               )}
               {grandTotal.known && groups.groups.length > 1 && (
                 <div className="mt-3 pt-3 border-t border-dizajno-border-subtle flex items-baseline justify-between">
@@ -407,14 +408,11 @@ export function RequestQuoteDialog({
             </div>
 
             {mutation.isError && (
-              <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger flex items-start gap-2">
-                <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                <span>
-                  {mutation.error instanceof Error
-                    ? mutation.error.message
-                    : "Failed to send quote."}
-                </span>
-              </div>
+              <ApiErrorAlert
+                error={mutation.error}
+                action="send this quote request"
+                size="sm"
+              />
             )}
           </>
         )}

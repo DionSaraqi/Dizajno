@@ -20,6 +20,7 @@ import {
   Card,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   PageHeader,
   Skeleton,
   TopBar,
@@ -139,9 +140,11 @@ export default function ProjectsPage() {
           )}
 
           {projects.error && (
-            <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-              Failed to load projects: {(projects.error as Error).message}
-            </div>
+            <ErrorState
+              error={projects.error}
+              action="load your projects"
+              onRetry={() => void projects.refetch()}
+            />
           )}
 
           {projects.data && projects.data.length === 0 && (

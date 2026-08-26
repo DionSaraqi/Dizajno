@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Lightbulb } from "lucide-react";
 import * as api from "@/lib/api";
 import {
+  ApiErrorAlert,
   Button,
   Card,
   CardBody,
@@ -50,7 +51,7 @@ export default function NewProductPage() {
   const [wasteFactor, setWasteFactor] = useState<string>("0");
   const [leadTimeDays, setLeadTimeDays] = useState<string>("");
   const [textureUrl, setTextureUrl] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [showSuggest, setShowSuggest] = useState(false);
 
   const categories = useQuery({
@@ -97,7 +98,8 @@ export default function NewProductPage() {
       qc.invalidateQueries({ queryKey: ["supplier", supplierId, "products"] });
       router.replace(`/supplier/${supplierId}/products/${dto.id}`);
     },
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: setError,
   });
 
   const isBuildingMaterial = family === "BuildingMaterial";
@@ -281,10 +283,8 @@ export default function NewProductPage() {
           </CardBody>
         </Card>
 
-        {error && (
-          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-            {error}
-          </div>
+        {error != null && (
+          <ApiErrorAlert error={error} action="create this product" size="sm" />
         )}
 
         <div className="flex justify-end gap-2">
@@ -323,7 +323,7 @@ function SuggestCategoryModal({
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [done, setDone] = useState(false);
   const suggest = useMutation({
     mutationFn: () =>
@@ -334,7 +334,8 @@ function SuggestCategoryModal({
         name: name.trim(),
       }),
     onSuccess: () => setDone(true),
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: setError,
   });
 
   return (
@@ -384,8 +385,8 @@ function SuggestCategoryModal({
               placeholder="e.g. Pendant Lights"
             />
           </FormField>
-          {error && (
-            <p className="text-[12px] text-dizajno-danger">{error}</p>
+          {error != null && (
+            <ApiErrorAlert error={error} action="suggest this category" size="sm" />
           )}
         </div>
       )}

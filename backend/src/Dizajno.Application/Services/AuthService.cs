@@ -53,7 +53,19 @@ public sealed class AuthService : IAuthService
         var result = await _users.CreateAsync(user, request.Password);
         if (!result.Succeeded)
         {
-            return new BadRequestObjectResult(new { errors = result.Errors.Select(e => e.Description) });
+            // Keyed by field rather than a flat array, so the client can attach
+            // "that email is already taken" to the email input instead of only
+            // showing it in a form-level banner. The shape matches the automatic
+            // model-validation 400, which means one client-side branch handles
+            // both -- previously `errors` was an array here and an object there.
+            var grouped = result.Errors
+                .GroupBy(FieldForIdentityError)
+                .ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray());
+
+            return new BadRequestObjectResult(new ValidationProblemDetails(grouped)
+            {
+                Status = StatusCodes.Status400BadRequest
+            });
         }
 
         var response = await IssueTokensAsync(user, httpContext, cancellationToken);
@@ -211,6 +223,35 @@ public sealed class AuthService : IAuthService
         return new UserSummary(
             user.Id, user.Email ?? string.Empty, user.DisplayName, user.Locale,
             roles.ToList(), membershipDtos);
+    }
+
+    /// <summary>
+    /// Maps an ASP.NET Identity error code onto the request field it belongs to.
+    /// </summary>
+    /// <remarks>
+    /// Identity reports failures as opaque codes ("DuplicateUserName",
+    /// "PasswordTooShort"). Grouping them by field is what lets the client show
+    /// each message on the offending input. Anything unrecognised is grouped
+    /// under the empty key, which clients treat as form-level.
+    /// </remarks>
+    private static string FieldForIdentityError(IdentityError error)
+    {
+        var code = error.Code ?? string.Empty;
+
+        if (code.Contains("Password", StringComparison.OrdinalIgnoreCase))
+        {
+            return nameof(RegisterRequest.Password);
+        }
+
+        // UserName is set from Email at registration, so a duplicate or invalid
+        // user name is really a problem with the email the user typed.
+        if (code.Contains("Email", StringComparison.OrdinalIgnoreCase) ||
+            code.Contains("UserName", StringComparison.OrdinalIgnoreCase))
+        {
+            return nameof(RegisterRequest.Email);
+        }
+
+        return string.Empty;
     }
 
     private static string NormalizeLocale(string? locale) =>

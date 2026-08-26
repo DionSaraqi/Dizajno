@@ -56,6 +56,21 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// Uniform error bodies. Without these, three of the API's failure shapes were
+// unparseable by any client: the developer exception HTML page (Development),
+// the bodiless 500 (Production), and the ~154 bare NotFound/Unauthorized/Forbid
+// results that returned no body at all.
+builder.Services.AddProblemDetails(options =>
+{
+    options.CustomizeProblemDetails = context =>
+    {
+        // A correlation id on every problem response, so a user can quote a
+        // reference and support can find the matching log entry.
+        context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+    };
+});
+builder.Services.AddExceptionHandler<Dizajno.Api.UnhandledExceptionHandler>();
+
 builder.Services
     .AddControllers()
     .AddJsonOptions(options =>
@@ -108,6 +123,16 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Must be registered before anything that can throw. This replaces the
+// framework's developer exception page, so a server fault is JSON on every
+// environment rather than HTML in one and nothing in the other.
+app.UseExceptionHandler();
+
+// Gives the bodiless results (bare NotFound/Unauthorized/Forbid, and the 401/403
+// the JWT middleware emits before an action runs) a ProblemDetails body. None of
+// those 154 return sites need editing.
+app.UseStatusCodePages();
 
 // â”€â”€ Pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

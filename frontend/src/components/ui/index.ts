@@ -58,6 +58,20 @@ export type { FormFieldProps } from "./FormField";
 export { default as EmptyState } from "./EmptyState";
 export type { EmptyStateProps } from "./EmptyState";
 
+// Error + feedback surfaces. `Alert` is the primitive; the three below wrap it
+// for the shapes that recur — an inline failure, a dead section, a failed submit.
+export { default as Alert } from "./Alert";
+export type { AlertProps, AlertTone } from "./Alert";
+
+export { default as ApiErrorAlert } from "./ApiErrorAlert";
+export type { ApiErrorAlertProps } from "./ApiErrorAlert";
+
+export { default as ErrorState } from "./ErrorState";
+export type { ErrorStateProps } from "./ErrorState";
+
+export { default as ErrorSummary } from "./ErrorSummary";
+export type { ErrorSummaryProps } from "./ErrorSummary";
+
 export { default as Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
 

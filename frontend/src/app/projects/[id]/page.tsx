@@ -23,7 +23,7 @@ import { reconcileLoadedFloors } from "@/utils/wallGraph";
 import { captureCanvasThumbnail } from "@/utils/captureCanvas";
 import * as api from "@/lib/api";
 import { toast } from "sonner";
-import { Button, Spinner } from "@/components/ui";
+import { ApiErrorAlert, Button, ErrorState, Spinner } from "@/components/ui";
 
 const DrawingSurface = dynamic(
   () => import("@/components/three/DrawingSurface"),
@@ -97,8 +97,13 @@ export default function ProjectDesignerPage() {
   const lookup = useVariantLookup();
 
   const [projectName, setProjectName] = useState<string>("");
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  // Why the last autosave failed. Held so the user can be told and offered a
+  // retry — losing scene work silently is the worst outcome on this surface.
+  const [saveError, setSaveError] = useState<unknown>(null);
+  // Lets the retry affordance re-run the debounced save from outside the effect.
+  const scheduleSaveRef = useRef<((immediate?: boolean) => void) | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
@@ -137,7 +142,9 @@ export default function ProjectDesignerPage() {
     if (lookup.isError) {
       setHydrated(false);
       setLoadError(
-        "The furniture catalog failed to load, so the project was not opened (this protects its contents). Retry once the backend is reachable."
+        new Error(
+          "The furniture catalog failed to load, so the project was not opened (this protects its contents). Retry once the backend is reachable."
+        )
       );
       return;
     }
@@ -177,9 +184,7 @@ export default function ProjectDesignerPage() {
         setSaveStatus("saved");
       } catch (error) {
         if (cancelled) return;
-        setLoadError(
-          error instanceof Error ? error.message : "Failed to load project"
-        );
+        setLoadError(error);
       }
     })();
 
@@ -196,7 +201,7 @@ export default function ProjectDesignerPage() {
     if (!hydrated || !projectId) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
-    function schedule(): void {
+    function schedule(immediate = false): void {
       if (timer) clearTimeout(timer);
       setSaveStatus("saving");
       timer = setTimeout(async () => {
@@ -214,6 +219,7 @@ export default function ProjectDesignerPage() {
           );
           await api.replaceScene(projectIdRef.current, scene);
           setSaveStatus("saved");
+          setSaveError(null);
 
           // Fire-and-forget thumbnail upload, throttled to one every 30s and
           // never overlapping itself. Failures are silent — thumbnails are a
@@ -236,11 +242,12 @@ export default function ProjectDesignerPage() {
           }
         } catch (error) {
           setSaveStatus("error");
-          // eslint-disable-next-line no-console
-          console.error("Scene save failed", error);
+          setSaveError(error);
         }
-      }, SAVE_DEBOUNCE_MS);
+      }, immediate ? 0 : SAVE_DEBOUNCE_MS);
     }
+
+    scheduleSaveRef.current = schedule;
 
     const unsubscribe = useDesignerStore.subscribe((state, prevState) => {
       if (
@@ -255,6 +262,7 @@ export default function ProjectDesignerPage() {
 
     return () => {
       unsubscribe();
+      scheduleSaveRef.current = null;
       if (timer) clearTimeout(timer);
     };
   }, [hydrated, projectId]);
@@ -269,16 +277,11 @@ export default function ProjectDesignerPage() {
     );
   }
 
-  if (loadError) {
+  if (loadError != null) {
     return (
       <main className="min-h-screen w-screen flex flex-col items-center justify-center gap-4 bg-dizajno-bg px-6">
-        <div className="max-w-md w-full rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-5 py-4">
-          <p className="text-[13px] font-medium text-dizajno-danger">
-            Couldn&apos;t load this project.
-          </p>
-          <p className="text-[12.5px] text-dizajno-danger/80 mt-1 break-words">
-            {loadError}
-          </p>
+        <div className="max-w-md w-full">
+          <ErrorState error={loadError} action="load this project" />
         </div>
         <Link
           href="/projects"
@@ -344,6 +347,20 @@ export default function ProjectDesignerPage() {
           </CanvasDropZone>
           <SelectionBar />
         </div>
+        {saveStatus === "error" && saveError != null && (
+          <div className="px-3 pb-2">
+            <ApiErrorAlert
+              error={saveError}
+              action="save your changes"
+              size="sm"
+              onRetry={() => scheduleSaveRef.current?.(true)}
+            >
+              <span className="text-[12px] text-dizajno-muted">
+                Your work is still on screen — it just isn&apos;t saved yet.
+              </span>
+            </ApiErrorAlert>
+          </div>
+        )}
         <StatusBar />
       </div>
     </DesignerProvider>

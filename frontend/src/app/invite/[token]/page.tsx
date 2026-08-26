@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  AlertCircle,
   ArrowRight,
   CheckCircle2,
   Mailbox,
@@ -15,7 +14,7 @@ import {
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import AuthShell from "@/components/auth/AuthShell";
-import { Badge, Button, Spinner } from "@/components/ui";
+import { ApiErrorAlert, Badge, Button, Spinner } from "@/components/ui";
 
 export default function InviteAcceptPage() {
   const params = useParams<{ token: string }>();
@@ -33,6 +32,7 @@ export default function InviteAcceptPage() {
 
   const [accepted, setAccepted] = useState(false);
   const accept = useMutation({
+    meta: { errorHandled: true },
     mutationFn: () => api.acceptInvite(token),
     onSuccess: () => {
       setAccepted(true);
@@ -187,13 +187,12 @@ export default function InviteAcceptPage() {
               </span>
             </p>
             {accept.error && (
-              <div
-                role="alert"
-                className="mb-3 flex items-start gap-2 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2.5 text-[13px] text-dizajno-danger"
-              >
-                <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                <span>{(accept.error as Error).message}</span>
-              </div>
+              <ApiErrorAlert
+                error={accept.error}
+                action="accept this invitation"
+                size="sm"
+                className="mb-3"
+              />
             )}
             <Button
               variant="primary"

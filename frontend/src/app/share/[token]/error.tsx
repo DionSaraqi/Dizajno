@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 import RouteErrorScreen from "@/components/errors/RouteErrorScreen";
 
-export default function DesignerError({
+export default function SharedProjectError({
   error,
   reset,
 }: {
@@ -13,16 +13,16 @@ export default function DesignerError({
 }) {
   useEffect(() => {
     // eslint-disable-next-line no-console
-    console.error("Designer error:", error);
+    console.error("Shared project error:", error);
   }, [error]);
 
   return (
     <RouteErrorScreen
       error={error}
       reset={reset}
-      surface="The designer"
-      homeHref="/projects"
-      homeLabel="Go to projects"
+      surface="This shared view"
+      homeHref="/"
+      homeLabel="Back home"
     />
   );
 }

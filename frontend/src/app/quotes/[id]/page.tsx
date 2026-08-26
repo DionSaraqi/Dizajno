@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertCircle,
   Briefcase,
   Check,
   Inbox,
@@ -17,11 +16,13 @@ import {
 import * as api from "@/lib/api";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
+  ApiErrorAlert,
   Badge,
   Button,
   Card,
   ConfirmDialog,
   EmptyState,
+  ErrorState,
   PageHeader,
   Spinner,
   TopBar,
@@ -37,7 +38,7 @@ export default function QuoteDetailPage() {
   const status = useAuthStore((s) => s.status);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<unknown>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
 
@@ -60,8 +61,9 @@ export default function QuoteDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       setCancelOpen(false);
     },
-    onError: (err) =>
-      setActionError(err instanceof Error ? err.message : "Failed to cancel."),
+    // Rendered inline right below, so the global toast net stands down.
+    meta: { errorHandled: true },
+    onError: setActionError,
   });
 
   const closeMutation = useMutation({
@@ -70,8 +72,8 @@ export default function QuoteDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
       setCloseOpen(false);
     },
-    onError: (err) =>
-      setActionError(err instanceof Error ? err.message : "Failed to close."),
+    meta: { errorHandled: true },
+    onError: setActionError,
   });
 
   if (status !== "authenticated" || !user) {
@@ -190,15 +192,18 @@ export default function QuoteDetailPage() {
             </div>
           )}
           {quote.error && (
-            <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-              {(quote.error as Error).message}
-            </div>
+            <ErrorState
+              error={quote.error}
+              action="load this quote"
+              onRetry={() => void quote.refetch()}
+            />
           )}
-          {actionError && (
-            <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger flex items-start gap-2">
-              <AlertCircle size={14} className="mt-0.5 shrink-0" />
-              {actionError}
-            </div>
+          {actionError != null && (
+            <ApiErrorAlert
+              error={actionError}
+              size="sm"
+              onDismiss={() => setActionError(null)}
+            />
           )}
 
           {data?.message && (

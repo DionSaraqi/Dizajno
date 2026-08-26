@@ -19,6 +19,7 @@ import {
   Button,
   Card,
   EmptyState,
+  ErrorState,
   PageHeader,
   Skeleton,
   TopBar,
@@ -108,9 +109,11 @@ export default function QuotesListPage() {
           )}
 
           {quotes.error && (
-            <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-              Failed to load quotes: {(quotes.error as Error).message}
-            </div>
+            <ErrorState
+              error={quotes.error}
+              action="load your quotes"
+              onRetry={() => void quotes.refetch()}
+            />
           )}
 
           {quotes.data && quotes.data.length === 0 && (

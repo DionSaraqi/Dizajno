@@ -3,10 +3,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, ArrowRight, Lock, Mail } from "lucide-react";
+import { ArrowRight, Lock, Mail } from "lucide-react";
 import { useAuthStore } from "@/store/useAuthStore";
 import AuthShell from "@/components/auth/AuthShell";
-import { Button, FormField, Input } from "@/components/ui";
+import { Alert, Button, ErrorSummary, FormField, Input } from "@/components/ui";
+import { fieldErrorFor } from "@/lib/apiError";
+import { safeRedirect } from "@/utils/safeRedirect";
 
 export default function LoginPage() {
   return (
@@ -19,15 +21,16 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const redirect = params.get("redirect") ?? "/projects";
+  // Never hand an unvalidated query value to router.replace — see safeRedirect.
+  const redirect = safeRedirect(params.get("redirect"), "/projects");
+  const sessionExpired = params.get("reason") === "session-expired";
 
   const status = useAuthStore((s) => s.status);
   const login = useAuthStore((s) => s.login);
-  const storeError = useAuthStore((s) => s.error);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -38,22 +41,19 @@ function LoginForm() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLocalError(null);
+    setError(null);
     setSubmitting(true);
     try {
       await login(email, password);
-    } catch (error) {
-      setLocalError(
-        error instanceof Error
-          ? error.message
-          : "Login failed. Check your credentials.",
-      );
+    } catch (caught) {
+      // The store already normalised this; keep the value, not a string, so
+      // the summary can attach per-field messages to the right inputs.
+      setError(caught);
     } finally {
       setSubmitting(false);
     }
   }
 
-  const errorMessage = localError ?? storeError;
   const registerHref =
     redirect && redirect !== "/projects"
       ? `/register?redirect=${encodeURIComponent(redirect)}`
@@ -77,7 +77,22 @@ function LoginForm() {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <FormField label="Email" htmlFor="email">
+        {sessionExpired && !error && (
+          <Alert tone="info" size="sm" live="status">
+            Your session ended, so we signed you out. Sign in to continue where
+            you left off.
+          </Alert>
+        )}
+
+        {/* Summary first: a failed submit must announce itself and offer a way
+            to each bad field, rather than hiding the reason below the button. */}
+        <ErrorSummary
+          error={error}
+          action="sign in"
+          fieldIds={{ email: "email", password: "password" }}
+        />
+
+        <FormField label="Email" htmlFor="email" error={fieldErrorFor(error, "email")}>
           <Input
             id="email"
             type="email"
@@ -93,6 +108,7 @@ function LoginForm() {
         <FormField
           label="Password"
           htmlFor="password"
+          error={fieldErrorFor(error, "password")}
           rightLabel={
             <Link
               href="#"
@@ -113,16 +129,6 @@ function LoginForm() {
             leftIcon={<Lock />}
           />
         </FormField>
-
-        {errorMessage && (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2.5 text-[13px] text-dizajno-danger"
-          >
-            <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            <span className="leading-snug">{errorMessage}</span>
-          </div>
-        )}
 
         <Button
           type="submit"

@@ -14,12 +14,14 @@ import {
 } from "lucide-react";
 import * as api from "@/lib/api";
 import {
+  ApiErrorAlert,
   Avatar,
   Badge,
   Button,
   Card,
   CardBody,
   ConfirmDialog,
+  ErrorState,
   FormField,
   IconButton,
   Input,
@@ -81,9 +83,11 @@ export default function AdminSupplierDetailPage() {
   if (supplier.error) {
     return (
       <div className="py-12 max-w-xl">
-        <div className="rounded-xl border border-dizajno-danger/30 bg-dizajno-danger-soft px-4 py-3 text-[13px] text-dizajno-danger">
-          {(supplier.error as Error).message}
-        </div>
+        <ErrorState
+          error={supplier.error}
+          action="load this supplier"
+          onRetry={() => void supplier.refetch()}
+        />
       </div>
     );
   }
@@ -321,6 +325,7 @@ function CreateInviteModal({
   const [copied, setCopied] = useState(false);
 
   const create = useMutation({
+    meta: { errorHandled: true },
     mutationFn: () =>
       api.createSupplierInvite({
         supplierId,
@@ -447,9 +452,7 @@ function CreateInviteModal({
           />
         </FormField>
         {create.error && (
-          <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger">
-            {(create.error as Error).message}
-          </div>
+          <ApiErrorAlert error={create.error} action="create this invite" size="sm" />
         )}
       </form>
     </Modal>

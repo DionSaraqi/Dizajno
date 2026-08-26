@@ -14,6 +14,8 @@ import {
 import * as api from "@/lib/api";
 import type { ShareMode } from "@/lib/api";
 import {
+  Alert,
+  ApiErrorAlert,
   Badge,
   Button,
   IconButton,
@@ -36,8 +38,10 @@ export function ShareDialog({ projectId, open, onClose }: ShareDialogProps) {
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<ShareMode>("View");
   const [emailInvite, setEmailInvite] = useState("");
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<unknown>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  // Set only when the clipboard API is unavailable or denied.
+  const [copyFallback, setCopyFallback] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -45,6 +49,7 @@ export function ShareDialog({ projectId, open, onClose }: ShareDialogProps) {
       setEmailInvite("");
       setEmailError(null);
       setCopied(null);
+      setCopyFallback(null);
     }
   }, [open]);
 
@@ -75,7 +80,7 @@ export function ShareDialog({ projectId, open, onClose }: ShareDialogProps) {
     setEmailError(null);
     const email = emailInvite.trim();
     if (!email || !email.includes("@")) {
-      setEmailError("Enter a valid email address.");
+      setEmailError(new Error("Enter a valid email address."));
       return;
     }
     createMutation.mutate(
@@ -94,7 +99,10 @@ export function ShareDialog({ projectId, open, onClose }: ShareDialogProps) {
         1500,
       );
     } catch {
-      window.prompt("Copy this share URL:", url);
+      // Clipboard blocked (insecure origin, or permission denied). Reveal the
+      // URL in the dialog so it can be selected by hand rather than opening a
+      // native prompt the app can neither style nor make accessible.
+      setCopyFallback(url);
     }
   }
 
@@ -174,10 +182,40 @@ export function ShareDialog({ projectId, open, onClose }: ShareDialogProps) {
               Invite
             </Button>
           </div>
-          {emailError && (
-            <p className="text-[12px] text-dizajno-danger">{emailError}</p>
+          {emailError != null ? (
+            <ApiErrorAlert
+              error={emailError}
+              action="create this invite"
+              size="sm"
+              onDismiss={() => setEmailError(null)}
+            />
+          ) : (
+            (createMutation.error ?? revokeMutation.error) != null && (
+              <ApiErrorAlert
+                error={createMutation.error ?? revokeMutation.error}
+                action="update sharing"
+                size="sm"
+              />
+            )
           )}
         </div>
+
+        {copyFallback && (
+          <Alert
+            tone="info"
+            size="sm"
+            title="Copy this link by hand"
+            live="status"
+            onDismiss={() => setCopyFallback(null)}
+          >
+            <input
+              readOnly
+              value={copyFallback}
+              onFocus={(e) => e.currentTarget.select()}
+              className="mt-1 w-full rounded-md border border-dizajno-border bg-dizajno-surface px-2 py-1 font-mono text-[11.5px] text-dizajno-text"
+            />
+          </Alert>
+        )}
 
         {/* Existing shares */}
         <div className="space-y-2 pt-3 border-t border-dizajno-border">

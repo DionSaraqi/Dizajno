@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import * as api from "@/lib/api";
 import {
+  ApiErrorAlert,
   Button,
   Card,
   CardBody,
@@ -107,7 +108,7 @@ function NewVariantForm({
   const [height, setHeight] = useState("1");
   const [color, setColor] = useState("#999999");
   const [basePrice, setBasePrice] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   const create = useMutation({
     mutationFn: () =>
@@ -122,7 +123,8 @@ function NewVariantForm({
         currency: "EUR",
       }),
     onSuccess: onCreated,
-    onError: (e: Error) => setError(e.message),
+    meta: { errorHandled: true },
+    onError: setError,
   });
 
   return (
@@ -216,10 +218,8 @@ function NewVariantForm({
             </FormField>
           </div>
 
-          {error && (
-            <div className="rounded-lg border border-dizajno-danger/30 bg-dizajno-danger-soft px-3 py-2 text-[13px] text-dizajno-danger">
-              {error}
-            </div>
+          {error != null && (
+            <ApiErrorAlert error={error} action="add this variant" size="sm" />
           )}
 
           <div className="flex justify-end gap-2 pt-1">
