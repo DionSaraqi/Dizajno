@@ -104,3 +104,78 @@ Open decisions before implementing:
   canvas as a floating overlay like `LeftDock` and `SelectionBar` already are?
 - `StatusBar` adds another `h-6` bar at the bottom; worth folding into the same
   pass, or leave it alone?
+
+### The account menu doesn't open on the designer surfaces
+Clicking the account chip at the top-right of `/projects/[id]` (and `/designer`
+and `/share/[token]`) appears to do nothing. The menu *is* opening — React state
+flips and the panel renders — but it is painted underneath the canvas, so
+nothing is visible.
+
+`DesignerHeader` (`components/designer/DesignerHeader.tsx`) is
+`bg-dizajno-bg/85 backdrop-blur-md` with **no `z-index`**. A non-`none`
+`backdrop-filter` makes an element a stacking context, so the header becomes one
+at level 0 of the page container. `AccountMenu`'s dropdown is
+`absolute … z-50`, but that `z-50` now only orders it *within the header* — it
+can never lift the panel above the header's own layer. Every later sibling in
+`/projects/[id]` (`Toolbar`, the `flex flex-1 … relative` canvas wrapper,
+`StatusBar`) is also at level 0 and comes after the header in DOM order, so all
+of them paint over it. The dropdown opens below the 48px header, which is
+entirely canvas, so it is completely covered.
+
+The same menu works everywhere else because those headers set an explicit
+z-index: `TopBar` is `sticky top-0 z-30 … backdrop-blur-md` (`/projects`,
+`/quotes`, `/admin/*`, `/supplier/*`) and `LandingHeader`'s meta row is `z-20`
+(`/`). `DesignerHeader` is the only one that omits it. Corroborating detail:
+`Toolbar`'s own dropdowns (`z-40`) *do* work, because `Toolbar` has no
+`backdrop-filter` and therefore no stacking context of its own — its `z-40`
+competes page-wide and wins.
+
+Wanted: give `DesignerHeader` its own layer (`relative z-30`, matching `TopBar`)
+so the panel escapes the canvas. Worth auditing the other `backdrop-blur`
+element in the designer (`SelectionBar`, which wraps a `z-50` popover in a
+`backdrop-blur` container at `z-20`) for the same latent bug at the same time.
+
+Open decisions before implementing:
+- Fix locally on `DesignerHeader`, or give `AccountMenu` a portal so no call site
+  can reintroduce this? A portal also fixes it inside `overflow-hidden`
+  ancestors, which the designer container is.
+- If the top chrome gets collapsed (see the entry above), the z-index layering
+  for header / Toolbar / floating overlays should be decided once, as a scale,
+  rather than per component.
+
+---
+
+## Catalog & Seed Data
+
+### Two catalog tests assert stale seed counts and fail on a clean tree
+`CatalogEndpointsTests.GetProducts_ReturnsAllSeededItems` asserts
+`HaveCount(20)` and
+`GetProducts_FiltersByFamily_BuildingMaterialExposesUnitAndCoverage` asserts
+`HaveCount(6)`. The seed (`backend/src/Dizajno.Data/Seed/CatalogSeedData.cs`)
+actually contains **22** products — 12 furniture, 2 fixtures, and **8**
+building materials.
+
+The drift is exactly two extra flooring rows, `natural-oak-plank` (€38/m²) and
+`herringbone-parquet` (€68/m²), added in `e4071a3` without updating either
+assertion. Both tests still describe "3 paints + 3 flooring tiers" in their
+comments, which is no longer what the seed ships. Every other assertion in both
+tests passes — the specific types, prices, `UnitOfSale`, and `CoverageRate` are
+all still correct — so this is a counting problem, not a data problem.
+
+There is a second-order drift behind it: those two rows exist **only** in the
+backend seed. `frontend/src/utils/furnitureCatalog.ts` has neither, so the
+fallback catalog and `CatalogSeedData.cs` are out of sync, which CLAUDE.md
+requires them not to be until the supplier portal fully replaces the seed.
+
+Wanted: decide whether the two floorings are intended, then make the seed, the
+frontend fallback, and the two assertions agree.
+
+Open decisions before implementing:
+- Are `natural-oak-plank` and `herringbone-parquet` meant to ship? If yes, bump
+  the counts to 22/8 and add both to the frontend fallback; if they were
+  scratch data for the quote calculator, drop them from the seed instead.
+- Should these tests assert exact counts at all? A count is the assertion most
+  likely to break for a reason nobody cares about. Asserting only that the
+  expected types are present (which both tests already do) would make the seed
+  growable without touching tests — at the cost of not catching an accidental
+  duplicate row.
